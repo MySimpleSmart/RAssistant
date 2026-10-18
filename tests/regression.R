@@ -21,6 +21,22 @@ check(!app$is_image_error(simpleError("429 image quota exceeded")), "quota error
 check(app$is_image_error(simpleError("Unsupported image format")), "image-specific errors allow numeric fallback")
 history <- app$summarize_history(lapply(1:30, function(i) list(role="AI", type="text", text=paste0(i, strrep("x", 4000)))))
 check(nchar(history)<=12000L && grepl("AI: 30",history,fixed=TRUE), "history is bounded and retains the newest turn")
+app$api_key <- "synthetic-provider-key"
+old_lifecycle <- options(lifecycle_verbosity = "error")
+client <- app$create_ai_client("Synthetic system instructions")
+options(old_lifecycle)
+check(inherits(client,"Chat") && identical(client$get_model(),"gpt-6.1-sol"),
+      "saved keys create an ellmer client without deprecated arguments or a network request")
+app$api_key <- NULL
+windows_path <- "C:\\data\\sample.csv"
+windows_code <- paste0("read.csv(", encodeString(windows_path, quote = '"'), ")")
+check(identical(app$csv_references(windows_code), windows_path),
+      "CSV preflight decodes escaped Windows paths as string data")
+check(all(app$is_absolute_path(c("C:/data/sample.csv", windows_path, "\\\\server\\share\\sample.csv", "/tmp/sample.csv", "~/sample.csv"))) &&
+      !any(app$is_absolute_path(c("sample.csv", "data/sample.csv", "C:sample.csv"))),
+      "CSV paths distinguish Windows drive and network roots from relative references")
+check(!length(app$csv_references('read.csv("C:\\invalid\\unescaped.csv")')),
+      "invalid R path strings are not inspected as CSV files")
 history <- app$summarize_history(list(list(role="AI",type="logs",text="verified output: 42")))
 check(grepl("verified output: 42",history,fixed=TRUE), "execution evidence survives in follow-up context")
 
@@ -55,7 +71,7 @@ shiny::testServer(app$server, {
   session$flushReact()
   check(grepl("No simple literal",get_csv_headers("x <- 1",tempdir(),""),fixed=TRUE), "scripts without CSV references skip header reads")
   csv <- tempfile(fileext=".csv");writeLines(c("first,second","1,2"),csv)
-  probe <- paste0('read.csv("',csv,'")')
+  probe <- paste0("read.csv(",encodeString(csv,quote='"'),")")
   check(grepl("first, second",get_csv_headers(probe,tempdir(),""),fixed=TRUE), "CSV preflight preserves verified default column names")
   reads <- header_reads
   get_csv_headers(probe,tempdir(),"")

@@ -1,6 +1,6 @@
 # RStudio AI Chat — inline images + upload reset (v2.2)
 # Usage: source("AISource.R") from RStudio.
-# Dependencies: shiny >= 1.14.0, ellmer, rstudioapi, commonmark,
+# Dependencies: shiny >= 1.14.0, ellmer >= 0.5.0, rstudioapi, commonmark,
 #               htmltools, jsonlite, callr, knitr
 # Standalone: configure OPENAI_API_KEY in your environment.
 # Package: RAssistant::launch() offers secure first-launch key setup.
@@ -23,6 +23,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY")) {
   }
   if (utils::packageVersion("shiny") < "1.14.0") {
     stop("Shiny 1.14.0 or newer is required. Update shiny and restart R.")
+  }
+  if (utils::packageVersion("ellmer") < "0.5.0") {
+    stop("ellmer 0.5.0 or newer is required. Update ellmer and restart R.")
   }
   if (!rstudioapi::isAvailable()) stop("Start this script inside RStudio.")
   if (!is.character(api_key) || length(api_key) != 1L || is.na(api_key) || !nzchar(trimws(api_key))) {
@@ -57,13 +60,17 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY")) {
   # Chat only. No edit schema, no setDocumentContents and no modifyRange.
   # For normal chat, optionally pass uploaded images to a vision model.
   # Temp file suffixes preserve MIME guessing used by ellmer.
+  create_ai_client <- function(system_prompt) {
+    ellmer::chat_openai(
+      model = "gpt-6.1-sol", system_prompt = system_prompt,
+      credentials = if (is.null(api_key)) NULL else function() api_key
+    )
+  }
   ask_ai <- function(system_prompt, prompt, images = character(0)) {
     api_options <- options(ellmer_timeout_s = getOption("ellmer_timeout_s", 120),
                            ellmer_max_tries = getOption("ellmer_max_tries", 2L))
     on.exit(options(api_options), add = TRUE)
-    client <- ellmer::chat_openai(
-      model = "gpt-6.1-sol", system_prompt = system_prompt, api_key = api_key
-    )
+    client <- create_ai_client(system_prompt)
     pieces <- c(list(prompt), lapply(images, function(path) {
       ellmer::content_image_file(path, resize = "none")
     }), list(echo = "none"))
@@ -223,14 +230,23 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY")) {
 
   # CSV preflight reads headers only. It never executes code from the editor,
   # sends row data, guesses file names, or modifies CSV files.
+  is_absolute_path <- function(path) {
+    grepl("^(?:~|[/\\\\]|[[:alpha:]]:[/\\\\])", path, perl = TRUE)
+  }
   csv_references <- function(code) {
     pattern <- "(?:utils::)?read\\.csv\\s*\\(\\s*(?:file\\s*=\\s*)?(['\\\"])([^'\\\"]+)\\1"
     hits <- regmatches(code, gregexpr(pattern, code, perl = TRUE))[[1L]]
     if (!length(hits)) return(character(0))
-    unique(vapply(hits, function(hit) {
+    refs <- vapply(hits, function(hit) {
       parts <- regmatches(hit, regexec(pattern, hit, perl = TRUE))[[1L]]
-      if (length(parts) >= 3L) parts[[3L]] else ""
-    }, character(1)))
+      if (length(parts) < 3L) return("")
+      # Parse only the captured string literal, never evaluate source code.
+      # This decodes escaped Windows separators and rejects invalid R strings.
+      value <- tryCatch(parse(text = paste0(parts[[2L]], parts[[3L]], parts[[2L]]),
+                              keep.source = FALSE)[[1L]], error = function(e) NULL)
+      if (is.character(value) && length(value) == 1L) value else ""
+    }, character(1))
+    unique(refs[nzchar(refs)])
   }
 
   select_working_dir <- function(code, script_path = "") {
@@ -239,7 +255,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY")) {
     if (!length(csvs)) return(roots[[1L]])
     for (root in roots) {
       if (any(vapply(csvs, function(f) {
-        candidate <- if (grepl("^(/|~)", f)) path.expand(f) else file.path(root, f)
+        candidate <- if (is_absolute_path(f)) path.expand(f) else file.path(root, f)
         file.exists(candidate)
       }, logical(1)))) return(root)
     }
@@ -252,8 +268,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY")) {
       return("No simple literal read.csv(\"filename.csv\") reference found. No CSV header was inspected.")
     }
     findings <- vapply(csvs, function(file_name) {
-      candidate <- if (grepl("^(/|~)", file_name)) path.expand(file_name) else file.path(working_dir, file_name)
-      if (!file.exists(candidate) && nzchar(script_path) && !grepl("^(/|~)", file_name)) {
+      candidate <- if (is_absolute_path(file_name)) path.expand(file_name) else file.path(working_dir, file_name)
+      if (!file.exists(candidate) && nzchar(script_path) && !is_absolute_path(file_name)) {
         alt <- file.path(dirname(script_path), file_name)
         if (file.exists(alt)) candidate <- alt
       }
@@ -941,7 +957,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY")) {
     get_csv_headers <- function(code, wd, path) {
       refs <- head(csv_references(code), 8L)
       candidates <- unique(unlist(lapply(refs, function(f) {
-        if (grepl("^(/|~)", f)) path.expand(f) else c(file.path(wd, f),
+        if (is_absolute_path(f)) path.expand(f) else c(file.path(wd, f),
           if (nzchar(path)) file.path(dirname(path), f))
       })))
       info <- file.info(as.character(candidates))

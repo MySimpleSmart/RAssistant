@@ -48,6 +48,7 @@ RAssistant::forget_api_key()  # Remove only RAssistant's saved key
 
 An existing `OPENAI_API_KEY` takes precedence over a saved key. Saving a key does
 not validate it against the network; authentication is checked on the first Send.
+Close and relaunch the assistant after changing a key to use the new value.
 
 ## Update
 

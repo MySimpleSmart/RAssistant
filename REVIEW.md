@@ -18,6 +18,7 @@ The existing single-file Shiny application was repaired incrementally. Its launc
 | Follow-up context omitted academic comments and verified execution output. | Bounded history includes both, labels prior image attachments, and excludes failed-request artifacts. Assignment context is kept separately without repeating identical turns. |
 | A short follow-up such as Exercise 1(a) could overwrite a previously supplied multipart assignment. | A complete brief stays available across part references and long follow-ups. A fuller brief can replace an initial short reference or generic context; New or switching Source documents clears it. |
 | Repeated CSV preflight reads performed unnecessary I/O. | A session cache uses references, working directories, file sizes, and modification times; file changes invalidate it. |
+| Windows drive/network paths were treated as relative paths, and escaped separators were not decoded. | CSV lookup and caching recognize Windows absolute paths; captured R string literals are parsed without evaluation. Invalid R strings are ignored. Cross-platform fixtures quote paths correctly. |
 | Any plot-analysis failure triggered a second API request, including quota/authentication failures. | Numeric fallback occurs only for image-specific errors. Shared request handling supplies empty-response checks and default per-attempt timeout/retry limits, respecting existing ellmer options. |
 | Validation could remain labelled Running after completion, and log truncation could drop the final error. | Status is finalized; analysis excerpts retain the beginning and end of logs. Temporary plot cleanup also covers preparation failures. |
 | Negated requests such as “without running” opened the execution flow. | Static-review and common negation phrases bypass execution approval. Explicit run requests retain the Yes/No flow and source-change guard. |
@@ -36,7 +37,7 @@ Rscript tests/image-reading.R
 Rscript tests/browser.R
 ```
 
-- **45 R/Shiny checks:** helper behavior, CSV caching, upload lifecycle, retries, replay suppression, context, document isolation, approval/source-change guards, real child-process R/Rmd execution, plot capture, execution errors, timeouts, cleanup, and image-analysis fallback.
+- **49 R/Shiny checks:** helper behavior, Windows/escaped CSV paths and caching, upload lifecycle, retries, replay suppression, context, document isolation, approval/source-change guards, real child-process R/Rmd execution, plot capture, execution errors, timeouts, cleanup, image-analysis fallback, and credential-based ellmer construction without deprecated arguments or a network request.
 - **28 Source-context checks:** Source lookup errors/NULL/invalid results, fresh document-ID fallback, document switching, Console rejection, image-only sends/retries without Source access, generic image prompts, Console-screenshot evidence, conditional statistical comments, no initial document, oversized editor omission, CSV preflight exclusion, loading/file cleanup, and retained validation/size guards.
 - **13 assignment-context checks:** a synthetic multipart brief survives seven part requests, long follow-ups, and the recent-history limit; a later full brief can replace a short reference; New and Source document changes clear it. The suite also passed using a locally supplied assignment, with a mocked API. User documents and data are not included in the repository.
 - **15 image-reading checks:** inspect outgoing image-only and user-directed payloads, absence of unsolicited statistical templates, unreadable-text guidance, optional background, unchanged image bytes/order, explicit/negated/mentioned academic-comment requests, and retained text-only/verified-run behavior.
@@ -61,14 +62,14 @@ The opt-in live test can be repeated with `AISOURCE_LIVE_VISION=1 Rscript tests/
 
 These are code-enforced limits, not a measured guarantee for large workloads. Image-memory management, incremental history rendering, and older-context retention would need separate work before claiming large-session capacity. This label update does not change the limits or add new upload formats.
 
-For multipart work such as Week 8 SGTA, paste the complete assignment text first and keep one R/Rmd Source document open while asking for individual parts. The image picker does not accept PDFs, and automatic validation runs the entire current R/Rmd file, not only the requested part or selected chunk. RStudio can run individual R Markdown chunks; their Console output and images can then be supplied to chat. Automatic Quarto (.qmd) validation is not implemented.
+For multipart work, paste the complete assignment text first and keep one R/Rmd Source document open while asking for individual parts. The image picker does not accept PDFs, and automatic validation runs the entire current R/Rmd file, not only the requested part or selected chunk. RStudio can run individual R Markdown chunks; their Console output and images can then be supplied to chat. Automatic Quarto (.qmd) validation is not implemented.
 
 ## Package distribution
 
-RAssistant 0.1.0 wraps the same application rather than replacing it. The root
+RAssistant wraps the same application rather than replacing it. The root
 `AISource.R` remains the maintained source; `tools/sync-app.R` creates the exact
 snapshot shipped under `inst/app`, and CI rejects divergence. The only app-boundary
-changes are an explicit API-key argument and an internal load-without-launch
+changes include an explicit API-key argument and an internal load-without-launch
 option, restored immediately by the package loader. Standalone sourcing remains
 supported. Existing upload/rendering/context/validation tests and all 28 browser
 checks passed after these changes.
@@ -96,3 +97,9 @@ app/restart guards and installation failures. These use fake credential stores
 and installers; native password dialogs and actual OS credential-store writes
 have not been exercised. The source archive was checked for accidental inclusion
 of credentials, backups, user documents and opt-in live API tests.
+
+After publication, a real `RAssistant::update_assistant()` call downloaded the
+GitHub package and successfully replaced the installation in the same isolated
+temporary library. A fresh R process verified version 0.1.0, GitHub commit metadata,
+the bundled launcher and its byte-identical application snapshot. No real
+credential-store operations or live model requests were involved in this test.
