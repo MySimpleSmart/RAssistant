@@ -37,7 +37,7 @@ Rscript tests/image-reading.R
 Rscript tests/browser.R
 ```
 
-- **49 R/Shiny checks:** helper behavior, Windows/escaped CSV paths and caching, upload lifecycle, retries, replay suppression, context, document isolation, approval/source-change guards, real child-process R/Rmd execution, plot capture, execution errors, timeouts, cleanup, image-analysis fallback, and credential-based ellmer construction without deprecated arguments or a network request.
+- **50 R/Shiny checks:** helper behavior, Windows/escaped CSV paths and caching, upload lifecycle, retries, replay suppression, context, document isolation, approval/source-change guards, real child-process R/Rmd execution, plot capture, execution errors, timeouts, cleanup, image-analysis fallback, credential-based ellmer construction without deprecated arguments or a network request, and persistent update-confirmation locking.
 - **28 Source-context checks:** Source lookup errors/NULL/invalid results, fresh document-ID fallback, document switching, Console rejection, image-only sends/retries without Source access, generic image prompts, Console-screenshot evidence, conditional statistical comments, no initial document, oversized editor omission, CSV preflight exclusion, loading/file cleanup, and retained validation/size guards.
 - **13 assignment-context checks:** a synthetic multipart brief survives seven part requests, long follow-ups, and the recent-history limit; a later full brief can replace a short reference; New and Source document changes clear it. The suite also passed using a locally supplied assignment, with a mocked API. User documents and data are not included in the repository.
 - **15 image-reading checks:** inspect outgoing image-only and user-directed payloads, absence of unsolicited statistical templates, unreadable-text guidance, optional background, unchanged image bytes/order, explicit/negated/mentioned academic-comment requests, and retained text-only/verified-run behavior.
@@ -127,7 +127,7 @@ refresh, newer/equal/older versions, invalid metadata, offline errors, stuck wor
 cleanup, opt-out, duplicate scheduling, stop-before-install, failed-install recovery,
 no-change updates, and a real subprocess retaining its helpers without inheriting
 the API key. No live network or real installs occur in these package tests.
-Together with the existing suites and browser checks, 194 checks passed locally.
+Together with the existing suites and browser checks, 195 checks passed locally.
 
 A separate live public-metadata smoke test read GitHub successfully; starting the
 background check returned in about 0.08 seconds. A real Shiny app handle was also

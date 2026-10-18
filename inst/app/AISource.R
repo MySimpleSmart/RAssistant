@@ -1032,10 +1032,10 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     shiny::observeEvent(input$confirm_update,{
       if(is.null(package_info) || state$busy || !is.null(state$pending) || update_requested)return()
       if(!identical(update_status()$status,"available"))return()
-      update_requested <- TRUE
+      update_requested <<- TRUE
       error <- tryCatch({package_info$request_update();NULL},error=function(e)e)
       if(inherits(error,"error")){
-        update_requested <- FALSE
+        update_requested <<- FALSE
         shiny::showNotification("Could not start the update. Close the assistant and run RAssistant::update_assistant() in the Console.",
           type="error",duration=NULL)
         return()

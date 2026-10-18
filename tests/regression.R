@@ -174,4 +174,15 @@ shiny::testServer(app$server, {
   check(calls$analyses==before+2L && !state$busy, "image-specific analysis failure falls back once to numeric evidence")
 })
 unlink(c(fixture,upload_dir),recursive=TRUE)
+calls$updates <- 0L
+app$package_info <- list(version="0.1.1",
+  poll_update=function()list(status="available",version="0.1.2",current="0.1.1"),
+  request_update=function(){calls$updates<-calls$updates+1L;invisible(TRUE)})
+shiny::testServer(app$server,{
+  session$flushReact()
+  session$setInputs(confirm_update=1L)
+  session$setInputs(confirm_update=2L)
+  check(calls$updates==1L,
+    "update confirmation remains locked across server events after the first request")
+})
 cat(checks, "checks passed\n")
