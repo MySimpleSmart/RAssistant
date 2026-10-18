@@ -1,0 +1,98 @@
+# AISource.R review — updated 19 October 2026
+
+The existing single-file Shiny application was repaired incrementally. Its launcher, model, editor access, validation approval, R/Rmd execution, plot gallery, academic comments, New, and shutdown controls remain in place. The standalone app retains its dependencies; the optional package wrapper adds credential-store and installation tooling. The picker is labelled **Upload**, the shutdown button **Close**, and upload messages refer to images generally; generated R plots retain their plot labels.
+
+| Audit finding | Targeted change |
+| --- | --- |
+| Shiny rejects custom message handlers with zero arguments; the original reset handler could interrupt initialization. | Every custom handler accepts its required message argument. Browser tests capture errors from page startup. |
+| Native file inputs also received Shiny's default upload binding. | The custom picker explicitly opts out of that binding. |
+| Reset and timeout could leave late FileReader callbacks or server uploads active. | Uploads use request identifiers, cancellation acknowledgements, and a reset generation. Readers are aborted and stale callbacks/uploads are ignored. |
+| MIME checks rejected files with missing browser MIME metadata, while server decoding accepted mismatched MIME/signature combinations. | Extension fallback, browser image decoding, base64 validation, and signature/type matching now cover PNG, JPEG, and WebP. |
+| Screenshots inherited a large R/statistics prompt, predefined answer formats, and a fabricated image-analysis request when the user supplied no text. | Image requests now use separate, content-neutral reading guidance. Actual user text leads the payload without an invented question; editor/assignment/history are optional background. Guidance preserves readable text, numbers, symbols and layout, distinguishes inference from visible evidence, and requires uncertainty about missing or unreadable content. Academic-card formatting is added only for an explicit positive request, not a mere mention or negation. Text-only R help and approved execution analysis retain their existing paths. |
+| Failed API calls discarded the draft and attached files. | Drafts and verified attachments remain available for retry; successful requests and session closure clean up temporary files. |
+| Sending an image was blocked by an unavailable Source context or an oversized open script. | Fresh Source lookup retries the previous document ID. Image chat continues without Source context when necessary, explicitly omits oversized code, and skips CSV preflight in those cases. Startup can also proceed without a Source document. Cached editor text and Console contents are never used as current Source evidence; execution still requires a fresh matching document. |
+| Repeated clicks/Enter events could queue requests during synchronous API work. | Immediate browser locks, matching completion messages, and server replay detection prevent duplicate submissions. |
+| Copy fallback could fail or change the composer's selection. | Clipboard errors fall back to legacy copy, preserving exact displayed code and restoring focus/selection. |
+| Math delimiter matching could consume code; Markdown links could retain executable URL schemes. | Code is protected before math parsing, and rendered links/images restrict URL schemes. Existing HTML escaping is retained. |
+| Every output update reparsed all messages and collapsed execution details. | Markdown is cached when messages are added; expanded details and reading position survive updates. |
+| Follow-up context omitted academic comments and verified execution output. | Bounded history includes both, labels prior image attachments, and excludes failed-request artifacts. Assignment context is kept separately without repeating identical turns. |
+| A short follow-up such as Exercise 1(a) could overwrite a previously supplied multipart assignment. | A complete brief stays available across part references and long follow-ups. A fuller brief can replace an initial short reference or generic context; New or switching Source documents clears it. |
+| Repeated CSV preflight reads performed unnecessary I/O. | A session cache uses references, working directories, file sizes, and modification times; file changes invalidate it. |
+| Any plot-analysis failure triggered a second API request, including quota/authentication failures. | Numeric fallback occurs only for image-specific errors. Shared request handling supplies empty-response checks and default per-attempt timeout/retry limits, respecting existing ellmer options. |
+| Validation could remain labelled Running after completion, and log truncation could drop the final error. | Status is finalized; analysis excerpts retain the beginning and end of logs. Temporary plot cleanup also covers preparation failures. |
+| Negated requests such as “without running” opened the execution flow. | Static-review and common negation phrases bypass execution approval. Explicit run requests retain the Yes/No flow and source-change guard. |
+
+The UI keeps its existing compact RStudio-style layout. A small status label indicates uploads, work, disconnection, and pending approval.
+
+## Verification
+
+Run from this directory:
+
+```sh
+Rscript tests/regression.R
+Rscript tests/source-context.R
+Rscript tests/assignment-context.R
+Rscript tests/image-reading.R
+Rscript tests/browser.R
+```
+
+- **45 R/Shiny checks:** helper behavior, CSV caching, upload lifecycle, retries, replay suppression, context, document isolation, approval/source-change guards, real child-process R/Rmd execution, plot capture, execution errors, timeouts, cleanup, and image-analysis fallback.
+- **28 Source-context checks:** Source lookup errors/NULL/invalid results, fresh document-ID fallback, document switching, Console rejection, image-only sends/retries without Source access, generic image prompts, Console-screenshot evidence, conditional statistical comments, no initial document, oversized editor omission, CSV preflight exclusion, loading/file cleanup, and retained validation/size guards.
+- **13 assignment-context checks:** a synthetic multipart brief survives seven part requests, long follow-ups, and the recent-history limit; a later full brief can replace a short reference; New and Source document changes clear it. The suite also passed using a locally supplied assignment, with a mocked API. User documents and data are not included in the repository.
+- **15 image-reading checks:** inspect outgoing image-only and user-directed payloads, absence of unsolicited statistical templates, unreadable-text guidance, optional background, unchanged image bytes/order, explicit/negated/mentioned academic-comment requests, and retained text-only/verified-run behavior.
+- **28 Chrome checks:** the existing UI/server with a fake API, exact code/comment copying, clipboard fallback, focus/selection, native/pasted/image-only uploads, PNG/JPEG/WebP previews, limits, failed requests, validation controls, completed execution, preserved details/scroll, late-reader cancellation, simulated Source-access failure, and startup/runtime JavaScript errors.
+- R parsing and extracted JavaScript syntax checks passed.
+
+The browser suite requires the optional `chromote` test package and Chrome. Set `CHROMOTE_CHROME` to a Chrome/headless-shell executable if automatic detection is unsuitable.
+
+Fresh document fallback uses the documented [rstudioapi document-ID argument](https://pkgs.rstudio.com/rstudioapi/reference/rstudio-editors.html); if that lookup also fails, image analysis proceeds with explicit unavailable-source context.
+
+The regression suites above use temporary fixtures and mocked API responses. A separate live smoke test on 19 October 2026 used one synthetic text/table/code screenshot with the configured model and no accompanying question. All six critical strings were reproduced exactly; the reviewed response contained only the faithful readout, with no unsolicited analysis or academic-comment template. No project files or actual Console data were used in that request. This is a narrow smoke test, not an accuracy guarantee for other images or blurry text. The embedded RStudio Viewer remains untested. Request execution remains synchronous; the browser handles its loading state explicitly. The original explicit approval requirement for running user code remains in effect.
+
+The opt-in live test can be repeated with `AISOURCE_LIVE_VISION=1 Rscript tests/live-image-reading.R`. It makes one live API attempt and requires configured credentials; running it without that flag skips the network call.
+
+## Current capacity
+
+- Uploads: up to 3 PNG/JPEG/WebP images per message, at most 4 MB each. Other file formats are not supported by this image picker.
+- Text: at most 50,000 characters per message. Current Source code has a separate 50,000-character limit; oversized code is omitted for image requests.
+- Model context: up to 12 recent eligible messages, within 12,000 characters overall and 2,800 per message, plus up to 8,000 characters of assignment context. Earlier image pixels are not resent; upload those images again for a fresh comparison.
+- Execution: approved R/Rmd runs have a 45-second limit. API requests default to 120 seconds per attempt and at most 2 attempts, respecting existing ellmer options.
+- Long sessions: displayed messages and base64 image previews remain in session memory; the entire message output is replaced on updates. Rendering is cached, but there is no pagination or bound on displayed history. Very long image-heavy sessions may consume substantial memory and become slower. New clears the session's conversation and previews.
+
+These are code-enforced limits, not a measured guarantee for large workloads. Image-memory management, incremental history rendering, and older-context retention would need separate work before claiming large-session capacity. This label update does not change the limits or add new upload formats.
+
+For multipart work such as Week 8 SGTA, paste the complete assignment text first and keep one R/Rmd Source document open while asking for individual parts. The image picker does not accept PDFs, and automatic validation runs the entire current R/Rmd file, not only the requested part or selected chunk. RStudio can run individual R Markdown chunks; their Console output and images can then be supplied to chat. Automatic Quarto (.qmd) validation is not implemented.
+
+## Package distribution
+
+RAssistant 0.1.0 wraps the same application rather than replacing it. The root
+`AISource.R` remains the maintained source; `tools/sync-app.R` creates the exact
+snapshot shipped under `inst/app`, and CI rejects divergence. The only app-boundary
+changes are an explicit API-key argument and an internal load-without-launch
+option, restored immediately by the package loader. Standalone sourcing remains
+supported. Existing upload/rendering/context/validation tests and all 28 browser
+checks passed after these changes.
+
+`launch()` obtains an existing environment key or a key saved under the stable
+`RAssistant/OpenAI` service in the OS credential store. First-launch setup uses
+hidden password input. Secrets are passed directly to ellmer, without writing
+package/project/startup files or copying them into environment variables.
+Cancellation preserves the old key; store-access failures are distinguished from
+a genuinely absent key. Nonpersistent/unsupported keyring backends are rejected.
+Loading the package alone does not access the credential store.
+
+`update_assistant()` runs the GitHub installer in a clean R process and targets
+the library containing the loaded package. It preserves normal install locking,
+blocks updates while the app runs, and requires restarting R afterward. The
+updater does not access credentials. R-version library changes still require a
+package reinstall, while the OS-stored credential remains separate.
+
+Local `R CMD build`, installation into an isolated temporary library, and
+`R CMD check --no-manual --no-vignettes` passed with **Status: OK**. An additional
+**29 package checks** cover credential precedence/reuse, hidden setup cancellation,
+invalid input, unavailable stores, replacement/removal, environment isolation,
+safe script loading, duplicate launch, update location including spaces, running
+app/restart guards and installation failures. These use fake credential stores
+and installers; native password dialogs and actual OS credential-store writes
+have not been exercised. The source archive was checked for accidental inclusion
+of credentials, backups, user documents and opt-in live API tests.

@@ -1,0 +1,4 @@
+Name: RAssistant
+Description: Open the RAssistant chat in the RStudio Viewer
+Binding: launch
+Interactive: true

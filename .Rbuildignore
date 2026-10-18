@@ -1,0 +1,12 @@
+^AISource\.R$
+^bkup\.R$
+^REVIEW\.md$
+^tools$
+^\.github$
+^\.git.*$
+^\.DS_Store$
+^\.Renviron.*$
+^\.env.*$
+^tests/(helpers|regression|source-context|assignment-context|image-reading|live-image-reading|browser)\.R$
+^.*\.Rcheck$
+^.*\.(tar\.gz|tgz|zip)$
