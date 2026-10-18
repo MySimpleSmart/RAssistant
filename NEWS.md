@@ -2,6 +2,8 @@
 
 - Remove the composer shortcut hint and keep Send aligned to the right. Enter,
   Shift+Enter and screenshot paste retain their existing behavior.
+- Read public version metadata through GitHub's contents API with cache
+  revalidation, avoiding stale raw branch-file responses during update discovery.
 
 # RAssistant 0.1.2
 

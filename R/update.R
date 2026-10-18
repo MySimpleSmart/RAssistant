@@ -63,8 +63,10 @@ update_assistant <- function(ref = "main") {
   old <- options(timeout = 5L)
   on.exit(options(old), add = TRUE)
   suppressWarnings(utils::download.file(
-    "https://raw.githubusercontent.com/MySimpleSmart/RAssistant/main/DESCRIPTION",
-    destfile = path, method = "libcurl", quiet = TRUE, mode = "wb"))
+    "https://api.github.com/repos/MySimpleSmart/RAssistant/contents/DESCRIPTION?ref=main",
+    destfile = path, method = "libcurl", quiet = TRUE, mode = "wb", cacheOK = FALSE,
+    headers = c(Accept = "application/vnd.github.raw+json",
+                "X-GitHub-Api-Version" = "2022-11-28")))
 }
 
 .fetch_latest_version <- function() {

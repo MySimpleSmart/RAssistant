@@ -135,3 +135,16 @@ stopped before a fake installer callback ran. The narrow Help dialog was inspect
 in Chrome. These checks did not call OpenAI, access the real key store, or run a
 real installation from the browser. Native RStudio Viewer interaction remains
 untested. Local package validation finished with Status: OK.
+
+## Version 0.1.3 smoke update
+
+Removed the composer shortcut hint, including unused hint styles, while keeping
+Send aligned to the right and retaining the existing keyboard and paste handlers.
+The 39 browser checks passed against the updated UI.
+
+The live update test exposed stale raw-branch metadata: a 0.1.2 client saw 0.1.2
+after 0.1.3 was published, while the exact Git commit and GitHub contents API both
+reported 0.1.3. Discovery now requests raw DESCRIPTION content from the public
+contents API with cache revalidation. Existing session caching, timeouts, process
+isolation, no-key handling and version validation remain in place. Older clients
+using the raw URL may need a Console update once to obtain this fix.
