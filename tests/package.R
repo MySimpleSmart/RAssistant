@@ -144,7 +144,37 @@ main <- function() {
     "updates target the loaded package library, including paths with spaces")
   check(key_reads == 1L && store$writes == 2L && store$deletes == 1L,
     "updating never reads, writes or deletes credentials")
-  check(failed(env$launch(), "Restart R"), "launch after update requires R restart to avoid mixing versions")
+  fresh <- new.env(parent = emptyenv())
+  fresh$launch <- function() "fresh-namespace-handle"
+  reloads <- 0L
+  env$.reload_namespace <- function() { reloads <<- reloads + 1L; fresh }
+  result <- withVisible(env$launch())
+  check(identical(result$value, "fresh-namespace-handle") && !result$visible &&
+    reloads == 1L && key_reads == 1L,
+    "launch after update delegates to the new namespace without using the old credentials or launcher")
+  env$.app_state$update_queued <- TRUE
+  check(failed(env$launch(), "update is in progress") && reloads == 1L,
+    "launch cannot race with a queued installation")
+  env$.app_state$update_queued <- FALSE
+  running <- TRUE
+  check(identical(env$launch(), handle) && reloads == 1L,
+    "an app that is still running is never unloaded for a pending reload")
+  running <- FALSE
+  reload_env <- new.env(parent = ns)
+  reload_env$.reload_namespace <- get(".reload_namespace", ns)
+  environment(reload_env$.reload_namespace) <- reload_env
+  reload_env$asNamespace <- function(name) reload_env
+  reload_env$getNamespaceUsers <- function(ns) "DependentFixture"
+  check(failed(reload_env$.reload_namespace(), "imported by: DependentFixture"),
+    "an importing package prevents namespace unloading with a specific recovery message")
+  reload_env$getNamespaceUsers <- function(ns) character()
+  reload_env$.package_path <- env$.package_path
+  reload_env$.stop_update_worker <- function() invisible(NULL)
+  reload_env$unloadNamespace <- function(ns) invisible(NULL)
+  reload_env$loadNamespace <- function(...) stop("Synthetic reload failure")
+  check(failed(reload_env$.reload_namespace(), "Synthetic reload failure") &&
+    failed(reload_env$.reload_namespace(), "Restart R"),
+    "a genuine namespace-loading failure retains its cause and restart recovery guidance")
   env$.app_state$updated <- FALSE
   env$.install_from_github <- function(lib, ref) stop("Synthetic installation failure")
   check(failed(env$update_assistant(), "Synthetic installation failure") && !env$.app_state$updated,

@@ -59,9 +59,9 @@ On launch, a background check reads this repository's public package version.
 When a newer version is available, the chat shows **Update now**. Click it,
 review the notice, then confirm. This closes the current chat, installs into
 the same R library and prints progress in the RStudio Console. The conversation
-ends when the app closes. After successful installation, restart R and reopen.
+ends when the app closes. After successful installation, run `RAssistant::launch()`.
 The Console reports the old and new versions; the toolbar confirms the installed
-version after restart.
+version when reopened.
 
 Checks are cached for one hour within the current R session. Offline/failed
 checks do not prevent chat. **Help > Check for updates** retries immediately.
@@ -77,14 +77,27 @@ Click **Close** in the assistant, then run:
 RAssistant::update_assistant()
 ```
 
-Restart R with **Session > Restart R**, then run `RAssistant::launch()` again.
+Run `RAssistant::launch()` again. It reloads RAssistant's updated code while
+preserving your R workspace and loaded dependencies. A restart is only needed
+if reloading fails, such as when another loaded package imports RAssistant.
 The updater installs from this repository's `main` branch into the **same R
 library containing the loaded RAssistant package**, rather than whichever
 library happens to be first. It uses a clean R process and normal installation
 locking. It does not read, replace or delete the saved key. No updates run
 automatically. You can choose a tag/commit with `update_assistant(ref = "...")`.
 An unchanged installed version and GitHub commit reports **already up to date**
-and does not require an R restart.
+and does not require reloading.
+
+When upgrading from 0.1.3 or earlier, the already-loaded old launcher still has
+its restart guard. After the update finishes and the assistant is closed, reload
+it once without clearing your workspace:
+
+```r
+unloadNamespace("RAssistant")
+RAssistant::launch()
+```
+
+Subsequent updates through `update_assistant()` reload on the next launch.
 
 Inspect the installed package location and version:
 

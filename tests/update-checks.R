@@ -96,14 +96,14 @@ main <- function() {
   env$.schedule_update();later::run_now(timeoutSecs=.3)
   check(!env$.app_state$update_queued,"failed deferred updates release their lock and report recovery instructions")
 
-  # An unchanged GitHub SHA/version should not require restarting R.
+  # An unchanged GitHub SHA/version should not reload the namespace.
   env$update_assistant<-get("update_assistant",ns);environment(env$update_assistant)<-env
   env$.package_path<-function()system.file(package="RAssistant")
   env$.installed_info<-function()list(version="0.1.2",sha="same-sha")
   env$.install_from_github<-function(lib,ref)list(
     path=normalizePath(file.path(lib,"RAssistant")),version="0.1.2",sha="same-sha")
   check(!env$update_assistant()$updated && !env$.app_state$updated,
-    "a no-change update reports up to date without requiring a restart")
+    "a no-change update reports up to date without requiring a reload")
   fixture_env <- new.env(parent=baseenv())
   fixture_env$fixture_version <- function()"0.1.2"
   environment(fixture_env$fixture_version)<-baseenv()

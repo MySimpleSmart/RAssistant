@@ -25,6 +25,11 @@ update_assistant <- function(ref = "main") {
     stop("The installed R library is not writable: ", lib,
       ". Install RAssistant into your personal R library first.", call. = FALSE)
   }
+  # Resolve lazy bindings before replacing their on-disk R database. In
+  # particular, launch() must remain callable until it reloads the namespace.
+  ns <- asNamespace("RAssistant")
+  for (name in ls(ns, all.names = TRUE)) get(name, envir = ns, inherits = FALSE)
+  .stop_update_worker()
   result <- .install_from_github(lib, ref)
   if (!is.list(result) || !identical(result$path, package_path) ||
       !.valid_version(result$version)) {
@@ -35,7 +40,7 @@ update_assistant <- function(ref = "main") {
   if (result$updated) {
     .app_state$updated <- TRUE
     message("Updated RAssistant ", before$version, " -> ", result$version, " in ", lib,
-      ". Restart R (Session > Restart R), then run RAssistant::launch(). Your saved API key is unchanged.")
+      ". Run RAssistant::launch() to open the new version. Your saved API key is unchanged.")
   } else {
     message("RAssistant is already up to date (", result$version, ").")
   }
@@ -58,6 +63,12 @@ update_assistant <- function(ref = "main") {
 .update_state$result <- list(status = "disabled")
 .update_state$checked_at <- NULL
 .update_state$started_at <- NULL
+
+.stop_update_worker <- function() {
+  if (!is.null(.update_state$worker)) try(.update_state$worker$kill(), silent = TRUE)
+  .update_state$worker <- NULL
+  invisible(NULL)
+}
 
 .download_version_file <- function(path) {
   old <- options(timeout = 5L)
@@ -97,8 +108,7 @@ update_assistant <- function(ref = "main") {
 
 .start_update_check <- function(force = FALSE) {
   if (!force && !isTRUE(getOption("RAssistant.check_updates", TRUE))) {
-    if (!is.null(.update_state$worker)) try(.update_state$worker$kill(), silent = TRUE)
-    .update_state$worker <- NULL
+    .stop_update_worker()
     .update_state$checked_at <- NULL
     .update_state$result <- list(status = "disabled")
     return(invisible(NULL))

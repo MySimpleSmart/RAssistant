@@ -80,7 +80,7 @@ main <- function() {
     "the installed version and a newer-version Update now notice are visible")
   js('document.getElementById("prompt").value="Keep this draft";document.getElementById("help").click();')
   wait_js('document.querySelector("#shiny-modal .code-copy")!==null')
-  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && document.getElementById("shiny-modal").textContent.includes("RAssistant::set_api_key()") && document.getElementById("shiny-modal").textContent.includes("hidden password prompt")')),
+  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && document.getElementById("shiny-modal").textContent.includes("RAssistant::set_api_key()") && document.getElementById("shiny-modal").textContent.includes("hidden password prompt") && !document.getElementById("shiny-modal").textContent.includes("Restart R")')),
     "Help explains launching, hidden key replacement and updates")
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
   wait_js('getComputedStyle(document.getElementById("shiny-modal")).opacity==="1" && document.querySelector("#shiny-modal .modal-dialog").getBoundingClientRect().width>0')
@@ -109,8 +109,8 @@ main <- function() {
     "opening Help and checking updates preserves the chat draft")
   js('document.getElementById("update_now").click();')
   wait_js('document.getElementById("confirm_update")!==null')
-  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("This conversation will end")')),
-    "Update now explains chat closure and restart before installation")
+  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("This conversation will end") && document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && !document.getElementById("shiny-modal").textContent.includes("Restart R")')),
+    "Update now explains chat closure and relaunching after installation")
   js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click();')
   wait_js('document.getElementById("shiny-modal")===null')
   check(!file.exists(update_marker),"cancelling an update leaves the app running without installing")

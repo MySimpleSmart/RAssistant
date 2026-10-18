@@ -148,3 +148,36 @@ reported 0.1.3. Discovery now requests raw DESCRIPTION content from the public
 contents API with cache revalidation. Existing session caching, timeouts, process
 isolation, no-key handling and version validation remain in place. Older clients
 using the raw URL may need a Console update once to obtain this fix.
+
+## Version 0.1.4 relaunch after updates
+
+The next `launch()` after a managed update reloads RAssistant's namespace from
+the same library and delegates to its new launcher. The R workspace and dependency
+namespaces stay loaded. A previous `library(RAssistant)` attachment is restored;
+captured older launch functions delegate without unloading a newly running app.
+Launching during a queued update is blocked, and an app still running is reused.
+The updater resolves its own lazy bindings before replacing the installed code
+database and stops its background metadata worker. Reload failure or a package
+importing RAssistant retains an explicit restart recovery message.
+
+Help, the confirmation dialog and successful-update messages now instruct users
+to run `RAssistant::launch()`. An already-loaded 0.1.3 or earlier launcher still
+needs one explicit `unloadNamespace("RAssistant")` after upgrading to obtain the
+new behavior; README documents this without requiring the workspace to be cleared.
+
+All **218 checks** passed locally: 50 core, 28 Source-context, 13 assignment,
+15 image-reading, 39 Chrome, 33 package, 21 discovery/lifecycle and 19 namespace
+reload checks. The added namespace checks use actual unloading/loading in isolated
+R processes with disposable copies of the installed package. They cover both
+namespace-only and attached use, a different library appearing first, fresh helper
+code/state, old-worker cleanup, workspace/dependency preservation and stale
+function references. Credentials and the app are synthetic; native RStudio GUI
+launching and real credential-store writes remain untested.
+
+Local `R CMD check --no-manual --no-vignettes` finished with **Status: OK**.
+A separate smoke test used the new updater with a baseline fixture labelled
+0.1.3, performed a real local archive installation of 0.1.4 in a child process,
+and launched through the reloaded namespace in the same parent R session. It
+verified the new loaded version, removal of a baseline-only helper, the same
+library, retained attachment, workspace and Shiny namespace. No OpenAI calls or
+real credential-store operations occurred.

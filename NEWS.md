@@ -1,3 +1,12 @@
+# RAssistant 0.1.4
+
+- Reload RAssistant's namespace on the next launch after an update, using the
+  same library and preserving the R workspace and loaded dependency packages.
+- Replace routine restart instructions with the launch command. Restart guidance
+  remains available if another package prevents reloading or loading fails.
+- Resolve lazy package code before installation and stop version-check workers;
+  prevent launching while an update is queued.
+
 # RAssistant 0.1.3
 
 - Remove the composer shortcut hint and keep Send aligned to the right. Enter,

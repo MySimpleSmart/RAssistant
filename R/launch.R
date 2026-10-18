@@ -18,12 +18,42 @@
   launcher
 }
 
+.reload_namespace <- function() {
+  current <- asNamespace("RAssistant")
+  # A previously captured launch() may outlive its namespace. Delegate to the
+  # registered namespace without unloading an app started by the new version.
+  if (!identical(current, environment(.reload_namespace))) return(current)
+  users <- getNamespaceUsers(current)
+  if (length(users)) {
+    stop("Cannot reload RAssistant while it is imported by: ", paste(users, collapse = ", "),
+      ". Restart R, then run RAssistant::launch().", call. = FALSE)
+  }
+  lib <- dirname(.package_path())
+  position <- match("package:RAssistant", search())
+  .stop_update_worker()
+  tryCatch({
+    unloadNamespace(current)
+    fresh <- loadNamespace("RAssistant", lib.loc = lib)
+    if (!is.na(position)) attachNamespace(fresh, pos = position)
+    fresh
+  }, error = function(e) {
+    stop("Could not reload the updated RAssistant: ", conditionMessage(e),
+      "\nRestart R, then run RAssistant::launch().", call. = FALSE)
+  })
+}
+
 launch <- function() {
   if (!.in_rstudio()) stop("Open RStudio and run RAssistant::launch() in its Console.", call. = FALSE)
-  if (isTRUE(.app_state$updated)) stop("RAssistant was updated. Restart R before launching the new version.", call. = FALSE)
+  if (isTRUE(.app_state$update_queued)) {
+    stop("An update is in progress. Wait for it to finish, then run RAssistant::launch().", call. = FALSE)
+  }
   if (.app_running()) {
     message("RAssistant is already running. Use its Viewer tab, or Close it before reopening.")
     return(invisible(.app_state$handle))
+  }
+  if (isTRUE(.app_state$updated)) {
+    fresh <- .reload_namespace()
+    return(invisible(get("launch", envir = fresh, inherits = FALSE)()))
   }
   launcher <- .load_launcher(file.path(.package_path(), "app", "AISource.R"))
   key <- .resolve_api_key()
