@@ -1,3 +1,8 @@
+# RAssistant 0.1.3
+
+- Remove the composer shortcut hint and keep Send aligned to the right. Enter,
+  Shift+Enter and screenshot paste retain their existing behavior.
+
 # RAssistant 0.1.2
 
 - Show the installed version and a newer-version Update now notice in the chat.

@@ -652,11 +652,10 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     max-height:50vh;background:white;border:1px solid #c6ccd2;border-radius:3px;
     padding:7px;font:12px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     box-shadow:none;overflow:auto}
-  .compose-foot{display:flex;align-items:center;justify-content:space-between;gap:8px}
-  .hint{font:10px var(--mono);color:var(--muted)}
+  .compose-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px}
   .empty{font-size:11px;color:#7d858e}
   .shiny-notification{font-size:11px}
-  @media(max-width:420px){.hint{display:none}.history{padding:7px}.compose{padding:5px}}
+  @media(max-width:420px){.history{padding:7px}.compose{padding:5px}}
   '
 
   js <- '
@@ -949,7 +948,6 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       ),
       shiny::uiOutput("attachment_status"),
       shiny::div(class="compose-foot",
-        shiny::span(class="hint","Enter to send · Shift+Enter · Paste screenshot"),
         shiny::actionButton("send","Send",class="ai-btn ai-send")
       )
     ),
