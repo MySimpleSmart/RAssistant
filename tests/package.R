@@ -12,6 +12,7 @@ main <- function() {
   env$.app_state <- new.env(parent = emptyenv())
   env$.app_state$handle <- NULL
   env$.app_state$updated <- FALSE
+  env$.app_state$update_queued <- FALSE
   old_key <- Sys.getenv("OPENAI_API_KEY", unset = NA_character_)
   on.exit(if (is.na(old_key)) Sys.unsetenv("OPENAI_API_KEY") else Sys.setenv(OPENAI_API_KEY = old_key), add = TRUE)
   Sys.unsetenv("OPENAI_API_KEY")
@@ -113,10 +114,11 @@ main <- function() {
   check(failed(env$launch(), "Open RStudio") && key_reads == 0L,
     "launch outside RStudio does not read credentials")
   env$.in_rstudio <- function() TRUE
+  env$.package_ui_info <- function() list(version="0.1.2")
   passed_key <- NULL
   running <- TRUE
   handle <- list(status = function() if (running) "running" else "success")
-  env$.load_launcher <- function(path) function(api_key) { passed_key <<- api_key; handle }
+  env$.load_launcher <- function(path) function(api_key, package_info) { passed_key <<- api_key; handle }
   check(identical(env$launch(), handle) && identical(passed_key, "launch-key") &&
     identical(Sys.getenv("OPENAI_API_KEY"), ""), "launch supplies the key directly without setting a global environment variable")
   env$launch()
@@ -127,6 +129,8 @@ main <- function() {
   install_root <- tempfile(); dir.create(install_root)
   lib <- file.path(install_root, "library with spaces")
   dir.create(lib); dir.create(file.path(lib, "RAssistant"))
+  writeLines(c("Package: RAssistant","Version: 0.1.0","RemoteSha: original-sha"),
+    file.path(lib,"RAssistant","DESCRIPTION"))
   on.exit(unlink(install_root, recursive = TRUE), add = TRUE)
   env$.package_path <- function() file.path(lib, "RAssistant")
   installed_lib <- NULL; installed_ref <- NULL

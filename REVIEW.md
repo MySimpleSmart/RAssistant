@@ -41,7 +41,7 @@ Rscript tests/browser.R
 - **28 Source-context checks:** Source lookup errors/NULL/invalid results, fresh document-ID fallback, document switching, Console rejection, image-only sends/retries without Source access, generic image prompts, Console-screenshot evidence, conditional statistical comments, no initial document, oversized editor omission, CSV preflight exclusion, loading/file cleanup, and retained validation/size guards.
 - **13 assignment-context checks:** a synthetic multipart brief survives seven part requests, long follow-ups, and the recent-history limit; a later full brief can replace a short reference; New and Source document changes clear it. The suite also passed using a locally supplied assignment, with a mocked API. User documents and data are not included in the repository.
 - **15 image-reading checks:** inspect outgoing image-only and user-directed payloads, absence of unsolicited statistical templates, unreadable-text guidance, optional background, unchanged image bytes/order, explicit/negated/mentioned academic-comment requests, and retained text-only/verified-run behavior.
-- **28 Chrome checks:** the existing UI/server with a fake API, exact code/comment copying, clipboard fallback, focus/selection, native/pasted/image-only uploads, PNG/JPEG/WebP previews, limits, failed requests, validation controls, completed execution, preserved details/scroll, late-reader cancellation, simulated Source-access failure, and startup/runtime JavaScript errors.
+- **39 Chrome checks:** the existing UI/server with a fake API, exact code/comment/Help-command copying, narrow Viewer layout, update/version notices, manual checking, cancellation and duplicate update confirmation, draft preservation, clipboard fallback, focus/selection, native/pasted/image-only uploads, PNG/JPEG/WebP previews, limits, failed requests, validation controls, completed execution, preserved details/scroll, late-reader cancellation, simulated Source-access failure, and startup/runtime JavaScript errors.
 - R parsing and extracted JavaScript syntax checks passed.
 
 The browser suite requires the optional `chromote` test package and Chrome. Set `CHROMOTE_CHROME` to a Chrome/headless-shell executable if automatic detection is unsuitable.
@@ -68,10 +68,10 @@ For multipart work, paste the complete assignment text first and keep one R/Rmd 
 
 RAssistant wraps the same application rather than replacing it. The root
 `AISource.R` remains the maintained source; `tools/sync-app.R` creates the exact
-snapshot shipped under `inst/app`, and CI rejects divergence. The only app-boundary
-changes include an explicit API-key argument and an internal load-without-launch
-option, restored immediately by the package loader. Standalone sourcing remains
-supported. Existing upload/rendering/context/validation tests and all 28 browser
+snapshot shipped under `inst/app`, and CI rejects divergence. App-boundary
+changes include an explicit API-key argument, optional package/version callbacks,
+and an internal load-without-launch option, restored immediately by the package
+loader. Standalone sourcing remains supported. Existing upload/rendering/context/validation tests and all 39 browser
 checks passed after these changes.
 
 `launch()` obtains an existing environment key or a key saved under the stable
@@ -84,7 +84,8 @@ Loading the package alone does not access the credential store.
 
 `update_assistant()` runs the GitHub installer in a clean R process and targets
 the library containing the loaded package. It preserves normal install locking,
-blocks updates while the app runs, and requires restarting R afterward. The
+blocks Console updates while the app runs, and requires restarting R after a
+changed installation. An unchanged version/commit reports up to date. The
 updater does not access credentials. R-version library changes still require a
 package reinstall, while the OS-stored credential remains separate.
 
@@ -103,3 +104,34 @@ GitHub package and successfully replaced the installation in the same isolated
 temporary library. A fresh R process verified version 0.1.0, GitHub commit metadata,
 the bundled launcher and its byte-identical application snapshot. No real
 credential-store operations or live model requests were involved in this test.
+
+## Version 0.1.2 update notice and Help
+
+The toolbar shows the installed version and a small Help button. Help includes
+copyable launch, key-replacement and update commands, hidden-input guidance,
+environment-key precedence and restart instructions. A separate optional banner
+appears only for a newer package version. Update now explains that the current
+conversation ends, then queues one update after stopping the app. Progress and
+old/new versions are printed in the Console; no-change updates avoid an unnecessary
+restart. Saved credentials remain separate.
+
+Discovery downloads only the public DESCRIPTION file in a background R process,
+with a five-second download timeout, a ten-second process deadline and a one-hour
+per-session cache. The reader retains its helper environment; the worker clears
+OPENAI_API_KEY after startup files are read. No project or conversation data is
+passed. Offline checks leave chat available. Help can force a manual check;
+automatic checks can be disabled with options(RAssistant.check_updates = FALSE).
+
+An additional **21 update checks** cover background work, cache expiry, manual
+refresh, newer/equal/older versions, invalid metadata, offline errors, stuck worker
+cleanup, opt-out, duplicate scheduling, stop-before-install, failed-install recovery,
+no-change updates, and a real subprocess retaining its helpers without inheriting
+the API key. No live network or real installs occur in these package tests.
+Together with the existing suites and browser checks, 194 checks passed locally.
+
+A separate live public-metadata smoke test read GitHub successfully; starting the
+background check returned in about 0.08 seconds. A real Shiny app handle was also
+stopped before a fake installer callback ran. The narrow Help dialog was inspected
+in Chrome. These checks did not call OpenAI, access the real key store, or run a
+real installation from the browser. Native RStudio Viewer interaction remains
+untested. Local package validation finished with Status: OK.

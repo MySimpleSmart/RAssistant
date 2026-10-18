@@ -13,7 +13,7 @@
 # Keep assistant helpers in a private scope, outside .GlobalEnv.
 # Shiny keeps the callbacks alive after this launcher returns.
 local({
-run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY")) {
+run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), package_info = NULL) {
   packages <- c("shiny", "ellmer", "rstudioapi", "commonmark", "htmltools",
                 "jsonlite", "callr", "knitr")
   for (pkg in packages) {
@@ -570,6 +570,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY")) {
      display:flex;align-items:center;justify-content:space-between;padding:3px 8px;gap:6px}
   .filename{font:600 11px var(--mono);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .toolbar-actions{display:flex;gap:5px}
+  .app-version{font:10px var(--mono);color:var(--muted);white-space:nowrap;align-self:center}
+  .update-notice{display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:5px 8px;border-bottom:1px solid var(--border);background:#f1f6fb;font-size:11px}
+  .assistant-help{font-size:12px}
+  .assistant-help pre{background:#f5f6f7;border:1px solid var(--border);
+    padding:8px;margin:0;overflow:auto;white-space:pre;font:11px var(--mono)}
+  .assistant-help p{margin:0 0 9px}
   .btn.ai-btn{margin:0;border:1px solid #ccd2d9;border-radius:3px;box-shadow:none;
     color:#29323c;background:white;font-size:11px;line-height:1.3;padding:4px 9px}
   .btn.ai-btn:hover{background:#edf0f3}
@@ -710,6 +717,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY")) {
       var prompt=document.getElementById("prompt");if(prompt)prompt.disabled=working || pending || !connected;
       var fresh=document.getElementById("new_chat");if(fresh)fresh.disabled=working || !connected;
       var clear=document.getElementById("clear_images");if(clear)clear.disabled=working;
+      ["update_now","confirm_update"].forEach(function(id){
+        var control=document.getElementById(id);if(control)control.disabled=busy;
+      });
       var note=document.getElementById("uploading_indicator");
       if(note)note.textContent=transfer?"Adding image…":"";
       var status=document.getElementById("request_indicator");
@@ -917,10 +927,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY")) {
     shiny::div(class="toolbar",
       shiny::div(class="filename",shiny::textOutput("filename",inline=TRUE)),
       shiny::div(class="toolbar-actions",
+        if (!is.null(package_info)) shiny::span(class="app-version",paste0("v",package_info$version)),
+        shiny::actionButton("help","Help",class="ai-btn"),
         shiny::actionButton("new_chat","New",class="ai-btn"),
         shiny::actionButton("close","Close",class="ai-btn")
       )
     ),
+    shiny::uiOutput("update_notice"),
     shiny::div(id="chat_stream",class="history",shiny::uiOutput("messages")),
     shiny::div(class="compose",
       shiny::textAreaInput("prompt",label=NULL,rows=4,width="100%",
@@ -951,6 +964,84 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY")) {
       current=initial,messages=list(),pending=NULL,job_id=0L,
       busy=FALSE,assignment="",file_id=initial$id,attachments=list(),upload_epoch=0L,message_id=0L
     )
+    update_status <- shiny::reactiveVal(list(status="disabled"))
+    update_generation <- shiny::reactiveVal(0L)
+    update_requested <- FALSE
+    if (!is.null(package_info)) {
+      shiny::observe({
+        update_generation()
+        status <- tryCatch(package_info$poll_update(),error=function(e)list(status="unavailable"))
+        update_status(status)
+        if (identical(status$status,"checking")) shiny::invalidateLater(250,session)
+      })
+    }
+    update_status_text <- function(status) {
+      switch(status$status,
+        checking="Checking for updates...",
+        available=paste0("RAssistant ",status$version," is available (installed: ",status$current,")."),
+        current=paste0("RAssistant ",status$current," is up to date."),
+        unavailable="Could not check for updates. You can retry or update from the Console.",
+        "Automatic update checks are disabled.")
+    }
+    output$update_notice <- shiny::renderUI({
+      status <- update_status()
+      if (!identical(status$status,"available")) return(NULL)
+      shiny::div(class="update-notice",role="status",
+        shiny::span(update_status_text(status)),
+        shiny::actionButton("update_now","Update now",class="ai-btn"))
+    })
+    output$update_help_status <- shiny::renderText(update_status_text(update_status()))
+    shiny::observeEvent(input$help,{
+      shiny::showModal(shiny::modalDialog(title="RAssistant Help",
+        shiny::div(class="assistant-help",
+          shiny::p(if(is.null(package_info))"Standalone script" else paste("Installed version:",package_info$version)),
+          shiny::p("Run these commands in the RStudio Console."),
+          shiny::tags$strong("Open the assistant"),
+          render_markdown("~~~r\nRAssistant::launch()\n~~~"),
+          shiny::tags$strong("Set or replace an API key"),
+          shiny::p("Click Close first. Enter the key only in the hidden password prompt, then reopen the assistant."),
+          render_markdown("~~~r\nRAssistant::set_api_key()\nRAssistant::launch()\n~~~"),
+          shiny::p("An existing OPENAI_API_KEY environment variable takes precedence. Remove that setting to use the saved replacement."),
+          shiny::tags$strong("Update"),
+          shiny::p("Use Update now when offered, or Close and run:"),
+          render_markdown("~~~r\nRAssistant::update_assistant()\n~~~"),
+          shiny::p("After a successful update: Session > Restart R, then RAssistant::launch(). Your saved key is kept."),
+          if(!is.null(package_info)) shiny::textOutput("update_help_status")
+        ),
+        footer=shiny::tagList(
+          if(!is.null(package_info)) shiny::actionButton("check_updates","Check for updates",class="ai-btn"),
+          shiny::modalButton("Close")
+        ),easyClose=TRUE))
+    })
+    shiny::observeEvent(input$check_updates,{
+      if(is.null(package_info))return()
+      package_info$refresh_update()
+      update_generation(shiny::isolate(update_generation())+1L)
+    })
+    shiny::observeEvent(input$update_now,{
+      if(is.null(package_info) || state$busy || !is.null(state$pending) || update_requested)return()
+      if(!identical(update_status()$status,"available"))return()
+      shiny::showModal(shiny::modalDialog(title="Update RAssistant",
+        shiny::div(class="assistant-help",
+          shiny::p(update_status_text(update_status())),
+          shiny::p("Update now closes this chat and installs the update in the same R library. This conversation will end."),
+          shiny::p("Follow progress in the RStudio Console. When installation finishes, use Session > Restart R, then RAssistant::launch(). Your saved API key is kept.")),
+        footer=shiny::tagList(shiny::modalButton("Cancel"),
+          shiny::actionButton("confirm_update","Update now",class="ai-btn ai-send"))))
+    })
+    shiny::observeEvent(input$confirm_update,{
+      if(is.null(package_info) || state$busy || !is.null(state$pending) || update_requested)return()
+      if(!identical(update_status()$status,"available"))return()
+      update_requested <- TRUE
+      error <- tryCatch({package_info$request_update();NULL},error=function(e)e)
+      if(inherits(error,"error")){
+        update_requested <- FALSE
+        shiny::showNotification("Could not start the update. Close the assistant and run RAssistant::update_assistant() in the Console.",
+          type="error",duration=NULL)
+        return()
+      }
+      shiny::stopApp()
+    })
     cancelled_uploads <- character(0)
     recent_submissions <- character(0)
     header_cache <- NULL

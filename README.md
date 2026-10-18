@@ -17,6 +17,9 @@ RAssistant::launch()
 Use your personal R library if R offers to create one. RAssistant is installed in
 an R package library, separately from the RStudio application. The RStudio Addins
 menu also has an **RAssistant** entry after installation.
+The toolbar shows the installed version. **Help** contains launch, API-key and
+update instructions with Copy buttons, so you do not need the old local script
+to find the commands.
 
 ## First-launch API key
 
@@ -52,6 +55,22 @@ Close and relaunch the assistant after changing a key to use the new value.
 
 ## Update
 
+On launch, a background check reads this repository's public package version.
+When a newer version is available, the chat shows **Update now**. Click it,
+review the notice, then confirm. This closes the current chat, installs into
+the same R library and prints progress in the RStudio Console. The conversation
+ends when the app closes. After successful installation, restart R and reopen.
+The Console reports the old and new versions; the toolbar confirms the installed
+version after restart.
+
+Checks are cached for one hour within the current R session. Offline/failed
+checks do not prevent chat. **Help > Check for updates** retries immediately.
+The check does not call OpenAI or transmit the key, Source text or chat history.
+To disable automatic discovery, set `options(RAssistant.check_updates = FALSE)`;
+manual checking and Console updates still work.
+
+For a manual update, or to get this feature from an older installation:
+
 Click **Close** in the assistant, then run:
 
 ```r
@@ -64,6 +83,8 @@ library containing the loaded RAssistant package**, rather than whichever
 library happens to be first. It uses a clean R process and normal installation
 locking. It does not read, replace or delete the saved key. No updates run
 automatically. You can choose a tag/commit with `update_assistant(ref = "...")`.
+An unchanged installed version and GitHub commit reports **already up to date**
+and does not require an R restart.
 
 Inspect the installed package location and version:
 

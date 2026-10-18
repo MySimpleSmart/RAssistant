@@ -5,10 +5,20 @@ main <- function() {
   stopifnot(requireNamespace("chromote",quietly=TRUE))
   root <- normalizePath(".")
   port <- httpuv::randomPort()
-  worker <- callr::r_bg(function(root,port) {
+  update_marker <- tempfile()
+  on.exit(unlink(update_marker),add=TRUE)
+  worker <- callr::r_bg(function(root,port,update_marker) {
     setwd(root)
     source("tests/helpers.R")
-    app <- load_assistant()
+    available <- list(status="available",version="0.1.2",current="0.1.1")
+    update_result <- available
+    app <- load_assistant(package_info=list(version="0.1.1",
+      poll_update=function()update_result,
+      refresh_update=function(){
+        update_result <<- if(identical(update_result$status,"available"))
+          list(status="current",version="0.1.1",current="0.1.1") else available
+      },
+      request_update=function(){cat("requested\n",file=update_marker,append=TRUE);invisible(TRUE)}))
     app$initial <- list(id="fixture",path=file.path(tempdir(),"example.R"),contents="plot(1:3)")
     source_unavailable <- FALSE
     app$active_doc <- function(id=NULL) {
@@ -25,7 +35,7 @@ main <- function() {
              "Math: \\(\\alpha < 1\\).\n\n[[ACADEMIC_COMMENT]]Verified result.[[/ACADEMIC_COMMENT]]")
     }
     shiny::runApp(shiny::shinyApp(app$ui,app$server),host="127.0.0.1",port=port,launch.browser=FALSE,quiet=TRUE)
-  },args=list(root,port),stdout="|",stderr="|",supervise=TRUE)
+  },args=list(root,port,update_marker),stdout="|",stderr="|",supervise=TRUE)
   on.exit(worker$kill(),add=TRUE)
   browser <- chromote::ChromoteSession$new()
   on.exit(browser$parent$close(),add=TRUE)
@@ -65,6 +75,45 @@ main <- function() {
   wait_js('document.querySelector(".empty")!==null')
   js('window.alerts=[];window.alert=function(x){alerts.push(x);};window.receivedMessages=[];$(document).on("shiny:message",function(e){if(e.message.custom)receivedMessages.push(e.message.custom);});')
   check(isTRUE(js('document.querySelector(".empty")!==null')), "existing Shiny UI connects and renders")
+  wait_js('document.getElementById("update_now")!==null')
+  check(isTRUE(js('document.querySelector(".app-version").textContent==="v0.1.1" && document.querySelector(".update-notice").textContent.includes("0.1.2")')),
+    "the installed version and a newer-version Update now notice are visible")
+  js('document.getElementById("prompt").value="Keep this draft";document.getElementById("help").click();')
+  wait_js('document.querySelector("#shiny-modal .code-copy")!==null')
+  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && document.getElementById("shiny-modal").textContent.includes("RAssistant::set_api_key()") && document.getElementById("shiny-modal").textContent.includes("hidden password prompt")')),
+    "Help explains launching, hidden key replacement and updates")
+  browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
+  wait_js('getComputedStyle(document.getElementById("shiny-modal")).opacity==="1" && document.querySelector("#shiny-modal .modal-dialog").getBoundingClientRect().width>0')
+  check(isTRUE(js('document.querySelector("#shiny-modal .modal-dialog").getBoundingClientRect().right<=innerWidth && document.querySelector("#shiny-modal .modal-dialog").getBoundingClientRect().left>=0 && document.getElementById("help").getBoundingClientRect().right<=innerWidth')),
+    "Help and the toolbar fit a narrow RStudio-sized Viewer")
+  screenshot <- Sys.getenv("RA_BROWSER_HELP_SCREENSHOT")
+  if(nzchar(screenshot)){
+    shot<-browser$Page$captureScreenshot(format="png")
+    writeBin(jsonlite::base64_dec(shot$data),screenshot)
+  }
+  browser$Emulation$clearDeviceMetricsOverride()
+  js('window.copied=null;Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:function(t){window.copied=t;return Promise.resolve();}}});document.querySelector("#shiny-modal .code-copy").click();')
+  wait_js('window.copied!==null')
+  check(identical(js('window.copied'),"RAssistant::launch()\n"),"Help command Copy preserves the exact Console command")
+  js('document.querySelectorAll("#shiny-modal .code-copy")[1].click();')
+  check(identical(js('window.copied'),"RAssistant::set_api_key()\nRAssistant::launch()\n"),
+    "the key-replacement instructions copy correctly")
+  js('document.getElementById("check_updates").click();')
+  wait_js('document.getElementById("update_now")===null && document.getElementById("update_help_status").textContent.includes("up to date")')
+  check(TRUE,"manual update checks refresh the Help status and remove an obsolete banner")
+  js('document.getElementById("check_updates").click();')
+  wait_js('document.getElementById("update_now")!==null')
+  js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click();')
+  wait_js('document.getElementById("shiny-modal")===null')
+  check(isTRUE(js('document.getElementById("prompt").value==="Keep this draft"')),
+    "opening Help and checking updates preserves the chat draft")
+  js('document.getElementById("update_now").click();')
+  wait_js('document.getElementById("confirm_update")!==null')
+  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("This conversation will end")')),
+    "Update now explains chat closure and restart before installation")
+  js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click();')
+  wait_js('document.getElementById("shiny-modal")===null')
+  check(!file.exists(update_marker),"cancelling an update leaves the app running without installing")
   js('document.getElementById("prompt").value="Explain this";document.getElementById("send").click();document.getElementById("send").click();')
   check(isTRUE(js('document.getElementById("send").disabled')), "Send disables immediately and blocks double clicks")
   wait_js('document.querySelector(".code-copy")!==null && !document.getElementById("send").disabled')
@@ -118,6 +167,8 @@ main <- function() {
   js('document.getElementById("prompt").value="Please run the script";document.getElementById("send").click();')
   wait_js('document.getElementById("yes")!==null')
   check(isTRUE(js('document.getElementById("send").disabled && !document.getElementById("new_chat").disabled')), "approval state blocks sends and allows New")
+  check(isTRUE(js('document.getElementById("update_now").disabled')),
+    "an update cannot interrupt a pending script approval")
   js('document.getElementById("no").click();')
   wait_js('!document.getElementById("send").disabled')
   check(isTRUE(js('document.querySelector(".run-status").textContent==="Not run"')), "No dismisses validation and restores controls")
@@ -148,6 +199,15 @@ main <- function() {
   check(isTRUE(js('document.getElementById("filename").textContent==="No Source document" && document.querySelectorAll(".msg.assistant").length===2')), "image-only chat succeeds after Source editor access fails")
   check(isTRUE(js('document.querySelector(".sent-attachment img").naturalWidth>0 && !document.body.textContent.includes("Cannot read the open script")')), "Source lookup failure does not block or discard uploaded images")
   check(isTRUE(js('window.aisourceErrors && window.aisourceErrors.length===0')), "browser completed without JavaScript errors")
+  js('document.getElementById("update_now").click();')
+  wait_js('document.getElementById("confirm_update")!==null')
+  js('document.getElementById("confirm_update").click();document.getElementById("confirm_update").click();')
+  for(i in 1:100){
+    if(file.exists(update_marker))break
+    Sys.sleep(.05)
+  }
+  check(file.exists(update_marker) && identical(readLines(update_marker),"requested"),
+    "confirming Update now requests one installation even after repeated clicks")
   cat(checks,"browser checks passed\n")
 }
 main()

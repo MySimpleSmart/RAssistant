@@ -1,6 +1,7 @@
 .app_state <- new.env(parent = emptyenv())
 .app_state$handle <- NULL
 .app_state$updated <- FALSE
+.app_state$update_queued <- FALSE
 
 .package_path <- function() getNamespaceInfo(asNamespace("RAssistant"), "path")
 .in_rstudio <- function() rstudioapi::isAvailable()
@@ -26,6 +27,6 @@ launch <- function() {
   }
   launcher <- .load_launcher(file.path(.package_path(), "app", "AISource.R"))
   key <- .resolve_api_key()
-  .app_state$handle <- launcher(api_key = key)
+  .app_state$handle <- launcher(api_key = key, package_info = .package_ui_info())
   invisible(.app_state$handle)
 }

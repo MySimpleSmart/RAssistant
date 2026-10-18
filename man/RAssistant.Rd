@@ -25,6 +25,15 @@ project, R history or a startup file. No prompt occurs merely by loading the pac
 \code{forget_api_key()} removes only RAssistant's saved credential; it does not
 unset or edit an existing environment variable.
 
+The toolbar displays the installed version and Help with copyable Console
+commands. On launch, a background process checks the public GitHub package
+version. A newer version displays Update now. Confirming closes the current chat
+and performs the update, with progress and restart instructions in the Console.
+Discovery is cached for one hour per R session, does not use the OpenAI API, and
+does not send credentials or conversation data. Offline checks do not block chat.
+Help offers a manual check; \code{options(RAssistant.check_updates = FALSE)}
+disables automatic checks while retaining explicit manual checks.
+
 Close the assistant before \code{update_assistant()}. Updates use the library
 containing the loaded package, retain normal installation locking and run in a
 separate R process. Restart R afterward. Credentials are stored separately and
