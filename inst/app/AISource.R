@@ -621,7 +621,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .comment-copy{font:10px var(--mono);border:1px solid #bac6d1;background:#fff;padding:3px 9px;
     color:#263f55;border-radius:3px;cursor:pointer}
   .comment-copy:hover{background:#eef2f6}
-  .upload-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px}
+  .upload-row{display:flex;align-items:center;gap:8px;margin-top:4px}
+  .upload-row>.attach-plot,.upload-row>#send{flex:0 0 auto}
   .attach-plot{display:inline-flex;align-items:center;justify-content:center;
     border:1px solid #ccd2d9;background:white;color:#29323c;cursor:pointer;
     font:11px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -637,8 +638,10 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     overflow:hidden;text-overflow:ellipsis;margin-top:3px}
   .attachment-summary{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font:10px var(--mono);color:#516a7a}
   .btn.ai-send:disabled{background:#e5e7eb;border-color:#ced3d8;color:#858d95;cursor:not-allowed;opacity:1}
-  .uploading-indicator{color:#7b5e17;font:10px var(--mono);min-height:14px}
-  .request-indicator{font:10px var(--mono);color:var(--muted);margin-left:auto}
+  .uploading-indicator{color:#7b5e17;font:10px var(--mono);min-height:14px;
+    min-width:0;overflow-wrap:anywhere}
+  .request-indicator{font:10px var(--mono);color:var(--muted);margin-left:auto;
+    min-width:0;overflow-wrap:anywhere}
   .sent-attachments{display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-top:7px}
   .sent-attachment{max-width:min(220px,100%);min-width:0}
   .sent-attachment img{display:block;max-width:100%;max-height:165px;object-fit:contain;
@@ -652,7 +655,6 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     max-height:50vh;background:white;border:1px solid #c6ccd2;border-radius:3px;
     padding:7px;font:12px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     box-shadow:none;overflow:auto}
-  .compose-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px}
   .empty{font-size:11px;color:#7d858e}
   .shiny-notification{font-size:11px}
   @media(max-width:420px){.history{padding:7px}.compose{padding:5px}}
@@ -944,12 +946,10 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             "data-shiny-no-bind-input"="",
             accept="image/png,image/jpeg,image/webp")),
         shiny::span(id="uploading_indicator",class="uploading-indicator",role="status"),
-        shiny::span(id="request_indicator",class="request-indicator",role="status")
-      ),
-      shiny::uiOutput("attachment_status"),
-      shiny::div(class="compose-foot",
+        shiny::span(id="request_indicator",class="request-indicator",role="status"),
         shiny::actionButton("send","Send",class="ai-btn ai-send")
-      )
+      ),
+      shiny::uiOutput("attachment_status")
     ),
     shiny::tags$script(shiny::HTML(js))
   )
@@ -1008,7 +1008,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         ),
         footer=shiny::tagList(
           if(!is.null(package_info)) shiny::actionButton("check_updates","Check for updates",class="ai-btn"),
-          shiny::modalButton("Close")
+          htmltools::tagAppendAttributes(shiny::modalButton("Close"),class="ai-btn")
         ),easyClose=TRUE))
     })
     shiny::observeEvent(input$check_updates,{
@@ -1024,7 +1024,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           shiny::p(update_status_text(update_status())),
           shiny::p("Update now closes this chat and installs the update in the same R library. This conversation will end."),
           shiny::p("Follow progress in the RStudio Console. When installation finishes, run RAssistant::launch() to open the new version. Your saved API key is kept.")),
-        footer=shiny::tagList(shiny::modalButton("Cancel"),
+        footer=shiny::tagList(htmltools::tagAppendAttributes(shiny::modalButton("Cancel"),class="ai-btn"),
           shiny::actionButton("confirm_update","Update now",class="ai-btn ai-send"))))
     })
     shiny::observeEvent(input$confirm_update,{

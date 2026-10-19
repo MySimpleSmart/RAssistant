@@ -1,3 +1,9 @@
+# RAssistant 0.1.5
+
+- Use the shared compact button styling for Help Close and update Cancel.
+- Place Send on the right of the Upload row to save vertical space, keeping
+  upload/request status messages and attachment previews visible.
+
 # RAssistant 0.1.4
 
 - Reload RAssistant's namespace on the next launch after an update, using the

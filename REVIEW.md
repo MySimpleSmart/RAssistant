@@ -181,3 +181,18 @@ and launched through the reloaded namespace in the same parent R session. It
 verified the new loaded version, removal of a baseline-only helper, the same
 library, retained attachment, workspace and Shiny namespace. No OpenAI calls or
 real credential-store operations occurred.
+
+## Version 0.1.5 compact composer and consistent dialog buttons
+
+Help Close and update Cancel now use the existing `ai-btn` styling, retaining
+Shiny's native dismiss behavior. Send shares the Upload row and stays aligned
+to its right edge; status text can wrap between the fixed-size controls and
+attachment previews remain underneath. The unused separate Send footer is gone.
+
+The existing 39 Chrome checks passed, including modal dismissal, Copy, native and
+pasted uploads, previews, failure recovery and busy/approval controls. The upload,
+paste, keyboard and request-state JavaScript is byte-identical to 0.1.4.
+An additional temporary Chrome inspection confirmed matching computed button
+styles and Upload/Send alignment at 240, 320, 380 and 900 pixels with idle,
+working, approval and disconnected status text. The 320-pixel composer and narrow
+Help screenshots were inspected. Package validation finished with **Status: OK**.
