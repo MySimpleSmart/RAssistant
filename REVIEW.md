@@ -249,3 +249,22 @@ while the REST API was rate-limited. Package validation of 0.2.1 finished with
 **Status: OK**, including the history, package and namespace-reload suites. The
 application snapshot remains byte-identical to 0.2.0. No model calls or real
 credential-store operations were needed.
+
+## Version 0.2.2 immutable version discovery
+
+A post-publication smoke check showed that the raw branch endpoint still returned
+0.2.0 after 0.2.1 was published, even with a different query and no-cache headers.
+The exact commit URL already returned 0.2.1. Discovery now reads main's current
+commit from Git's documented public HTTP reference advertisement, then downloads
+that commit's immutable DESCRIPTION. This needs neither a Git executable nor a
+GitHub token and consumes no REST API quota. Both downloads have four-second
+timeouts within the ten-second worker deadline. Existing session caching and
+metadata validation remain in place.
+
+All **32 update checks** passed, including exact-main selection when HEAD points
+elsewhere, moving commit URLs, NUL-separated Git capabilities, missing/ambiguous
+branches, wrong services, truncated packets, terminal flush markers, oversized
+responses and failed downloads. Live direct and background checks both read the
+current published 0.2.1 version while the REST quota was exhausted. Local package
+validation finished with **Status: OK**, including chat-history and namespace
+reload checks. The application snapshot remains byte-identical to 0.2.0.

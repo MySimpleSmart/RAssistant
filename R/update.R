@@ -70,15 +70,52 @@ update_assistant <- function(ref = "main") {
   invisible(NULL)
 }
 
+.github_main_commit <- function(download) {
+  path <- tempfile()
+  on.exit(unlink(path), add = TRUE)
+  status <- suppressWarnings(download(
+    "https://github.com/MySimpleSmart/RAssistant.git/info/refs?service=git-upload-pack",
+    destfile = path, method = "libcurl", quiet = TRUE, mode = "wb", cacheOK = FALSE,
+    headers = c("Cache-Control" = "no-cache, max-age=0", Pragma = "no-cache")))
+  if (status != 0L) stop("Could not read the current package commit.", call. = FALSE)
+  size <- file.info(path)$size
+  if (is.na(size) || size < 4L || size > 1024^2) stop("Invalid package references.", call. = FALSE)
+  bytes <- readBin(path, "raw", size)
+  records <- character(); lengths <- integer(); offset <- 1L
+  # Git's documented HTTP advertisement is a sequence of length-prefixed
+  # packets, with NUL-separated capabilities on the first reference.
+  # https://git-scm.com/docs/http-protocol#_smart_clients
+  while (offset <= size) {
+    if (offset + 3L > size) stop("Incomplete package references.", call. = FALSE)
+    header <- rawToChar(bytes[offset:(offset + 3L)])
+    if (!grepl("^[0-9a-f]{4}$", header)) stop("Invalid package references.", call. = FALSE)
+    count <- strtoi(header, base = 16L)
+    if (count != 0L && (count < 4L || offset + count - 1L > size)) {
+      stop("Incomplete package references.", call. = FALSE)
+    }
+    payload <- if (count > 4L) bytes[(offset + 4L):(offset + count - 1L)] else raw()
+    nul <- match(as.raw(0), payload, nomatch = length(payload) + 1L)
+    records <- c(records, sub("\n$", "", rawToChar(payload[seq_len(nul - 1L)]), useBytes = TRUE))
+    lengths <- c(lengths, count)
+    offset <- offset + if (count == 0L) 4L else count
+  }
+  if (length(records) < 4L || !identical(records[[1L]], "# service=git-upload-pack") ||
+      lengths[[2L]] != 0L || utils::tail(lengths, 1L) != 0L) {
+    stop("Invalid package references.", call. = FALSE)
+  }
+  main <- grep("^[a-f0-9]{40} refs/heads/main$", records, value = TRUE, useBytes = TRUE)
+  if (length(main) != 1L) stop("Could not identify the current main commit.", call. = FALSE)
+  substr(main, 1L, 40L)
+}
+
 .download_version_file <- function(path, download = utils::download.file) {
-  old <- options(timeout = 5L)
+  # Two bounded downloads fit within the existing ten-second worker deadline.
+  old <- options(timeout = 4L)
   on.exit(options(old), add = TRUE)
-  # Read the public file without consuming the IP-shared REST API quota. A
-  # unique query and revalidation headers avoid reusing stale branch metadata.
-  nonce <- paste0(format(Sys.time(), "%Y%m%dT%H%M%OS6", tz = "UTC"), "-",
-    basename(tempfile(pattern = "")))
-  url <- paste0("https://raw.githubusercontent.com/MySimpleSmart/RAssistant/main/DESCRIPTION",
-    "?ra_check=", nonce)
+  # Resolve main without REST API quotas or an installed Git executable, then
+  # read immutable metadata. Raw branch caches can ignore cache-busting queries.
+  commit <- .github_main_commit(download)
+  url <- paste0("https://raw.githubusercontent.com/MySimpleSmart/RAssistant/", commit, "/DESCRIPTION")
   suppressWarnings(download(url,
     destfile = path, method = "libcurl", quiet = TRUE, mode = "wb", cacheOK = FALSE,
     headers = c("Cache-Control" = "no-cache, max-age=0", Pragma = "no-cache")))

@@ -1,9 +1,17 @@
+# RAssistant 0.2.2
+
+- Resolve the current main commit through public Git HTTP references, then read
+  its immutable version file. Avoid both the shared REST API quota and stale
+  raw-branch caches. No GitHub token or Git executable is required for checks.
+- Bound both metadata downloads to four seconds each, retaining the ten-second
+  background worker deadline and one-hour session cache.
+
 # RAssistant 0.2.1
 
 - Check versions through the public raw DESCRIPTION file without consuming the
   IP-shared GitHub REST API quota. Use a fresh request URL and cache-revalidation
-  headers to avoid stale version metadata while retaining background checks,
-  timeouts and the existing one-hour session cache.
+  headers while retaining background checks, timeouts and the existing one-hour
+  session cache. Raw branch responses can still lag behind new commits.
 
 # RAssistant 0.2.0
 
