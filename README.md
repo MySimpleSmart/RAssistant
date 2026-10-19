@@ -162,7 +162,11 @@ context. Only a fresh editor read is treated as the current script.
 Follow-up messages reuse up to three recent images automatically. To refer to
 older uploads, use the labels shown under them, for example **Image 1** or
 **Compare Image 1 and Image 2**. Original pixels are read from local history;
-you do not need to upload those files again. A new upload sends the new batch.
+you do not need to upload those files again. A new upload sends the new batch;
+explicitly referencing an earlier image includes it too, for example **Compare
+this new image with Image 1**. A request can contain at most three images in total.
+If a comparison exceeds that limit, the draft and uploads stay ready while you
+choose fewer images.
 Text context is bounded to 32,000 characters, including recent turns and locally
 retrieved older excerpts, plus the assignment and current Source. Saved history
 is larger than the context supplied with each request; recall is not unlimited.

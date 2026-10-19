@@ -102,6 +102,12 @@ shiny::testServer(app$server, {
 app$initial <- list(id="large-source",path=file.path(tempdir(),"large.R"),
                     contents=paste0("LARGE_EDITOR_PAYLOAD",strrep("x",50001L)))
 app$active_doc <- function(id=NULL) app$initial
+calls$runs <- 0L
+app$validate_script <- function(code,...) {
+  calls$runs <- calls$runs+1L;calls$validated_code <- code
+  list(ok=TRUE,logs="Synthetic execution.",plots=character(),plot_dir=NULL,total_plots=0L)
+}
+app$analysis_after_run <- function(...)"Synthetic analysis."
 shiny::testServer(app$server, {
   session$flushReact()
   before <- calls$n
@@ -118,6 +124,20 @@ shiny::testServer(app$server, {
   session$setInputs(chat_submit=list(text="Review my code",nonce=32L))
   check(calls$n==before+1L && !state$busy && !grepl("LARGE_EDITOR_PAYLOAD",calls$prompt,fixed=TRUE),
         "image follow-ups can continue when an oversized editor is omitted")
+  before <- calls$n
+  session$setInputs(chat_submit=list(text="Please run the script",nonce=33L))
+  session$setInputs(yes=1L)
+  check(is.null(state$pending) && calls$runs==0L && calls$n==before && !state$busy &&
+        identical(state$draft,"Please run the script") &&
+        !any(vapply(state$messages,function(m)identical(m$text,"Execution completed without R errors."),logical(1))),
+        "retained images cannot turn oversized Source into a successful empty validation")
+  app$initial$contents <- c("first <- 1", "second <- first + 1")
+  session$setInputs(chat_submit=list(text="Please run the script",nonce=34L))
+  check(identical(state$pending$code,paste(app$initial$contents,collapse="\n")),
+        "validation retains every line of the fresh Source snapshot")
+  session$setInputs(yes=2L)
+  check(calls$runs==1L && identical(calls$validated_code,paste(app$initial$contents,collapse="\n")),
+        "an approved normal-size Source still executes its full snapshot")
 })
 unlink(fixture)
 cat(checks,"Source-context checks passed\n")

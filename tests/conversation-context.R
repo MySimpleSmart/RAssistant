@@ -12,6 +12,12 @@ par(mar=rep(0,4));plot.new();points(.5,.5)
 invisible(grDevices::dev.off())
 bytes <- readBin(fixture,"raw",file.info(fixture)$size)
 data_url <- paste0("data:image/png;base64,",jsonlite::base64_enc(bytes))
+comparison_fixture <- tempfile(fileext=".png")
+grDevices::png(comparison_fixture,width=80,height=80)
+par(mar=rep(0,4));plot.new();points(.2,.8,col="red")
+invisible(grDevices::dev.off())
+comparison_bytes <- readBin(comparison_fixture,"raw",file.info(comparison_fixture)$size)
+comparison_url <- paste0("data:image/png;base64,",jsonlite::base64_enc(comparison_bytes))
 calls <- list()
 fail <- FALSE
 app$initial <- list(id="source1",path="original.R",contents="original_source <- 1")
@@ -68,6 +74,28 @@ shiny::testServer(app$server, {
     "numbered references can retrieve older images from separate upload turns")
   session$setInputs(chat_submit=list(text="Explain Image 99",nonce=10L))
   check(!length(tail(calls,1L)[[1L]]$paths),"an unavailable image reference never substitutes unrelated pixels")
+  session$setInputs(paste_image=list(image=comparison_url,filename="comparison.png",nonce=20L,epoch=state$upload_epoch))
+  session$setInputs(chat_submit=list(text="Compare this new image with Image 1",nonce=21L))
+  request <- tail(calls,1L)[[1L]]
+  check(length(request$paths)==2L && identical(request$bytes,list(comparison_bytes,bytes)) &&
+    grepl("Image order: Image 3 (new upload), Image 1 (earlier upload)",request$prompt,fixed=TRUE),
+    "a new upload and an explicitly referenced older image both reach the model with labels")
+  check(all(!file.exists(request$paths)) && length(tail(Filter(function(m)m$role=="You",state$messages),1L)[[1L]]$attachments)==1L,
+    "mixed-image requests clean temporary files and display only the new upload as new")
+  session$setInputs(paste_image=list(image=data_url,filename="limit-one.png",nonce=22L,epoch=state$upload_epoch))
+  session$setInputs(paste_image=list(image=data_url,filename="limit-two.png",nonce=23L,epoch=state$upload_epoch))
+  before <- length(calls)
+  session$setInputs(chat_submit=list(text="Compare these with Image 1 and Image 2",nonce=24L))
+  check(length(calls)==before && length(state$attachments)==2L && !state$busy &&
+    identical(state$draft,"Compare these with Image 1 and Image 2"),
+    "a comparison exceeding three images preserves the draft and uploads without silently dropping an image")
+  session$setInputs(chat_submit=list(text="Compare these with Image 1",nonce=25L))
+  check(length(tail(calls,1L)[[1L]]$paths)==3L && !length(state$attachments),
+    "two new uploads can be compared with one earlier image within the limit")
+  before <- length(calls)
+  session$setInputs(chat_submit=list(text="Compare Image 1, Image 2, Image 3 and Image 4",nonce=26L))
+  check(length(calls)==before && !state$busy && nzchar(state$draft),
+    "a comparison of four older images asks for fewer images instead of silently truncating")
   session$setInputs(new_chat=1L)
   session$setInputs(chat_submit=list(text="A new unrelated question",nonce=8L))
   check(!length(tail(calls,1L)[[1L]]$paths) &&
@@ -79,5 +107,5 @@ messages <- lapply(1:70,function(i)list(role=if(i%%2L)"You"else"AI",type="text",
 context <- app$summarize_history(messages,max_chars=12000L,request="Explain old_topic_marker")
 check(nchar(context)<=12000L && grepl("old_topic_marker",context,fixed=TRUE) &&
   grepl("Message 70",context,fixed=TRUE),"bounded context retrieves a relevant older topic while retaining recent turns")
-unlink(fixture)
+unlink(c(fixture,comparison_fixture))
 cat(checks,"conversation-context checks passed\n")

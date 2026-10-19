@@ -186,4 +186,76 @@ shiny::testServer(app$server,{
   check(calls$updates==1L,
     "update confirmation remains locked across server events after the first request")
 })
+
+# Negative Mongolian requests must reach explanation, without a run approval.
+app <- load_assistant()
+app$initial <- list(id="mn-source",path="example.R",contents="x <- 1")
+app$active_doc <- function(id=NULL)app$initial
+explanations <- 0L
+app$ask_ai <- function(...) {explanations <<- explanations+1L;"Explanation."}
+shiny::testServer(app$server,{
+  session$flushReact()
+  requests <- c("\u041A\u043E\u0434\u044B\u0433 \u0431\u0438\u0442\u0433\u0438\u0439 \u0430\u0436\u0438\u043B\u043B\u0443\u0443\u043B, \u0437\u04E9\u0432\u0445\u04E9\u043D \u0442\u0430\u0439\u043B\u0431\u0430\u0440\u043B\u0430.","\u041A\u043E\u0434\u044B\u0433 \u0431\u04AF\u04AF \u0430\u0436\u0438\u043B\u043B\u0443\u0443\u043B.",
+    "\u0411\u04AE\u04AE \u0410\u0416\u0418\u041B\u041B\u0423\u0423\u041B, \u0442\u0430\u0439\u043B\u0431\u0430\u0440\u043B\u0430.")
+  for(i in seq_along(requests)) {
+    session$setInputs(chat_submit=list(text=requests[[i]],nonce=i))
+    check(is.null(state$pending) && explanations==i && !state$busy,
+      paste("Mongolian negative execution request receives an explanation",i))
+  }
+  session$setInputs(chat_submit=list(text="\u041A\u043E\u0434\u044B\u0433 \u0430\u0436\u0438\u043B\u043B\u0443\u0443\u043B\u0430\u0430\u0434 \u04AF\u0440 \u0434\u04AF\u043D\u0433 \u0442\u0430\u0439\u043B\u0431\u0430\u0440\u043B\u0430.",nonce=4L))
+  check(!is.null(state$pending) && explanations==3L,"a positive Mongolian run request still requires Yes")
+})
+
+# Inspect real modal markup with synthetic sessions for both launch modes.
+for(info in list(NULL,list(version="test",poll_update=function()list(status="disabled")))) {
+  help_app <- load_assistant(package_info=info)
+  help_app$initial <- help_app$empty_source_context()
+  modal <- ""
+  help_app$`::` <- function(pkg,name) {
+    p <- as.character(substitute(pkg)); n <- as.character(substitute(name))
+    if(p=="shiny" && n=="showModal")return(function(ui,...) {modal <<- as.character(ui);invisible(NULL)})
+    base::getExportedValue(p,n)
+  }
+  shiny::testServer(help_app$server,{
+    session$flushReact();session$setInputs(help=1L)
+    if(is.null(info))check(grepl('source(&quot;AISource.R&quot;)',modal,fixed=TRUE) &&
+      grepl("OPENAI_API_KEY",modal,fixed=TRUE) && !grepl("RAssistant::",modal,fixed=TRUE) &&
+      grepl("replace AISource.R",modal,fixed=TRUE),"standalone Help uses script launch, environment setup and script updates")
+    else check(grepl("RAssistant::launch()",modal,fixed=TRUE) &&
+      grepl("RAssistant::set_api_key()",modal,fixed=TRUE) &&
+      grepl("RAssistant::update_assistant()",modal,fixed=TRUE),"package Help retains its package commands")
+  })
+}
+
+# The app's upload option must outlive startup and restore at shutdown/failure.
+test_upload_lifecycle <- function() {
+  old <- options(shiny.maxRequestSize=NULL)
+  on.exit(options(old),add=TRUE)
+  lifecycle <- load_assistant()
+  cleanup <- NULL;reject_registration <- FALSE
+  lifecycle$`::` <- function(pkg,name) {
+    p <- as.character(substitute(pkg)); n <- as.character(substitute(name))
+    if(p=="shiny" && n=="onStop")return(function(fun,session) {
+      stopifnot(is.null(session))
+      if(reject_registration)stop("Synthetic startup failure")
+      cleanup <<- fun
+      invisible(NULL)
+    })
+    base::getExportedValue(p,n)
+  }
+  for(previous in list(NULL,7*1024^2)) {
+    options(shiny.maxRequestSize=previous)
+    lifecycle$on_start()
+    check(identical(getOption("shiny.maxRequestSize"),52*1024^2),
+      "the 52 MB upload allowance remains after startup returns")
+    cleanup()
+    check(identical(getOption("shiny.maxRequestSize"),previous),
+      "app shutdown restores the previous upload setting, including an unset option")
+  }
+  reject_registration <- TRUE
+  failed <- tryCatch(lifecycle$on_start(),error=identity)
+  check(inherits(failed,"error") && identical(getOption("shiny.maxRequestSize"),7*1024^2),
+    "failed startup registration restores the earlier upload setting")
+}
+test_upload_lifecycle()
 cat(checks, "checks passed\n")

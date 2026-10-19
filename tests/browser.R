@@ -9,14 +9,16 @@ main <- function() {
   on.exit(unlink(update_marker),add=TRUE)
   history_root <- tempfile("ra-browser-history-");dir.create(history_root)
   on.exit(unlink(history_root,recursive=TRUE),add=TRUE)
-  run_app <- function(root,port,update_marker,history_root) {
+  run_app <- function(root,port,update_marker,history_root,standalone=FALSE) {
     setwd(root)
     source("tests/helpers.R")
-    store_env <- new.env(parent=globalenv());sys.source("R/history.R",store_env)
+    store_env <- new.env(parent=globalenv())
+    for(file in c("R/history.R","R/knowledge.R"))sys.source(file,store_env)
     history <- store_env$.conversation_store(project=root,directory=history_root)
+    knowledge <- store_env$.knowledge_store(project=root,directory=history_root)
     available <- list(status="available",version="0.1.2",current="0.1.1")
     update_result <- available
-    app <- load_assistant(package_info=list(version="0.1.1",history=history,
+    app <- load_assistant(package_info=if(standalone)NULL else list(version="0.1.1",history=history,knowledge=knowledge,
       poll_update=function()update_result,
       refresh_update=function(){
         update_result <<- if(identical(update_result$status,"available"))
@@ -38,9 +40,15 @@ main <- function() {
       paste0("Response ",count,"\n\n```r\nx <- c(\"<tag>\", \"&lt;\", \"\\\\(x\\\\)\", \"$$\")\nkeep <- x > \"a\" & x < \"z\"\n```\n\n",
              "Math: \\(\\alpha < 1\\).\n\n[[ACADEMIC_COMMENT]]Verified result.[[/ACADEMIC_COMMENT]]")
     }
-    shiny::runApp(shiny::shinyApp(app$ui,app$server),host="127.0.0.1",port=port,launch.browser=FALSE,quiet=TRUE)
+    previous_limit <- getOption("shiny.maxRequestSize")
+    handle <- shiny::startApp(shiny::shinyApp(app$ui,app$server,onStart=app$on_start),
+      host="127.0.0.1",port=port,launch.browser=FALSE,quiet=TRUE)
+    on.exit(handle$stop(),add=TRUE)
+    stopifnot(identical(getOption("shiny.maxRequestSize"),52*1024^2))
+    while(identical(handle$status(),"running"))later::run_now(.05)
+    stopifnot(identical(getOption("shiny.maxRequestSize"),previous_limit))
   }
-  start_worker <- function(port)callr::r_bg(run_app,args=list(root,port,update_marker,history_root),
+  start_worker <- function(port,standalone=FALSE)callr::r_bg(run_app,args=list(root,port,update_marker,history_root,standalone),
     stdout="|",stderr="|",supervise=TRUE)
   worker <- start_worker(port)
   on.exit(worker$kill(),add=TRUE)
@@ -115,6 +123,14 @@ main <- function() {
   wait_js('document.getElementById("shiny-modal")===null')
   check(isTRUE(js('document.getElementById("prompt").value==="Keep this draft"')),
     "opening Help and checking updates preserves the chat draft")
+  js('document.getElementById("knowledge").click();')
+  wait_js('document.getElementById("knowledge_files")!==null')
+  js('var dt=new DataTransfer();dt.items.add(new File(["Lecture material about reproducible statistical analysis and interpreting model output.\\n"," ".repeat(6*1024*1024)],"large-notes.txt",{type:"text/plain"}));var input=document.getElementById("knowledge_files");input.files=dt.files;input.dispatchEvent(new Event("change",{bubbles:true}));')
+  wait_js('document.getElementById("knowledge_selected")!==null && document.getElementById("knowledge_selected").textContent.includes("large-notes.txt")',timeout=30)
+  check(!isTRUE(js('document.body.textContent.includes("Maximum upload size exceeded")')),
+    "a course document larger than 5 MB uploads after nonblocking startup returns")
+  js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
+  wait_js('document.getElementById("shiny-modal")===null')
   js('document.getElementById("update_now").click();')
   wait_js('document.getElementById("confirm_update")!==null')
   check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("This chat is saved locally") && document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && !document.getElementById("shiny-modal").textContent.includes("Restart R")')),
@@ -258,6 +274,7 @@ main <- function() {
   check(file.exists(update_marker) && identical(readLines(update_marker),"requested"),
     "confirming Update now requests one installation even after repeated clicks")
   worker$wait(timeout=10000)
+  check(identical(worker$get_exit_status(),0L),"updating stops the app and restores the previous upload option")
   port <- httpuv::randomPort();worker <- start_worker(port)
   url <- paste0("http://127.0.0.1:",port)
   for(i in 1:100) {
@@ -273,6 +290,30 @@ main <- function() {
   wait_js('window.copied!==null')
   check(identical(js('window.copied'),expected),"restored code Copy buttons preserve the exact code")
   check(isTRUE(js('window.aisourceErrors.length===0')),"restoring history has no JavaScript errors")
+  js('document.getElementById("close").click();')
+  worker$wait(timeout=10000)
+  check(identical(worker$get_exit_status(),0L),"Close restores the upload option after a relaunched session")
+  port <- httpuv::randomPort();worker <- start_worker(port,standalone=TRUE)
+  url <- paste0("http://127.0.0.1:",port)
+  for(i in 1:100) {
+    ready <- suppressWarnings(tryCatch({con<-url(paste0(url,"/"),open="rb");close(con);TRUE},error=function(e)FALSE))
+    if(ready)break
+    Sys.sleep(.05)
+  }
+  browser$Page$navigate(url)
+  wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled')
+  js('document.getElementById("help").click();')
+  wait_js('document.querySelector("#shiny-modal .code-copy")!==null')
+  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("OPENAI_API_KEY") && document.getElementById("shiny-modal").textContent.includes("replace AISource.R") && !document.getElementById("shiny-modal").textContent.includes("RAssistant::")')),
+    "standalone Help shows environment and script-update instructions without package commands")
+  js('window.copied=null;Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:function(t){window.copied=t;return Promise.resolve();}}});document.querySelector("#shiny-modal .code-copy").click();')
+  wait_js('window.copied!==null')
+  check(identical(js('window.copied'),'source("AISource.R")\n'),"standalone Help copies the exact script launch command")
+  js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
+  wait_js('document.getElementById("shiny-modal")===null')
+  js('document.getElementById("close").click();')
+  worker$wait(timeout=10000)
+  check(identical(worker$get_exit_status(),0L),"standalone Close restores the upload option")
   cat(checks,"browser checks passed\n")
 }
 main()

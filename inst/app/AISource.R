@@ -31,10 +31,6 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   if (!is.character(api_key) || length(api_key) != 1L || is.na(api_key) || !nzchar(trimws(api_key))) {
     stop("OPENAI_API_KEY is missing. Use RAssistant::launch() for secure setup, or configure your environment.")
   }
-  # File upload capped in both Shiny and the server-side image and course
-  # knowledge verifiers (4 MB per image, 50 MB per course document).
-  old_options <- options(shiny.maxRequestSize = 52 * 1024^2)
-  on.exit(options(old_options), add = TRUE)
   active_doc <- function(id = NULL) rstudioapi::getSourceEditorContext(id = id)
   is_source_context <- function(ctx) {
     is.list(ctx) && is.character(ctx$id) && length(ctx$id) == 1L &&
@@ -235,15 +231,15 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     grepl("^(?:~|[/\\\\]|[[:alpha:]]:[/\\\\])", path, perl = TRUE)
   }
   csv_references <- function(code) {
-    pattern <- "(?:utils::)?read\\.csv\\s*\\(\\s*(?:file\\s*=\\s*)?(['\\\"])([^'\\\"]+)\\1"
+    pattern <- "(?:utils::)?read\\.csv\\s*\\(\\s*(?:file\\s*=\\s*)?(\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*')"
     hits <- regmatches(code, gregexpr(pattern, code, perl = TRUE))[[1L]]
     if (!length(hits)) return(character(0))
     refs <- vapply(hits, function(hit) {
       parts <- regmatches(hit, regexec(pattern, hit, perl = TRUE))[[1L]]
-      if (length(parts) < 3L) return("")
+      if (length(parts) < 2L) return("")
       # Parse only the captured string literal, never evaluate source code.
       # This decodes escaped Windows separators and rejects invalid R strings.
-      value <- tryCatch(parse(text = paste0(parts[[2L]], parts[[3L]], parts[[2L]]),
+      value <- tryCatch(parse(text = parts[[2L]],
                               keep.source = FALSE)[[1L]], error = function(e) NULL)
       if (is.character(value) && length(value) == 1L) value else ""
     }, character(1))
@@ -291,14 +287,21 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   # mention iris.csv. Inspect only explicitly mentioned .csv filenames.
   # Text copied from PDFs can lose its spaces ("thefilecrime.csv"). A long word
   # ending with the name of a CSV file present locally resolves to that file;
-  # other mentions use the local spelling when they differ only in case.
+  # Bare filenames use the local spelling when they differ only in case.
+  # Explicit paths retain their directories; quoted paths may contain spaces.
   csv_files_mentioned <- function(text, dirs = character(0)) {
     text <- paste(text, collapse = "\n")
-    items <- unique(regmatches(text, gregexpr("(?i)[[:alnum:]_.-]+\\.csv\\b", text, perl = TRUE))[[1L]])
+    pattern <- paste0("(?i)\"[^\"\\r\\n]+\\.csv\"|'[^'\\r\\n]+\\.csv'|`[^`\\r\\n]+\\.csv`|",
+      "[[:alpha:]][[:alnum:]+.-]*://[^\\s\"'`]+\\.csv\\b|",
+      "(?<![[:alnum:]_])(?:[[:alpha:]]:)?[[:alnum:]_~./\\\\-]+\\.csv\\b")
+    items <- unique(regmatches(text, gregexpr(pattern, text, perl = TRUE))[[1L]])
+    items <- sub("^([\"'`])(.*)\\1$", "\\2", items, perl = TRUE)
+    items <- items[!grepl("^[[:alpha:]][[:alnum:]+.-]*://", items)]
     dirs <- unique(dirs[nzchar(dirs) & dir.exists(dirs)])
     local <- unique(unlist(lapply(dirs, function(d)
       head(list.files(d, pattern = "\\.csv$", ignore.case = TRUE), 200L))))
     resolve <- function(item) {
+      if (is_absolute_path(item) || grepl("[/\\\\]", item)) return(item)
       exact <- local[tolower(local) == tolower(item)]
       if (length(exact)) return(exact[[1L]])
       glued <- local[endsWith(tolower(item), tolower(local)) & nchar(item) >= nchar(local) + 8L]
@@ -419,6 +422,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   # Only reads headers from .csv file references, never evaluates editor code.
 
   is_run_request <- function(q) {
+    # Mongolian prohibitions can precede the verb ("bitgii/buu ajilluul").
+    if (grepl("(?i)(?:\u0431\u0438\u0442\u0433\u0438\u0439|\u0431\u04AF\u04AF)\\s+[^.!?\\n]{0,80}(?:\u0430\u0436\u0438\u043B\u043B\u0443\u0443\u043B|\u0433\u04AF\u0439\u0446\u044D\u0442\u0433\u044D|\\b(?:run|execute|validate)\\b)",
+              q, perl = TRUE)) return(FALSE)
     if (grepl("(?i)\\b(?:do\\s+not|don['\u2019]t|never|without|avoid)\\s+(?:actually\\s+)?(?:run(?:ning)?|execut(?:e|ing)|validat(?:e|ing)|test(?:ing)?)\\b|\\bstatic (?:review|check)\\b|\u0430\u0436\u0438\u043B\u043B\u0443\u0443\u043B\u0430\u0445\u0433\u04AF\u0439",
               q, perl = TRUE)) return(FALSE)
     grepl("(?i)\\b(?:run|execute|validate|rerun|run and validate|test the script|test my script|run the code|check by running)\\b|\u0430\u0436\u0438\u043B\u043B\u0443\u0443\u043B|\u0430\u0436\u0438\u043B\u043B\u0443\u0443\u043B\u0430\u0430\u0434|\u043A\u043E\u0434\u044B\u0433 \u0430\u0436\u0438\u043B\u043B\u0443\u0443\u043B|validation \u0445\u0438\u0439",
@@ -500,14 +506,15 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     excerpt_text(result,max_chars)
   }
 
-  recent_images <- function(messages, request = "") {
+  recent_images <- function(messages, request = "", explicit_only = FALSE) {
     all_images <- unlist(lapply(messages,function(m)m$attachments),recursive=FALSE)
     references <- regmatches(request,gregexpr("(?i)(?:image|screenshot|picture|photo|\u0437\u0443\u0440\u0430\u0433)\\s*#?\\s*[0-9]+|[0-9]+[ -]*(?:\u0440|\u0434\u044D\u0445|\u0434\u0430\u0445\u044C)\\s*\u0437\u0443\u0440\u0430\u0433",request,perl=TRUE))[[1L]]
     numbers <- suppressWarnings(as.integer(gsub("[^0-9]","",references)))
     if(grepl("(?i)first\\s+(?:image|screenshot|picture|photo)|(?:\u044D\u0445\u043D\u0438\u0439|\u0430\u043D\u0445\u043D\u044B)\\s+\u0437\u0443\u0440\u0430\u0433",request,perl=TRUE))numbers<-c(numbers,1L)
     if(grepl("(?i)second\\s+(?:image|screenshot|picture|photo)|\u0445\u043E\u0451\u0440\\s*\u0434\u0430\u0445\u044C\\s+\u0437\u0443\u0440\u0430\u0433",request,perl=TRUE))numbers<-c(numbers,2L)
-    if(length(numbers))return(head(Filter(function(a)is.list(a) && !is.null(a$number) && a$number %in% numbers &&
-      nzchar(chat_text(a$preview)),all_images),3L))
+    if(length(numbers))return(Filter(function(a)is.list(a) && !is.null(a$number) && a$number %in% numbers &&
+      nzchar(chat_text(a$preview)),all_images))
+    if (explicit_only) return(list())
     for (m in rev(messages)) {
       if (identical(m$context, FALSE)) next
       images <- m$attachments
@@ -1425,11 +1432,16 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           shiny::p(if(is.null(package_info))"Standalone script" else paste("Installed version:",package_info$version)),
           shiny::p("Run these commands in the RStudio Console."),
           shiny::tags$strong("Open the assistant"),
-          render_markdown("~~~r\nRAssistant::launch()\n~~~"),
+          render_markdown(if(is.null(package_info))"~~~r\nsource(\"AISource.R\")\n~~~"
+            else "~~~r\nRAssistant::launch()\n~~~"),
           shiny::tags$strong("Set or replace an API key"),
-          shiny::p("Click Close first. Enter the key only in the hidden password prompt, then reopen the assistant."),
-          render_markdown("~~~r\nRAssistant::set_api_key()\nRAssistant::launch()\n~~~"),
-          shiny::p("An existing OPENAI_API_KEY environment variable takes precedence. Remove that setting to use the saved replacement."),
+          if(is.null(package_info)) shiny::p(paste(
+            "Configure OPENAI_API_KEY in the environment used to start RStudio, then restart RStudio",
+            "and source AISource.R again. The standalone script reads this variable and does not save keys."))
+          else shiny::tagList(
+            shiny::p("Click Close first. Enter the key only in the hidden password prompt, then reopen the assistant."),
+            render_markdown("~~~r\nRAssistant::set_api_key()\nRAssistant::launch()\n~~~"),
+            shiny::p("An existing OPENAI_API_KEY environment variable takes precedence. Remove that setting to use the saved replacement.")),
           if(!is.null(history))shiny::tagList(
             shiny::tags$strong("Conversations"),
             shiny::p("Chats and images are auto-saved locally for this project. History offers Rename, Delete and Restore. New chat keeps the previous chat in History."),
@@ -1440,10 +1452,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             shiny::p("Adding PDFs needs the pdftools package:"),
             render_markdown("~~~r\ninstall.packages(\"pdftools\")\n~~~")),
           shiny::tags$strong("Update"),
-          shiny::p("Use Update now when offered, or Close and run:"),
-          render_markdown("~~~r\nRAssistant::update_assistant()\n~~~"),
-          shiny::p("After a successful update, run RAssistant::launch() to open the new version. Your saved key is kept."),
-          if(!is.null(package_info)) shiny::textOutput("update_help_status")
+          if(is.null(package_info)) shiny::p(
+            "Click Close, replace AISource.R with the updated script, then source it again.")
+          else shiny::tagList(
+            shiny::p("Use Update now when offered, or Close and run:"),
+            render_markdown("~~~r\nRAssistant::update_assistant()\n~~~"),
+            shiny::p("After a successful update, run RAssistant::launch() to open the new version. Your saved key is kept."),
+            shiny::textOutput("update_help_status"))
         ),
         footer=shiny::tagList(
           if(!is.null(package_info)) shiny::actionButton("check_updates","Check for updates",class="ai-btn"),
@@ -1724,8 +1739,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       sync_client()
       live <- read_source_context(state$file_id)
       source_available <- is_source_context(live)
-      retained <- if(length(state$attachments))list()else recent_images(state$messages,text)
-      if(!source_available && is_run_request(text) && !length(state$attachments)){
+      run_requested <- is_run_request(text) && !length(state$attachments)
+      retained <- recent_images(state$messages,text,explicit_only=length(state$attachments)>0L)
+      if(length(state$attachments)+length(retained)>3L){
+        shiny::showNotification("Up to 3 images can be sent together. Remove an upload or reference fewer earlier images.",type="warning")
+        return()
+      }
+      if(!source_available && run_requested){
         shiny::showNotification("Cannot read the open script. Open a Source document and retry.",type="error")
         return()
       }
@@ -1734,7 +1754,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       source_included <- source_available
       editor_note <- "Source editor unavailable this turn; no current code was read. Do not infer its current contents from earlier chat."
       if(nchar(content)>50000L){
-        if (!length(state$attachments) && !length(retained)) {
+        if (run_requested || (!length(state$attachments) && !length(retained))) {
           shiny::showNotification("Script is too large (50,000 characters max).",type="warning")
           return()
         }
@@ -1754,7 +1774,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       script_path <- if(is.null(live$path))"" else live$path
       mentions <- csv_files_mentioned(c(text,state$assignment),c(wd,if(nzchar(script_path))dirname(script_path)))
       csv_headers <- if (source_included || length(mentions)) {
-        csv_probe <- paste(c(if(source_included)content,paste0("read.csv(\"",mentions,"\")")),collapse="\n")
+        csv_probe <- paste(c(if(source_included)content,
+          paste0("read.csv(",encodeString(mentions,quote='"'),")")),collapse="\n")
         report <- tryCatch(get_csv_headers(csv_probe,wd,script_path),
           error=function(e) paste("CSV header inspection failed:",conditionMessage(e)))
         if(source_included)report else paste(editor_note,report,sep="\n")
@@ -1765,9 +1786,15 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       course <- course_context(text,paste(state$assignment,if(source_included)editor_calls(content)else ""))
       # Keep the draft and verified files available until the request succeeds.
       sent_images <- state$attachments
+      for(i in seq_along(sent_images))sent_images[[i]]$number <- state$image_count+i
       context_images <- materialize_images(retained,attachment_dir)
       on.exit(unlink(vapply(context_images,function(a)a$path,character(1))),add=TRUE)
-      request_images <- if(length(sent_images))sent_images else context_images
+      request_images <- c(sent_images,context_images)
+      image_order <- paste(vapply(seq_along(request_images),function(i){
+        a <- request_images[[i]]
+        paste0(if(is.null(a$number))a$label else paste("Image",a$number),
+          if(length(sent_images))if(i<=length(sent_images))" (new upload)" else " (earlier upload)" else "")
+      },character(1)),collapse=", ")
       request_text <- text
       display_text <- if(nzchar(text))text else if(length(sent_images)==1L)
         "Uploaded image." else "Uploaded images."
@@ -1776,13 +1803,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
              attachments=lapply(seq_along(sent_images),function(i)
              list(label=sent_images[[i]]$label,preview=sent_images[[i]]$preview,number=state$image_count+i))))
       state$image_count <- state$image_count+length(sent_images)
-      if(is_run_request(text) && !length(sent_images)){
+      if(run_requested){
         if(is.null(live$path) || !grepl("\\.([Rr]|[Rr][Mm][Dd])$",live$path)){
           push("AI","Save the current document as .R or .Rmd before running validation.")
           return()
         }
         state$job_id<-state$job_id+1L
-        state$pending<-list(id=state$job_id,code=content,doc_id=live$id,
+        state$pending<-list(id=state$job_id,code=full_text(live),doc_id=live$id,
           path=live$path,lines=live$contents,working_dir=wd,
           format=if(grepl("\\.[Rr][Mm][Dd]$",live$path))"Rmd" else "R",
           csv_headers=csv_headers,request=text,assignment=state$assignment,history=earlier,course=course)
@@ -1852,12 +1879,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       prompt <- if(length(sent_images)) paste0(
         if(nzchar(request_text))paste0("USER MESSAGE:\n",request_text,"\n\n")else"",
         "UPLOADED IMAGES THIS TURN: ",length(sent_images),
+        "\nRETAINED IMAGES EXPLICITLY REQUESTED: ",length(context_images),
+        "\nImage order: ",image_order,
         "\n\nOPTIONAL BACKGROUND (use only when relevant; not a substitute for visible image evidence):\n",
         background
       ) else paste0(background,"\n\nRETAINED IMAGE CONTEXT FROM THE MOST RECENT IMAGE TURN: ",length(context_images),
         if(length(context_images))"\nThe original image pixels are attached again for this follow-up. These are not new uploads."else "",
-        if(length(context_images))paste0("\nImage order: ",paste(vapply(context_images,function(a)
-          if(is.null(a$number))a$label else paste("Image",a$number),character(1)),collapse=", "))else "",
+        if(length(context_images))paste0("\nImage order: ",image_order)else "",
         "\n\nLATEST USER REQUEST:\n",request_text)
       response<-tryCatch(shiny::withProgress(message="Thinking...",value=0.5,{
         ask_ai(system,prompt,
@@ -1938,7 +1966,14 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     })
   }
 
-  app<-shiny::shinyApp(ui=ui,server=server)
+  on_start <- function() {
+    # startApp() returns while the app is running. Keep the upload limit until
+    # Shiny stops the app, including cleanup after a failed startup.
+    old_options <- options(shiny.maxRequestSize = 52 * 1024^2)
+    tryCatch(shiny::onStop(function()options(old_options),session=NULL),
+      error=function(e){options(old_options);stop(e)})
+  }
+  app<-shiny::shinyApp(ui=ui,server=server,onStart=on_start)
   shiny::startApp(appDir=app,
     launch.browser=function(url)rstudioapi::viewer(url),
     host="127.0.0.1",quiet=TRUE)

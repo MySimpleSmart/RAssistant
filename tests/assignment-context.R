@@ -87,4 +87,39 @@ shiny::testServer(app$server, {
 })
 setwd(old_wd)
 unlink(project,recursive=TRUE)
+
+# Explicit paths must not resolve to an unrelated same-named root file.
+paths <- c("data/sample.csv", "../data/sample.csv", "/tmp/sample.csv",
+  "~/data/sample.csv", "C:\\data\\sample.csv", "\\\\server\\share\\sample.csv")
+check(identical(app$csv_files_mentioned(paste(paths,collapse="\n")),paths),
+  "chat references retain relative, absolute, home, Windows and network paths")
+check(identical(app$csv_references(paste0("read.csv(",encodeString(paths,quote='"'),")",collapse="\n")),paths),
+  "CSV inspection safely round-trips escaped path literals")
+check(identical(app$csv_files_mentioned('Use "data/my sample.csv" and `data/other sample.csv`.'),
+  c("data/my sample.csv","data/other sample.csv")),"quoted CSV paths retain spaces")
+check(identical(app$csv_files_mentioned("Dataset:data/sample.csv; https://example.com/remote.csv"),"data/sample.csv"),
+  "prose punctuation is not part of a local path and web URLs are not inspected as files")
+project <- tempfile("ra-csv-paths-");dir.create(project);dir.create(file.path(project,"data"))
+writeLines(c("WRONG_ROOT_COLUMN","1"),file.path(project,"sample.csv"))
+for(name in c("sample.csv","student's sample.csv"))
+  writeLines(c("RIGHT_SUBDIR_COLUMN","1"),file.path(project,"data",name))
+old_wd <- setwd(project)
+shiny::testServer(app$server, {
+  session$flushReact()
+  header <- function()sub("(?s).*VERIFIED CSV HEADER CHECK:\n(.*?)\n\n.*","\\1",
+    tail(calls,1L)[[1L]]$prompt,perl=TRUE)
+  requests <- c("Use data/sample.csv and explain its columns.",
+    'Use "data/student\'s sample.csv" and explain its columns.',
+    paste0('Use "',normalizePath(file.path(project,"data","sample.csv"),winslash="/"),'".'))
+  for(i in seq_along(requests)) {
+    session$setInputs(chat_submit=list(text=requests[[i]],nonce=i))
+    check(grepl("RIGHT_SUBDIR_COLUMN",header(),fixed=TRUE) && !grepl("WRONG_ROOT_COLUMN",header(),fixed=TRUE),
+      paste("the requested file supplies verified columns for path case",i))
+  }
+  session$setInputs(chat_submit=list(text="Use missing/sample.csv",nonce=4L))
+  check(grepl("missing/sample.csv: NOT FOUND",header(),fixed=TRUE) &&
+    !grepl("WRONG_ROOT_COLUMN",header(),fixed=TRUE),"a missing explicit path never falls back to its basename")
+})
+setwd(old_wd)
+unlink(project,recursive=TRUE)
 cat(checks,"assignment-context checks passed\n")

@@ -1,3 +1,18 @@
+# RAssistant 0.3.3
+
+- Reject validation of Source text over 50,000 characters even when the chat
+  retains images, preventing an empty run from being reported as successful.
+- Preserve directories in CSV references pasted into chat, including quoted
+  paths with spaces and escaped Windows paths, instead of checking a different
+  same-named file in the project root.
+- Treat Mongolian prohibitions against running code as explanation requests.
+- Include explicitly referenced earlier images alongside new uploads, label
+  their order, and preserve the draft when a comparison exceeds three images.
+- Keep the course-document upload allowance active until the app stops and
+  restore the previous option on shutdown or startup failure.
+- Show script launch, environment-key setup and script-update instructions in
+  standalone Help; preserve package instructions for package launches.
+
 # RAssistant 0.3.2
 
 - Find datasets named in pasted tasks even when text copied from a PDF lost
