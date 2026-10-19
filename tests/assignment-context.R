@@ -55,4 +55,36 @@ shiny::testServer(app$server, {
   session$setInputs(chat_submit=list(text="Help with this new script.",nonce=42L))
   check(identical(state$assignment,brief),"switching Source documents preserves the ongoing assignment")
 })
+# Text copied from a PDF can lose its spaces. A dataset named in the task must
+# still be found in the project and used, without path placeholders.
+project <- tempfile("ra-glued-");dir.create(project)
+writeLines(c("LGA,VCRS,TVS","Ashfield,517,377"),file.path(project,"crime.csv"))
+glued <- paste("Exercise1 ThedatagivenonbelowlistthenumberofvariousitemsstoleninarangeofLocalGovernmentAreas",
+  "LocalGovernmentArea VCRS TVS Ashfield 517 377 Auburn 506 327",
+  "The dataareinthefilecrime.csv.ReadthedataintoRandcall itcrime. 1.Obtainascatterplotmatrix.Comment.")
+calls <- list()
+app <- load_assistant()
+app$initial <- list(id="untitled",path="",contents="")
+app$active_doc <- function(id=NULL)app$initial
+app$ask_ai <- function(system_prompt,prompt,images=character()) {
+  calls[[length(calls)+1L]] <<- list(system=system_prompt,prompt=prompt)
+  "Answer."
+}
+old_wd <- setwd(project)
+shiny::testServer(app$server, {
+  session$setInputs(chat_submit=list(text=glued,nonce=1L))
+  first <- tail(calls,1L)[[1L]]
+  header <- sub("(?s).*VERIFIED CSV HEADER CHECK:\n(.*?)\n\n.*","\\1",first$prompt,perl=TRUE)
+  check(identical(header,"crime.csv: VERIFIED CSV REFERENCE; columns (read.csv defaults): LGA, VCRS, TVS"),
+    "a dataset named in space-less pasted text is verified in the project")
+  session$setInputs(chat_submit=list(text="Follow instruction, start again",nonce=2L))
+  again <- tail(calls,1L)[[1L]]
+  check(grepl("crime.csv: VERIFIED CSV REFERENCE",again$prompt,fixed=TRUE),
+    "follow-ups keep verifying the dataset named in the stored task")
+  check(grepl("Never write placeholders",again$system,fixed=TRUE) &&
+    !grepl("ask for the correct path",again$system,fixed=TRUE),
+    "the prompt forbids path placeholders when the task names the file")
+})
+setwd(old_wd)
+unlink(project,recursive=TRUE)
 cat(checks,"assignment-context checks passed\n")

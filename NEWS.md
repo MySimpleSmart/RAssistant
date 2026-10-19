@@ -1,3 +1,14 @@
+# RAssistant 0.3.2
+
+- Find datasets named in pasted tasks even when text copied from a PDF lost
+  its spaces ("thefilecrime.csv"), by matching CSV files present in the
+  project. Follow-ups keep checking files named in the stored task, and named
+  files are checked even when no script is open.
+- Read named data files exactly as the task states them; never answer with
+  path placeholders such as REPLACE_WITH_PATH or ask for a path the task gives.
+- Apply custom instructions to every answer, using the packages and functions
+  they name instead of base-R alternatives.
+
 # RAssistant 0.3.1
 
 - Simplify the Knowledge dialog: one optional **Custom instructions** box

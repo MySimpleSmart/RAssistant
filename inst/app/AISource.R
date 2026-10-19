@@ -289,9 +289,22 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
 
   # If the current file is empty, an assignment pasted into chat can still
   # mention iris.csv. Inspect only explicitly mentioned .csv filenames.
-  csv_files_mentioned <- function(text) {
-    items <- regmatches(text, gregexpr("(?i)[[:alnum:]_.-]+\\.csv\\b", text, perl = TRUE))[[1L]]
-    unique(items)
+  # Text copied from PDFs can lose its spaces ("thefilecrime.csv"). A long word
+  # ending with the name of a CSV file present locally resolves to that file;
+  # other mentions use the local spelling when they differ only in case.
+  csv_files_mentioned <- function(text, dirs = character(0)) {
+    text <- paste(text, collapse = "\n")
+    items <- unique(regmatches(text, gregexpr("(?i)[[:alnum:]_.-]+\\.csv\\b", text, perl = TRUE))[[1L]])
+    dirs <- unique(dirs[nzchar(dirs) & dir.exists(dirs)])
+    local <- unique(unlist(lapply(dirs, function(d)
+      head(list.files(d, pattern = "\\.csv$", ignore.case = TRUE), 200L))))
+    resolve <- function(item) {
+      exact <- local[tolower(local) == tolower(item)]
+      if (length(exact)) return(exact[[1L]])
+      glued <- local[endsWith(tolower(item), tolower(local)) & nchar(item) >= nchar(local) + 8L]
+      if (length(glued)) glued[[which.max(nchar(glued))]] else item
+    }
+    unique(vapply(items, resolve, character(1), USE.NAMES = FALSE))
   }
 
   # Run only after an inline Yes in the chat. The R code executes in a separate
@@ -690,7 +703,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     if (!nzchar(profile) && !nzchar(found$text)) return(none)
     system <- paste(c(
       if (nzchar(profile)) paste0("CUSTOM INSTRUCTIONS set by the user for this project.",
-        " Follow them unless the latest request says otherwise:\n", profile),
+        " Apply them to every answer, unless the latest request says otherwise. When they name",
+        " packages or functions, write code with those instead of base-R or other alternatives:\n", profile),
       if (nzchar(found$text)) paste(
         "COURSE MATERIAL excerpts from the user's own lecture PDFs, notes and R examples are supplied,",
         "labelled [K1], [K2] and so on. When they are relevant, solve the task with the methods, packages,",
@@ -1736,11 +1750,14 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       }
       state$current<-live
       wd <- select_working_dir(content,if(is.null(live$path))"" else live$path)
-      csv_headers <- if (source_included) {
-        mentions <- csv_files_mentioned(text)
-        csv_probe <- paste(c(content,paste0("read.csv(\"",mentions,"\")")),collapse="\n")
-        tryCatch(get_csv_headers(csv_probe,wd,if(is.null(live$path))"" else live$path),
+      # Follow-ups such as "start again" rely on files named in the stored task.
+      script_path <- if(is.null(live$path))"" else live$path
+      mentions <- csv_files_mentioned(c(text,state$assignment),c(wd,if(nzchar(script_path))dirname(script_path)))
+      csv_headers <- if (source_included || length(mentions)) {
+        csv_probe <- paste(c(if(source_included)content,paste0("read.csv(\"",mentions,"\")")),collapse="\n")
+        report <- tryCatch(get_csv_headers(csv_probe,wd,script_path),
           error=function(e) paste("CSV header inspection failed:",conditionMessage(e)))
+        if(source_included)report else paste(editor_note,report,sep="\n")
       } else paste(editor_note, "No local CSV files were inspected.")
       state$assignment <- remember_assignment(state$assignment,text)
       earlier <- summarize_history(state$messages,max_chars=32000L,assignment=state$assignment,request=text)
@@ -1784,12 +1801,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         "Never offer Apply, Yes/No for edits, old/new JSON patches or diff blocks.",
         "Do not claim code has been edited, executed, checked or that graphics",
         "were examined unless verified execution evidence is provided.",
-        "Use the locally verified CSV headers below; NEVER invent or assume names.",
-        "Do not invent file paths or subfolders such as data/iris.csv.",
-        "Use the exactly VERIFIED path if shown; otherwise clearly state",
-        "that the location is unverified and ask for the correct path.",
-        "If a CSV was not found, explicitly say it was not inspected; write",
-        "code that can print names() when it is run, rather than guessing columns.",
+        "Use the locally verified CSV headers below; NEVER invent or assume column names.",
+        "Read data files by the name or path exactly as VERIFIED below, or exactly as the",
+        "user or task states it, e.g. read.csv(\"crime.csv\") in the working directory.",
+        "Do not invent folders such as data/iris.csv. Never write placeholders such as",
+        "REPLACE_WITH_PATH or ask for a path when the task already names the file.",
+        "If a named CSV was not found locally, still use that name, say so in one short",
+        "sentence, and write code that prints names() rather than guessing columns.",
         "Always output literal, executable R syntax in fenced code blocks:",
         "use <-, >, < and &, NEVER HTML entities like &lt;, &gt; or &amp;.",
         "Avoid interactive file.choose() in code intended for child-process validation;",
