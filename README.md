@@ -192,8 +192,9 @@ by the installed package.
 
 From 0.3.0, **Knowledge** stores course material for the current RStudio
 project: lecture PDFs, notes (`.txt`, `.md`) and R code examples (`.R`, `.Rmd`,
-`.qmd`), up to 50 MB each. It also keeps course preferences: instructions,
-preferred packages, preferred functions and coding conventions.
+`.qmd`), up to 50 MB each. An optional **Custom instructions** box holds anything
+the assistant should always follow for the course, such as preferred packages,
+functions or coding conventions.
 
 For every request, RAssistant matches your message, the pasted task and the
 functions in the open script against this material on your computer. Only the

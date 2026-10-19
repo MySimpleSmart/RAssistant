@@ -675,7 +675,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     chat
   }
   # Course knowledge is supplied by the package and stored apart from chats.
-  # Standing preferences are short; retrieved excerpts are bounded by the store.
+  # Custom instructions are short; retrieved excerpts are bounded by the store.
   knowledge <- package_info$knowledge
   editor_calls <- function(code) {
     calls <- regmatches(code, gregexpr("[A-Za-z.][A-Za-z0-9._]*(?=\\s*\\()", code, perl = TRUE))[[1L]]
@@ -689,7 +689,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       error = function(e) list(text = "", sources = list()))
     if (!nzchar(profile) && !nzchar(found$text)) return(none)
     system <- paste(c(
-      if (nzchar(profile)) paste0("STANDING COURSE PREFERENCES set by the user for this project.",
+      if (nzchar(profile)) paste0("CUSTOM INSTRUCTIONS set by the user for this project.",
         " Follow them unless the latest request says otherwise:\n", profile),
       if (nzchar(found$text)) paste(
         "COURSE MATERIAL excerpts from the user's own lecture PDFs, notes and R examples are supplied,",
@@ -793,6 +793,10 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .knowledge label{font-weight:600;font-size:11px}
   .knowledge textarea.form-control{font-size:12px;border-radius:3px;resize:vertical}
   .knowledge .progress{margin-bottom:6px}
+  .knowledge .input-group{display:flex;align-items:center;gap:8px;width:100%}
+  .knowledge .input-group-btn{display:block;width:auto;margin:0}
+  .knowledge .input-group-btn>.btn.ai-btn{border-radius:3px!important;margin:0}
+  .knowledge-hint{font:10px var(--mono);color:var(--muted);min-width:0;overflow-wrap:anywhere}
   .upload-row{display:flex;align-items:center;gap:8px;margin-top:4px}
   .upload-row>.attach-plot,.upload-row>#send{flex:0 0 auto}
   .attach-plot{display:inline-flex;align-items:center;justify-content:center;
@@ -1285,17 +1289,23 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         show_history()
       },error=function(e)shiny::showNotification(conditionMessage(e),type="error"))
     })
-    # Course knowledge: documents and preferences persist per project, apart
-    # from chats. Unsaved preference edits survive refreshing the dialog.
+    # Course knowledge: documents and custom instructions persist per project,
+    # apart from chats. Unsaved instruction edits survive refreshing the dialog.
     knowledge_draft <- NULL
     knowledge_target <- NULL
-    knowledge_inputs <- function()list(instructions=chat_text(input$knowledge_instructions),
-      packages=chat_text(input$knowledge_packages),functions=chat_text(input$knowledge_functions),
-      conventions=chat_text(input$knowledge_conventions))
+    knowledge_inputs <- function()list(instructions=chat_text(input$knowledge_instructions))
+    # Use the dialog's own button style, with a plain hint instead of the
+    # joined read-only filename box.
+    knowledge_picker <- function() {
+      picker <- shiny::fileInput("knowledge_files",NULL,multiple=TRUE,width="100%",buttonLabel="Add files",
+        accept=c(".pdf",".txt",".md",".markdown",".R",".r",".Rmd",".qmd"))
+      htmltools::tagQuery(picker)$find(".btn-file")$removeClass("btn btn-default")$addClass("btn ai-btn")$
+        resetSelected()$find("input.form-control")$replaceWith(shiny::span(class="knowledge-hint",
+          "Lecture PDFs, notes (.txt, .md) or R code (.R, .Rmd, .qmd)"))$allTags()
+    }
     show_knowledge <- function(profile=NULL) {
       if(is.null(profile))profile <- tryCatch(knowledge$profile(),error=function(e)list())
       docs <- tryCatch(knowledge$list(),error=function(e)list())
-      field <- function(name)chat_text(profile[[name]])
       choices <- stats::setNames(vapply(docs,function(x)x$id,character(1)),
         vapply(docs,function(x)paste0(x$name,"  \u00B7  ",x$kind,"  \u00B7  ",x$chunks,
           if(identical(x$chunks,1L))" section" else " sections"),character(1)))
@@ -1306,21 +1316,14 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           shiny::tags$strong("Documents"),
           if(length(docs))shiny::selectInput("knowledge_selected",NULL,choices=choices,selectize=FALSE,
             size=min(6L,max(2L,length(docs))),width="100%")else shiny::p(class="empty","No documents yet."),
-          shiny::fileInput("knowledge_files",NULL,multiple=TRUE,width="100%",buttonLabel="Add files",
-            placeholder="Lecture PDFs, notes (.txt, .md) or R code (.R, .Rmd, .qmd)",
-            accept=c(".pdf",".txt",".md",".markdown",".R",".r",".Rmd",".qmd")),
-          shiny::tags$strong("Course preferences"),
-          shiny::textAreaInput("knowledge_instructions","Course instructions",value=field("instructions"),
-            rows=3,width="100%",placeholder="e.g. Follow the lecture approach and explain each step."),
-          shiny::textInput("knowledge_packages","Preferred R packages",value=field("packages"),
-            width="100%",placeholder="e.g. ggplot2, dplyr"),
-          shiny::textInput("knowledge_functions","Preferred functions",value=field("functions"),
-            width="100%",placeholder="e.g. t.test(), lm(), kmeans()"),
-          shiny::textAreaInput("knowledge_conventions","Coding conventions",value=field("conventions"),
-            rows=2,width="100%",placeholder="e.g. Use <- for assignment and comment each step.")),
+          knowledge_picker(),
+          shiny::tags$strong("Custom instructions"),
+          shiny::textAreaInput("knowledge_instructions",NULL,value=chat_text(profile$instructions),
+            rows=4,width="100%",placeholder=paste("Optional. e.g. Follow the lecture approach, prefer ggplot2",
+              "and base R, use <- for assignment and comment each step."))),
         footer=shiny::div(class="history-actions",
           if(length(docs))shiny::actionButton("knowledge_remove","Remove selected",class="ai-btn"),
-          shiny::actionButton("knowledge_save","Save preferences",class="ai-btn"),
+          shiny::actionButton("knowledge_save","Save instructions",class="ai-btn"),
           htmltools::tagAppendAttributes(shiny::modalButton("Close"),class="ai-btn")),easyClose=TRUE))
     }
     shiny::observeEvent(input$knowledge,{
@@ -1352,7 +1355,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(is.null(knowledge) || state$busy)return()
       tryCatch({
         knowledge$save_profile(knowledge_inputs())
-        shiny::showNotification("Course preferences saved for this project.",type="message")
+        shiny::showNotification("Custom instructions saved for this project.",type="message")
       },error=function(e)shiny::showNotification(conditionMessage(e),type="error"))
     })
     shiny::observeEvent(input$knowledge_remove,{
@@ -1419,7 +1422,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             shiny::p("The most recently used chat reopens after RStudio restarts or package updates. API keys are stored separately. Only bounded conversation context and recent images are sent when you submit a message.")),
           if(!is.null(knowledge))shiny::tagList(
             shiny::tags$strong("Course knowledge"),
-            shiny::p("Knowledge stores lecture PDFs, notes, R code examples and course preferences for this project, separately from chats. Each request is matched locally, and only the few most relevant excerpts are sent, so the answer can follow the methods taught and name its sources."),
+            shiny::p("Knowledge stores lecture PDFs, notes, R code examples and optional custom instructions for this project, separately from chats. Each request is matched locally, and only the few most relevant excerpts are sent, so the answer can follow the methods taught and name its sources."),
             shiny::p("Adding PDFs needs the pdftools package:"),
             render_markdown("~~~r\ninstall.packages(\"pdftools\")\n~~~")),
           shiny::tags$strong("Update"),

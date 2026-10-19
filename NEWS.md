@@ -1,3 +1,11 @@
+# RAssistant 0.3.1
+
+- Simplify the Knowledge dialog: one optional **Custom instructions** box
+  replaces the four preference fields. Preferences saved by 0.3.0 are combined
+  into it without loss; the saved file is rewritten only when you save.
+- Style **Add files** like the other dialog buttons, with a plain hint listing
+  the accepted file types.
+
 # RAssistant 0.3.0
 
 - Add project course knowledge. **Knowledge** stores lecture PDFs, notes and

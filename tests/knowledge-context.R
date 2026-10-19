@@ -27,6 +27,7 @@ app$ask_ai <- fake_ai
 app$validate_script <- function(...)list(ok=TRUE,logs="Within-cluster sum of squares: 78.9",
   plots=character(0),plot_dir=NULL,total_plots=0L,kind="R")
 
+instructions <- "STAT1170: follow the lecture method. Prefer factoextra and use <- for assignment."
 shiny::testServer(app$server, {
   session$flushReact()
   session$setInputs(chat_submit=list(text="How should I choose k?",nonce=1L))
@@ -39,16 +40,15 @@ shiny::testServer(app$server, {
     type="text/markdown",datapath=notes,stringsAsFactors=FALSE))
   check(identical(vapply(knowledge$list(),function(x)x$name,character(1)),"week4.md") && !file.exists(notes),
     "the Knowledge dialog adds an uploaded file and releases the upload")
-  session$setInputs(knowledge_instructions="STAT1170: follow the lecture method.",knowledge_packages="factoextra",
-    knowledge_functions="kmeans()",knowledge_conventions="Use <- for assignment.",knowledge_save=1L)
-  check(identical(knowledge$profile()$packages,"factoextra"),"the Knowledge dialog saves course preferences")
+  session$setInputs(knowledge_instructions=instructions,knowledge_save=1L)
+  check(identical(knowledge$profile()$instructions,instructions),"the Knowledge dialog saves custom instructions")
 
   session$setInputs(chat_submit=list(text="How should I choose k for kmeans clustering?",nonce=2L))
   request <- tail(calls,1L)[[1L]]
-  check(grepl("STANDING COURSE PREFERENCES",request$system,fixed=TRUE) &&
-    grepl("Preferred R packages: factoextra",request$system,fixed=TRUE) &&
+  check(grepl("CUSTOM INSTRUCTIONS",request$system,fixed=TRUE) &&
+    grepl(instructions,request$system,fixed=TRUE) &&
     grepl("in preference to generic alternatives",request$system,fixed=TRUE),
-    "requests carry course preferences and the lecture-first instruction")
+    "requests carry custom instructions and the lecture-first instruction")
   check(grepl("COURSE MATERIAL (retrieved locally for this request):\n[K1] week4.md, lines 1-4",request$prompt,fixed=TRUE) &&
     grepl("fviz_nbclust",request$prompt,fixed=TRUE),"relevant course excerpts are sent with their source label")
   answer <- tail(state$messages,1L)[[1L]]
@@ -57,16 +57,16 @@ shiny::testServer(app$server, {
 
   session$setInputs(chat_submit=list(text="Translate hello into French",nonce=3L))
   unrelated <- tail(calls,1L)[[1L]]
-  check(grepl("STANDING COURSE PREFERENCES",unrelated$system,fixed=TRUE) &&
+  check(grepl("CUSTOM INSTRUCTIONS",unrelated$system,fixed=TRUE) &&
     !grepl("COURSE MATERIAL",unrelated$prompt,fixed=TRUE) && !length(tail(state$messages,1L)[[1L]]$references),
-    "unrelated requests send preferences but no course excerpts")
+    "unrelated requests send custom instructions but no course excerpts")
 
   session$setInputs(chat_submit=list(text="Run my kmeans clustering script and interpret it",nonce=4L))
   check(is.list(state$pending$course) && grepl("fviz_nbclust",state$pending$course$text,fixed=TRUE),
     "a run request keeps the course context for the later analysis")
   session$setInputs(yes=1L)
   analysis <- tail(calls,1L)[[1L]]
-  check(grepl("COURSE MATERIAL",analysis$prompt,fixed=TRUE) && grepl("STANDING COURSE PREFERENCES",analysis$system,fixed=TRUE) &&
+  check(grepl("COURSE MATERIAL",analysis$prompt,fixed=TRUE) && grepl("CUSTOM INSTRUCTIONS",analysis$system,fixed=TRUE) &&
     identical(tail(state$messages,1L)[[1L]]$references[[1L]]$name,"week4.md"),
     "execution analysis uses course material and records its sources")
 
@@ -87,7 +87,7 @@ shiny::testServer(fresh$server, {
   session$flushReact()
   check(any(vapply(state$messages,function(m)length(m$references)>0L,logical(1))),
     "restored chats keep the course sources shown under answers")
-  check(identical(knowledge$profile()$instructions,"STAT1170: follow the lecture method."),
-    "course preferences persist after documents are removed and the app restarts")
+  check(identical(knowledge$profile()$instructions,instructions),
+    "custom instructions persist after documents are removed and the app restarts")
 })
 cat("Completed",checks,"knowledge context checks\n")

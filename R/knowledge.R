@@ -106,7 +106,6 @@
   root <- file.path(directory, "knowledge", unname(tools::md5sum(probe)))
   docs_dir <- file.path(root, "documents")
   profile_path <- file.path(root, "profile.json")
-  profile_fields <- c("instructions", "packages", "functions", "conventions")
   docs <- NULL
   index <- NULL
   valid_id <- function(id) is.character(id) && length(id) == 1L && !is.na(id) && grepl("^[a-f0-9]{32}$", id)
@@ -187,28 +186,27 @@
     index <<- NULL
     invisible(NULL)
   }
+  # One optional text holds the custom instructions. Version 1 files kept four
+  # fields; they are combined on reading, and rewritten only when saved.
   read_profile <- function() {
-    empty <- stats::setNames(as.list(rep("", length(profile_fields))), profile_fields)
-    if (!file.exists(profile_path)) return(empty)
+    if (!file.exists(profile_path)) return(list(instructions = ""))
     value <- tryCatch(jsonlite::fromJSON(profile_path, simplifyVector = FALSE), error = function(e) NULL)
-    if (!is.list(value) || !identical(value$project, project)) return(empty)
-    stats::setNames(lapply(profile_fields, function(f) text_value(value[[f]], 4000L)), profile_fields)
+    if (!is.list(value) || !identical(value$project, project)) return(list(instructions = ""))
+    legacy <- c(packages = "Preferred R packages: ", functions = "Preferred R functions: ",
+      conventions = "Coding conventions:\n")
+    parts <- c(text_value(value$instructions, 20000L), vapply(names(legacy), function(field) {
+      text <- text_value(value[[field]], 4000L)
+      if (nzchar(text)) paste0(legacy[[field]], text) else ""
+    }, character(1)))
+    list(instructions = paste(parts[nzchar(parts)], collapse = "\n\n"))
   }
   save_profile <- function(profile) {
-    value <- stats::setNames(lapply(profile_fields, function(f) text_value(profile[[f]], 4000L)), profile_fields)
-    write_atomic(c(list(schema = 1L, project = project), value,
+    value <- list(instructions = text_value(profile$instructions, 20000L))
+    write_atomic(c(list(schema = 2L, project = project), value,
       list(updated_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))), profile_path)
     invisible(value)
   }
-  profile_text <- function() {
-    profile <- read_profile()
-    parts <- c(
-      if (nzchar(profile$instructions)) paste0("Course instructions:\n", profile$instructions),
-      if (nzchar(profile$packages)) paste0("Preferred R packages: ", profile$packages),
-      if (nzchar(profile$functions)) paste0("Preferred R functions: ", profile$functions),
-      if (nzchar(profile$conventions)) paste0("Coding conventions:\n", profile$conventions))
-    paste(parts, collapse = "\n")
-  }
+  profile_text <- function() read_profile()$instructions
   build_index <- function() {
     chunks <- unlist(lapply(load_docs(), function(doc) lapply(doc$chunks, function(chunk)
       list(name = doc$name, label = chunk$label, text = chunk$text))), recursive = FALSE)

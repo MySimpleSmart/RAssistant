@@ -49,18 +49,29 @@ main <- function() {
   check(nchar(store$retrieve("kmeans clustering regression model",budget=300L)$text)<=400L,
     "retrieved excerpts respect the character budget")
 
-  store$save_profile(list(instructions="STAT1170: follow the lecture approach.",packages="ggplot2, factoextra",
-    functions="kmeans(), lm()",conventions="Use <- for assignment."))
-  check(grepl("STAT1170",store$profile_text(),fixed=TRUE) && grepl("Preferred R packages: ggplot2, factoextra",
-    store$profile_text(),fixed=TRUE),"course preferences are saved and formatted for prompts")
+  # Version 0.3.0 saved four preference fields; they must all survive.
+  profile_path <- file.path(store$path,"profile.json")
+  jsonlite::write_json(list(schema=1L,project=project,instructions="STAT1170: follow the lecture approach.",
+    packages="ggplot2, factoextra",functions="kmeans(), lm()",conventions="Use <- for assignment.",
+    updated_at="2026-10-19T00:00:00Z"),profile_path,auto_unbox=TRUE)
+  legacy <- readLines(profile_path)
+  combined <- store$profile()$instructions
+  check(identical(combined,paste("STAT1170: follow the lecture approach.","Preferred R packages: ggplot2, factoextra",
+    "Preferred R functions: kmeans(), lm()","Coding conventions:\nUse <- for assignment.",sep="\n\n")) &&
+    identical(store$profile_text(),combined) && identical(readLines(profile_path),legacy),
+    "earlier preference fields are combined into custom instructions without rewriting the file")
+  store$save_profile(list(instructions=combined))
+  saved <- jsonlite::fromJSON(profile_path,simplifyVector=FALSE)
+  check(identical(saved$schema,2L) && identical(saved$instructions,combined) && is.null(saved$packages) &&
+    identical(store$profile()$instructions,combined),"saving stores one custom instructions text with no data loss")
 
   child <- callr::r(function(project,directory) {
     store <- getFromNamespace(".knowledge_store","RAssistant")(project=project,directory=directory)
-    list(names=vapply(store$list(),function(x)x$name,character(1)),profile=store$profile()$packages,
+    list(names=vapply(store$list(),function(x)x$name,character(1)),profile=store$profile()$instructions,
       text=store$retrieve("choose k for kmeans clustering")$text)
   },args=list(project,data),libpath=.libPaths(),user_profile=FALSE,system_profile=FALSE)
-  check(identical(sort(child$names),c("lab5.R","week4.md")) && identical(child$profile,"ggplot2, factoextra") &&
-    grepl("fviz_nbclust",child$text,fixed=TRUE),"documents and preferences survive a completely new R process")
+  check(identical(sort(child$names),c("lab5.R","week4.md")) && identical(child$profile,combined) &&
+    grepl("fviz_nbclust",child$text,fixed=TRUE),"documents and custom instructions survive a completely new R process")
 
   revised <- file.path(root,"revised","week4.md");dir.create(dirname(revised))
   writeLines(c("# Week 4 revised","Use hierarchical clustering with hclust(dist(x), method = \"ward.D2\") and cutree."),revised)
