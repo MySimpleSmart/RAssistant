@@ -47,7 +47,7 @@ run_rstudio_ai_chat_visual <- function(api_key = NULL) {
       stop("Cannot open the OS credential store. Run Setup.R and retry. ",
         conditionMessage(e), call. = FALSE)
     })
-    if (!backend$name %in% c("wincred", "macos", "secret_service")) {
+    if (!inherits(backend, c("backend_wincred", "backend_macos", "backend_secret_service"))) {
       stop("A secure OS credential store is unavailable. Configure keyring for ",
         "Windows Credential Manager, Keychain, or Secret Service, or use OPENAI_API_KEY.",
         call. = FALSE)

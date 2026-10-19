@@ -31,7 +31,8 @@ main <- function() {
   }
   saved <- NULL;prompts <- 0L;reads <- 0L;writes <- 0L;starts <- 0L;opens <- 0L
   fail_list <- FALSE;fail_get <- FALSE;fail_set <- FALSE;fail_prompt <- FALSE
-  available <- TRUE;backend_name <- "wincred";answer <- "synthetic-first-key"
+  available <- TRUE;backend_name <- "windows credential store";backend_type <- "backend_wincred"
+  answer <- "synthetic-first-key"
   private <- NULL;factory_fail <- FALSE
   backend <- list(name="wincred",list=function(service) {
     stopifnot(identical(service,"RAssistant/OpenAI"))
@@ -58,6 +59,7 @@ main <- function() {
     opens <<- opens+1L
     if(factory_fail)stop("Synthetic unavailable backend")
     backend$name <- backend_name
+    class(backend) <- c(backend_type,"backend")
     backend
   })
   patch("shiny","startApp",function(appDir,launch.browser,host,quiet,...) {
@@ -125,10 +127,13 @@ main <- function() {
   fail_set <- FALSE;fail_prompt <- TRUE
   check(failed(launcher(),"hidden password prompt") && is.null(saved),
     "password-dialog errors report that no key was saved")
-  fail_prompt <- FALSE;backend_name <- "env"
+  fail_prompt <- FALSE;backend_name <- "env";backend_type <- "backend_env"
   check(failed(launcher(),"secure OS credential store is unavailable"),
     "nonpersistent environment backends are rejected")
-  backend_name <- "wincred";factory_fail <- TRUE
+  backend_name <- "windows credential store";backend_type <- "backend_file"
+  check(failed(launcher(),"secure OS credential store is unavailable"),
+    "a friendly display name cannot make a file backend look like Windows Credential Manager")
+  backend_type <- "backend_wincred";factory_fail <- TRUE
   check(failed(launcher(),"Cannot open the OS credential store"),
     "credential backend initialization errors have actionable diagnostics")
   check(identical(globals,ls(globalenv(),all.names=TRUE)),
