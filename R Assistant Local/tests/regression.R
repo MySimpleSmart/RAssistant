@@ -55,7 +55,7 @@ shiny::testServer(app$server, {
   session$flushReact()
   check(grepl("No simple literal",get_csv_headers("x <- 1",tempdir(),""),fixed=TRUE), "scripts without CSV references skip header reads")
   csv <- tempfile(fileext=".csv");writeLines(c("first,second","1,2"),csv)
-  probe <- paste0('read.csv("',csv,'")')
+  probe <- paste0("read.csv(",encodeString(csv,quote='"'),")")
   check(grepl("first, second",get_csv_headers(probe,tempdir(),""),fixed=TRUE), "CSV preflight preserves verified default column names")
   reads <- header_reads
   get_csv_headers(probe,tempdir(),"")
