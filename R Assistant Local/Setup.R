@@ -2,7 +2,7 @@
 local({
   minimum <- c(shiny="1.14.0",ellmer="0.5.0",rstudioapi="0.0.0",
     commonmark="0.0.0",htmltools="0.0.0",jsonlite="0.0.0",
-    callr="0.0.0",knitr="0.0.0",keyring="1.3.0")
+    callr="0.0.0",knitr="0.0.0",keyring="1.3.0",pdftools="3.4.0")
   needed <- names(minimum)[vapply(names(minimum),function(pkg) {
     version <- tryCatch(utils::packageVersion(pkg),error=function(e)NULL)
     is.null(version) || version < minimum[[pkg]]

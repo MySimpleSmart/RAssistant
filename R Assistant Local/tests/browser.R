@@ -115,6 +115,35 @@ main <- function() {
   js('document.getElementById("send").click();')
   wait_js('document.querySelectorAll(".attachment-item").length===0 && !document.getElementById("send").disabled')
   check(isTRUE(js('Array.from(document.querySelectorAll(".msg.user")).pop().textContent.includes("Uploaded image.")')), "image-only messages can be sent")
+  js('stage([new File(["Unicode notes: Монгол.\\nkeep <- x > 0 & x < 2; <script>unsafe()</script>"],"notes.txt",{type:""}),new File(["id,score\\n001,42\\n002,73\\n"],"data.csv",{type:"text/csv"})]);')
+  wait_js('document.querySelectorAll("#attachment_status .document-card").length===2 && !document.getElementById("send").disabled')
+  check(isTRUE(js('document.querySelector("#attachment_status").textContent.includes("2 file(s) ready") && document.querySelector("#attachment_status").textContent.includes("2 column(s)")')),
+    "native Upload accepts text and CSV together and shows parsed previews")
+  js('document.querySelector("#attachment_status .document-card summary").click();')
+  check(isTRUE(js('document.querySelector("#attachment_status").textContent.includes("Монгол") && document.querySelector("#attachment_status").textContent.includes("<script>unsafe()</script>") && document.querySelector("#attachment_status script")===null')),
+    "document preview preserves Unicode and escapes uploaded HTML")
+  js('document.getElementById("prompt").value="Read these files";document.getElementById("send").click();')
+  wait_js('document.querySelectorAll("#attachment_status .document-card").length===0 && !document.getElementById("send").disabled')
+  check(isTRUE(js('document.querySelectorAll(".sent-documents .document-card").length===2 && document.querySelector(".sent-documents").textContent.includes("File 1")')),
+    "sent documents stay readable in chat after draft cleanup")
+  js('document.getElementById("prompt").value="Explain the previous CSV file";document.getElementById("send").click();')
+  wait_js('!document.getElementById("send").disabled')
+  check(isTRUE(js('document.querySelectorAll(".sent-documents .document-card").length===2 && document.getElementById("uploading_indicator").textContent===""')),
+    "document follow-ups finish without duplicating cards or leaving upload state active")
+  if(requireNamespace("pdftools",quietly=TRUE)) {
+    pdf_fixture <- tempfile(fileext=".pdf")
+    on.exit(unlink(pdf_fixture),add=TRUE)
+    grDevices::pdf(pdf_fixture,width=6,height=3);plot.new();text(.5,.5,"PDF browser reference: BROWSER73");invisible(grDevices::dev.off())
+    encoded <- jsonlite::toJSON(jsonlite::base64_enc(readBin(pdf_fixture,"raw",file.info(pdf_fixture)$size)),auto_unbox=TRUE)
+    js(paste0('stage([new File([Uint8Array.from(atob(',encoded,'),function(c){return c.charCodeAt(0);})],"exercise.pdf",{type:"application/pdf"})]);'))
+    wait_js('document.querySelectorAll("#attachment_status .document-card").length===1 && !document.getElementById("send").disabled',timeout=30)
+    check(isTRUE(js('document.querySelector("#attachment_status").textContent.includes("BROWSER73") && document.querySelector("#attachment_status").textContent.includes("1 page(s)")')),
+      "native PDF upload extracts real page text into its preview")
+    js('document.getElementById("send").click();')
+    wait_js('document.querySelectorAll("#attachment_status .document-card").length===0 && !document.getElementById("send").disabled')
+    check(isTRUE(js('document.querySelectorAll(".sent-documents .document-card").length===3')),
+      "PDF sends finish cleanly and preserve a readable chat card")
+  } else if(identical(Sys.getenv("RASSISTANT_REQUIRE_PDFTOOLS"),"true"))stop("PDF browser checks require pdftools")
   js('document.getElementById("prompt").value="Please run the script";document.getElementById("send").click();')
   wait_js('document.getElementById("yes")!==null')
   check(isTRUE(js('document.getElementById("send").disabled && !document.getElementById("new_chat").disabled')), "approval state blocks sends and allows New")
