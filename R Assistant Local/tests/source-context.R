@@ -16,7 +16,7 @@ app$active_doc <- function(id=NULL) {
 }
 app$ask_ai <- function(system_prompt,prompt,images=character()) {
   calls$n <- calls$n+1L;calls$prompt <- prompt;calls$images <- images;calls$system <- system_prompt
-  stopifnot(length(images)==1L, file.exists(images[[1L]]))
+  stopifnot(length(images)>=1L, length(images)<=6L, all(file.exists(images)))
   if (isTRUE(calls$fail)) stop("Simulated API failure")
   "Image analysis completed."
 }
@@ -112,6 +112,14 @@ shiny::testServer(app$server, {
   check(!grepl("LARGE_EDITOR_PAYLOAD",calls$prompt,fixed=TRUE) && grepl("50,000",calls$prompt,fixed=TRUE),
         "oversized Source text is explicitly omitted from the image request")
   before <- calls$n
+  session$setInputs(chat_submit=list(text="Explain the previous screenshot again.",nonce=33L))
+  check(calls$n==before+1L && !grepl("LARGE_EDITOR_PAYLOAD",calls$prompt,fixed=TRUE),
+        "retained screenshots support follow-ups while oversized Source code stays omitted")
+  before <- calls$n
+  session$setInputs(chat_submit=list(text="Please run the script",nonce=34L))
+  check(calls$n==before && is.null(state$pending) && !state$busy,
+        "retained screenshots never allow validation of an omitted oversized script")
+  session$setInputs(new_chat=1L)
   session$setInputs(chat_submit=list(text="Review my code",nonce=32L))
   check(calls$n==before && !state$busy,"text-only code requests retain the Source size limit")
 })

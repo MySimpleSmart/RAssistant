@@ -57,7 +57,7 @@ shiny::testServer(app$server, {
   session$setInputs(paste_image=list(image=urls[[2L]],filename="second.png",nonce=6L,epoch=state$upload_epoch))
   session$setInputs(chat_submit=list(text="Compare the readable text in these two screenshots.",nonce=7L))
   request <- last_call()
-  check(length(request$paths)==2L && identical(request$bytes,unname(bytes)),"multiple screenshots preserve their upload order and original contents")
+  check(length(request$paths)>=2L && identical(request$bytes[1:2],unname(bytes)),"multiple screenshots preserve their upload order and original contents")
   check(grepl("UPLOADED IMAGES THIS TURN: 2",request$prompt,fixed=TRUE),"multiple images are described without a preset image category")
   session$setInputs(paste_image=list(image=urls[[1L]],filename="requested-comment.png",nonce=8L,epoch=state$upload_epoch))
   session$setInputs(chat_submit=list(text="Please write an Academic English Comment using only the visible results.",nonce=9L))

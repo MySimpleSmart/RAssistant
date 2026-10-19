@@ -36,13 +36,29 @@ If `OPENAI_API_KEY` is configured, update that setting instead. Store errors are
 reported before launch. No key is written to this folder, `.Renviron`, `.Rhistory`
 or the process environment by the assistant.
 
-Existing chat, image uploads, Copy and explicitly approved R/Rmd validation work
-as before. This local copy keeps conversation context while the app is open;
-closing it ends that conversation. Console output is supplied by pasting it.
+The assistant chooses R functions and packages to suit the task, the user's
+requirements and the existing code. It can use base R/stats, ggplot2, GGally,
+tidyverse or specialist packages as appropriate; no particular library is forced.
+Additional analysis packages are separate from the dependencies in Setup.R.
+
+While the app is open, follow-up requests reuse the original pixels from the most
+recent successful image turn (up to 3 earlier images). New uploads can be compared
+with those images. Uploads are labelled **Image 1**, **Image 2**, etc.; refer to an
+older image by number, for example, "Compare images 1 and 2." A request contains
+at most 3 new uploads plus 3 retained images. Missing image references are identified
+rather than replaced with an unrelated image. Retained pixels count toward API
+input usage; earlier images are selected locally without a separate API call.
+
+Changing Source tabs keeps the conversation and assignment. Only the freshly read
+Source is used as the current code. Use **New** to start a separate conversation
+and clear retained images. This local copy keeps history only while the app is
+open; closing it ends that conversation. Console output is supplied by pasting it.
+Code Copy and explicitly approved R/Rmd validation remain available.
 
 Tests (synthetic credentials and model responses), run from this folder:
 
 ```r
 source("tests/startup.R", encoding = "UTF-8")
 source("tests/windows-paths.R", encoding = "UTF-8")
+source("tests/conversation-context.R", encoding = "UTF-8")
 ```

@@ -24,7 +24,7 @@ jobs:
         run: |
           setwd("R Assistant Local")
           Sys.unsetenv("OPENAI_API_KEY")
-          for (suite in c("startup", "windows-paths", "regression", "source-context", "assignment-context", "image-reading")) {
+          for (suite in c("startup", "windows-paths", "regression", "source-context", "assignment-context", "image-reading", "conversation-context")) {
             status <- system2(file.path(R.home("bin"), "Rscript.exe"), c(paste0("tests/", suite, ".R")))
             if (status != 0L) stop("Failed: ", suite)
           }

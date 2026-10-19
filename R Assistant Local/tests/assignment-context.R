@@ -53,6 +53,6 @@ shiny::testServer(app$server, {
   check(identical(state$assignment,brief),"a full brief can replace an initial short part reference")
   app$initial$id <- "different-doc"
   session$setInputs(chat_submit=list(text="Help with this new script.",nonce=42L))
-  check(!nzchar(state$assignment),"switching Source documents clears assignment context")
+  check(identical(state$assignment,brief),"switching Source documents preserves the ongoing assignment")
 })
 cat(checks,"assignment-context checks passed\n")
