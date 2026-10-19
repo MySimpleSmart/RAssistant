@@ -44,10 +44,18 @@ check(nchar(excerpt)<=5000L && grepl("answer is 73",excerpt,fixed=TRUE) && grepl
 line <- make("single.txt",paste0(strrep("a",10000L)," UNIQUE_TARGET_81 ",strrep("b",10000L)))
 single <- app$make_document_attachment(line,"single.txt");single$number<-1L
 check(grepl("UNIQUE_TARGET_81",app$document_context(list(single),"UNIQUE_TARGET_81",max_chars=3000L),fixed=TRUE),"retrieval keeps a requested match inside a very long single line")
+paged <- list(number=1L,label="long.pdf",summary="PDF · 2 pages",chunks=list(
+  list(label="page 1",text=strrep("irrelevant ",1000L)),list(label="page 2",text=paste0("REQUESTED_PAGE_2 ",strrep("details ",1000L)))))
+check(grepl("REQUESTED_PAGE_2",app$document_context(list(paged),"2-р хуудсыг тайлбарла",max_chars=3000L),fixed=TRUE),"Mongolian page references select the requested page from a long PDF")
 payload <- function(path)paste0("data:application/octet-stream;base64,",jsonlite::base64_enc(readBin(path,"raw",file.info(path)$size)))
 decoded <- app$decode_document_upload(payload(notes),"notes.txt",root)
 check(identical(readBin(decoded,"raw",file.info(decoded)$size),readBin(notes,"raw",file.info(notes)$size)),"file transport preserves the original bytes")
 unlink(decoded)
+before <- sort(list.files(root))
+app$writeBin <- function(object,con,...) {base::writeBin(head(object,1L),con);stop("Synthetic disk full")}
+failed_write <- fails(app$decode_document_upload(payload(notes),"notes.txt",root))
+rm("writeBin",envir=app)
+check(failed_write && identical(sort(list.files(root)),before),"failed document writes remove partially created temporary files")
 check(fails(app$decode_document_upload("data:text/plain;base64,!!!!","notes.txt",root)),"invalid document base64 is rejected")
 check(fails(app$make_document_attachment(notes,"fake.pdf")),"a renamed non-PDF is rejected by signature")
 pdf <- file.path(root,"exercise.pdf")

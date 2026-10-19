@@ -728,7 +728,10 @@ run_rstudio_ai_chat_visual <- function(api_key = NULL) {
     raw <- jsonlite::base64_dec(encoded)
     if (!length(raw) || length(raw)>20*1024^2) stop("Each document must be between 1 byte and 20 MB.")
     path <- tempfile("document-",tmpdir=directory,fileext=paste0(".",tolower(tools::file_ext(label))))
+    keep <- FALSE
+    on.exit(if(!keep)unlink(path),add=TRUE)
     writeBin(raw,path)
+    keep <- TRUE
     path
   }
   document_text <- function(path) {
@@ -824,8 +827,9 @@ run_rstudio_ai_chat_visual <- function(api_key = NULL) {
     sections <- lapply(documents,function(d) {
       chunks <- d$chunks
       scores <- vapply(chunks,function(x)sum(vapply(tokens,function(t)grepl(t,tolower(x$text),fixed=TRUE),logical(1))),numeric(1))
-      pages <- regmatches(request,gregexpr("(?i)page\\s+[0-9]+",request,perl=TRUE))[[1L]]
-      for (p in pages) scores <- scores+1000L*vapply(chunks,function(x)identical(tolower(x$label),tolower(p)),logical(1))
+      pages <- regmatches(request,gregexpr("(?i)(?:pages?|p[.]|хуудас)\\s*#?\\s*[0-9]+|[0-9]+[ -]*(?:р|дэх|дахь)?\\s*хууд[[:alpha:]]*",request,perl=TRUE))[[1L]]
+      pages <- suppressWarnings(as.integer(gsub("[^0-9]","",pages)))
+      scores <- scores+1000L*vapply(chunks,function(x)x$label %in% paste("page",pages),logical(1))
       rendered <- vapply(chunks,function(x)paste0("[",x$label,"]\n",x$text),character(1))
       full <- nchar(paste(rendered,collapse="\n\n"))<=budget-800L
       selected <- seq_along(chunks); chosen <- rendered
