@@ -7,6 +7,17 @@
 ^\.DS_Store$
 ^\.Renviron.*$
 ^\.env.*$
-^tests/(helpers|regression|source-context|assignment-context|image-reading|conversation-context|conversation-history|live-image-reading|browser)\.R$
+^tests/(helpers|regression|source-context|assignment-context|image-reading|conversation-context|conversation-history|knowledge-context|live-image-reading|browser)\.R$
 ^.*\.Rcheck$
 ^.*\.(tar\.gz|tgz|zip)$
+^R Assistant Local$
+^local$
+^scratch$
+^.*\.local\..*$
+^.*\.Rproj$
+^\.Rproj\.user$
+^\.Rhistory$
+^\.RData$
+^\.Ruserdata$
+^00LOCK-.*$
+^\.quarto$

@@ -6,20 +6,51 @@ R help and explicitly approved R/Rmd validation.
 
 ## Install
 
-Run in the **RStudio Console** with R 4.1 or newer:
+Run in the **RStudio Console** with R 4.2 or newer (the current R release is
+recommended). First choose **Session > Restart R**, so no packages are loaded:
 
 ```r
 install.packages("remotes", repos = "https://cloud.r-project.org")
-remotes::install_github("MySimpleSmart/RAssistant", upgrade = "never")
+remotes::install_url("https://github.com/MySimpleSmart/RAssistant/archive/refs/heads/main.tar.gz",
+  upgrade = "always")
 RAssistant::launch()
 ```
 
-Use your personal R library if R offers to create one. RAssistant is installed in
+This downloads the package archive directly instead of using
+`install_github()`, which calls the GitHub API. That API allows only 60 anonymous
+requests per hour per IP address, shared by everyone on a university or office
+network, and then fails with **HTTP error 403. API rate limit exceeded**.
+`upgrade = "always"` updates older installed dependencies, such as shiny and
+ellmer, to the versions RAssistant requires; `"never"` leaves them too old and
+installation fails. Use your personal R library if R offers to create one. RAssistant is installed in
 an R package library, separately from the RStudio application. The RStudio Addins
 menu also has an **RAssistant** entry after installation.
 The toolbar shows the installed version. **Help** contains launch, API-key and
 update instructions with Copy buttons, so you do not need the old local script
 to find the commands.
+
+### Windows troubleshooting
+
+- **"HTTP error 403. API rate limit exceeded":** you used `install_github()` on
+  a shared network. Use the `install_url()` command above, which does not use
+  the GitHub API.
+- **"cannot remove prior installation" or "lock" errors:** a package is in use.
+  Choose **Session > Restart R**, then run the install command again before
+  loading anything else. If a `00LOCK-*` folder remains in the library shown by
+  `.libPaths()[1]`, delete it and retry.
+- **"ERROR: lazy loading failed for package 'RAssistant'"** with no other
+  message: a dependency (often curl) was upgraded while loaded in the same
+  session. Choose **Session > Restart R** and run the install command again.
+  If it still fails, this shows which dependency cannot load and why:
+  `for (p in c("shiny", "ellmer", "keyring", "callr", "knitr", "later")) tryCatch(loadNamespace(p), error = function(e) message(p, ": ", conditionMessage(e)))`
+- The **Rtools** warning is harmless; RAssistant has no compiled code.
+- **"package 'shiny' ... was found, but >= 1.14.0 is required"** (or ellmer):
+  restart R and use `upgrade = "always"` as shown above.
+- **Compilation, Rtools or "binary version is not available" messages:** your R
+  is too old for CRAN's Windows binaries. Install the current R from
+  <https://cloud.r-project.org/bin/windows/base/>, restart RStudio and reinstall.
+- **"Open RStudio and run RAssistant::launch()":** the assistant runs in the
+  RStudio Viewer, not RGui or a terminal. Open RStudio and run it there.
 
 ## First-launch API key
 
@@ -156,6 +187,36 @@ options(RAssistant.save_history = FALSE) # Disable durable History for this sess
 
 The standalone script retains in-session context; durable History is provided
 by the installed package.
+
+## Course knowledge
+
+From 0.3.0, **Knowledge** stores course material for the current RStudio
+project: lecture PDFs, notes (`.txt`, `.md`) and R code examples (`.R`, `.Rmd`,
+`.qmd`), up to 50 MB each. It also keeps course preferences: instructions,
+preferred packages, preferred functions and coding conventions.
+
+For every request, RAssistant matches your message, the pasted task and the
+functions in the open script against this material on your computer. Only the
+few most relevant sections (about 6,000 characters at most) are added, with
+their file and page or line numbers; unrelated requests add none. No extra API
+call is made for searching. The assistant is instructed to prefer the methods,
+packages and functions taught in that material over generic alternatives and to
+name the source it used. Answers that received course material list it under
+**Course material**.
+
+Knowledge is stored per project in `tools::R_user_dir("RAssistant", "data")`,
+separately from chat History and the package installation, so it survives
+RStudio restarts and package updates. Only extracted text is kept, not the
+original files. Re-adding a file with the same name replaces the earlier
+version; deleting a chat does not affect knowledge, and removing a document does
+not affect chats.
+
+Adding PDFs needs the pdftools package. Scanned PDFs without a text layer need
+OCR first.
+
+```r
+install.packages("pdftools")
+```
 
 ## Use and limits
 

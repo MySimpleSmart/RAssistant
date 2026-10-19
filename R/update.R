@@ -1,15 +1,34 @@
 .install_from_github <- function(lib, ref) {
+  # Archive downloads avoid the GitHub REST API: its anonymous quota of 60
+  # requests per hour is shared by every user behind a campus or office IP.
+  sha <- if (grepl("^[a-f0-9]{40}$", ref)) ref else .github_main_commit(utils::download.file, ref)
   # A clean process avoids installing over a namespace in use on Windows.
   # R's standard installation lock/rollback remains enabled.
-  callr::r(function(lib, ref) {
+  callr::r(function(lib, ref, sha) {
     old <- options(warn = 2)
     on.exit(options(old), add = TRUE)
-    remotes::install_github("MySimpleSmart/RAssistant", ref = ref,
-      lib = lib, dependencies = NA, upgrade = "never", build_vignettes = FALSE)
+    archive <- tempfile(fileext = ".tar.gz")
+    source <- tempfile("RAssistant-source-")
+    on.exit(unlink(c(archive, source), recursive = TRUE), add = TRUE)
+    utils::download.file(paste0("https://github.com/MySimpleSmart/RAssistant/archive/", sha, ".tar.gz"),
+      archive, mode = "wb", quiet = TRUE)
+    utils::untar(archive, exdir = source)
+    pkg <- list.dirs(source, recursive = FALSE)
+    if (length(pkg) != 1L || !file.exists(file.path(pkg, "DESCRIPTION"))) {
+      stop("The downloaded package archive is invalid.", call. = FALSE)
+    }
+    # Record the commit, as install_github() did, so unchanged updates are detected.
+    desc <- file.path(pkg, "DESCRIPTION")
+    fields <- read.dcf(desc)
+    fields <- fields[, !grepl("^Remote", colnames(fields)), drop = FALSE]
+    write.dcf(cbind(fields, RemoteType = "github", RemoteUsername = "MySimpleSmart",
+      RemoteRepo = "RAssistant", RemoteRef = ref, RemoteSha = sha), desc)
+    remotes::install_deps(pkg, dependencies = NA, upgrade = "never", lib = lib)
+    utils::install.packages(pkg, lib = lib, repos = NULL, type = "source")
     info <- utils::packageDescription("RAssistant", lib.loc = lib)
     list(path = normalizePath(file.path(lib, "RAssistant"), mustWork = TRUE),
       version = info$Version, sha = if (is.null(info$RemoteSha)) "" else info$RemoteSha)
-  }, args = list(lib = lib, ref = ref),
+  }, args = list(lib = lib, ref = ref, sha = sha),
   libpath = unique(c(lib, .libPaths())), show = TRUE)
 }
 
@@ -70,7 +89,7 @@ update_assistant <- function(ref = "main") {
   invisible(NULL)
 }
 
-.github_main_commit <- function(download) {
+.github_main_commit <- function(download, ref = "main") {
   path <- tempfile()
   on.exit(unlink(path), add = TRUE)
   status <- suppressWarnings(download(
@@ -103,9 +122,14 @@ update_assistant <- function(ref = "main") {
       lengths[[2L]] != 0L || utils::tail(lengths, 1L) != 0L) {
     stop("Invalid package references.", call. = FALSE)
   }
-  main <- grep("^[a-f0-9]{40} refs/heads/main$", records, value = TRUE, useBytes = TRUE)
-  if (length(main) != 1L) stop("Could not identify the current main commit.", call. = FALSE)
-  substr(main, 1L, 40L)
+  refs <- grep("^[a-f0-9]{40} ", records, value = TRUE, useBytes = TRUE)
+  names <- substring(refs, 42L)
+  # Prefer a branch, then an annotated tag's peeled commit, then a plain tag.
+  for (name in paste0("refs/", c("heads/", "tags/", "tags/"), ref, c("", "^{}", ""))) {
+    hit <- refs[names == name]
+    if (length(hit) == 1L) return(substr(hit, 1L, 40L))
+  }
+  stop("Could not identify the current ", ref, " commit.", call. = FALSE)
 }
 
 .download_version_file <- function(path, download = utils::download.file) {
@@ -210,5 +234,6 @@ update_assistant <- function(ref = "main") {
   .start_update_check()
   list(version = .installed_info()$version, poll_update = .poll_update_check,
     refresh_update = function() .start_update_check(force = TRUE),
-    request_update = .schedule_update, history = .conversation_store())
+    request_update = .schedule_update, history = .conversation_store(),
+    knowledge = .knowledge_store())
 }

@@ -2,11 +2,15 @@ name: R checks
 on:
   push:
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   check:
     runs-on: ${{ matrix.os }}
+    env:
+      # Fail rather than skip the PDF knowledge checks when pdftools is missing.
+      RASSISTANT_REQUIRE_PDFTOOLS: "true"
     strategy:
       fail-fast: false
       matrix:
@@ -18,12 +22,14 @@ jobs:
           use-public-rspm: true
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::rcmdcheck
+          extra-packages: |
+            any::rcmdcheck
+            any::pdftools
       - name: Check packaged script and app regressions
         shell: Rscript {0}
         run: |
           source("tools/sync-app.R")
-          for (suite in c("regression", "source-context", "assignment-context", "image-reading", "conversation-context", "conversation-history")) {
+          for (suite in c("regression", "source-context", "assignment-context", "image-reading", "conversation-context", "conversation-history", "knowledge-context")) {
             status <- system2(file.path(R.home("bin"), "Rscript"), paste0("tests/", suite, ".R"))
             if (status != 0L) stop("Failed: ", suite)
           }

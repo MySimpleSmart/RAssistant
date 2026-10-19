@@ -14,3 +14,12 @@ bkup.R
 *.tgz
 *.zip
 .Rproj.user/
+
+# Local-only copies, scratch work and R/RStudio session files
+/R Assistant Local/
+/local/
+/scratch/
+*.local.*
+*.Rproj
+00LOCK-*/
+.quarto/

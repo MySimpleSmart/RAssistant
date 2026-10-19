@@ -51,6 +51,13 @@ Set \code{options(RAssistant.history_dir = "...")} before launch to change its
 location, or \code{options(RAssistant.save_history = FALSE)} to disable persistence.
 Already-closed conversations from versions before 0.2.0 cannot be recovered.
 
+Knowledge stores lecture PDFs, notes, R code examples and course preferences per
+project, separately from History. Each request is matched locally, and only a
+bounded set of relevant excerpts, labelled by file and page or lines, is sent.
+Set \code{options(RAssistant.knowledge_dir = "...")} before launch to change its
+location, or \code{options(RAssistant.knowledge_chars = 6000)} to change the
+excerpt budget. Adding PDFs requires the suggested \pkg{pdftools} package.
+
 Close the assistant before \code{update_assistant()}. Updates use the library
 containing the loaded package, retain normal installation locking and run in a
 separate R process. Run \code{launch()} afterward; it reloads the new package code

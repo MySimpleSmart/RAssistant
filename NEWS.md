@@ -1,3 +1,29 @@
+# RAssistant 0.3.0
+
+- Add project course knowledge. **Knowledge** stores lecture PDFs, notes and
+  R code examples, plus course instructions, preferred packages, functions and
+  coding conventions, per RStudio project.
+- Retrieve relevant sections locally for every chat, image and validation
+  request, without extra API calls. Send only a bounded set of labelled
+  excerpts, and nothing for unrelated requests. Instruct the assistant to prefer
+  lecture-taught methods and to cite the file and page or lines it used.
+  Answers list the course material they received.
+- Keep knowledge separate from chat History and package installations, so both
+  survive restarts and updates. Chats store source labels, not excerpts.
+- PDF text extraction uses the suggested pdftools package, or Poppler's
+  `pdftotext` when available.
+- Fix loading on Windows: the assistant script is now pure ASCII, using Unicode
+  escapes for its Mongolian request patterns, so it loads identically in every
+  locale and with RStudio's UTF-8 Source command.
+- Require R 4.2 or newer, the first Windows release that uses UTF-8 natively.
+- Install and update without the GitHub REST API, whose anonymous quota of 60
+  requests per hour is shared per IP and fails with HTTP 403 on campus networks.
+  `update_assistant()` resolves the commit over public Git HTTP, downloads that
+  commit's archive and still records its SHA. The README uses `install_url()`.
+- Install with `upgrade = "always"` in a freshly restarted R session, so older
+  shiny and ellmer installations are upgraded rather than failing installation.
+  Add Windows install troubleshooting to the README.
+
 # RAssistant 0.2.2
 
 - Resolve the current main commit through public Git HTTP references, then read
