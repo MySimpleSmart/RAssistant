@@ -72,6 +72,34 @@ main <- function() {
   check(starts==before+2L,"expired metadata is refreshed on the next launch")
   env$.poll_update_check()
 
+  # Exercise the real downloader with a fake HTTP transport: raw metadata must
+  # work independently of REST API quotas and must not reuse a stale branch URL.
+  path <- tempfile(fileext=".dcf")
+  on.exit(unlink(path),add=TRUE)
+  requests <- list()
+  transport <- function(url,...) {
+    requests[[length(requests)+1L]] <<- c(list(url=url,timeout=getOption("timeout")),list(...))
+    writeLines(c("Package: RAssistant","Version: 0.1.2"),path)
+    0L
+  }
+  old_timeout <- getOption("timeout")
+  downloader <- get(".download_version_file",ns)
+  downloader(path,download=transport);downloader(path,download=transport)
+  first <- requests[[1L]];second <- requests[[2L]]
+  check(grepl("^https://raw[.]githubusercontent[.]com/MySimpleSmart/RAssistant/main/DESCRIPTION[?]ra_check=",first$url) &&
+    !grepl("api.github.com",first$url,fixed=TRUE),
+    "public version discovery does not consume the IP-shared GitHub REST API quota")
+  check(!identical(first$url,second$url) && identical(first$cacheOK,FALSE) &&
+    identical(unname(first$headers[["Cache-Control"]]),"no-cache, max-age=0") &&
+    identical(unname(first$headers[["Pragma"]]),"no-cache"),
+    "fresh request URLs and revalidation headers avoid stale raw-branch metadata")
+  check(identical(first$timeout,5L) && identical(first$method,"libcurl") &&
+    identical(first$mode,"wb") && identical(getOption("timeout"),old_timeout),
+    "public metadata downloads retain their deadline and restore timeout settings")
+  download_failure <- tryCatch(downloader(path,download=function(...)stop("Synthetic offline failure")),error=identity)
+  check(inherits(download_failure,"error") && identical(getOption("timeout"),old_timeout),
+    "failed metadata downloads also restore timeout settings")
+
   metadata <- c("Package: RAssistant","Version: 0.1.2")
   env$.download_version_file <- function(path){writeLines(metadata,path);0L}
   check(identical(env$.fetch_latest_version(),"0.1.2"),"discovery reads only the package identity and version")

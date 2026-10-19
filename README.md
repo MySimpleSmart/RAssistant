@@ -56,6 +56,8 @@ Close and relaunch the assistant after changing a key to use the new value.
 ## Update
 
 On launch, a background check reads this repository's public package version.
+From 0.2.1, it reads the raw version file with cache revalidation, without using
+GitHub's IP-shared REST API quota. No GitHub token is needed for version checks.
 When a newer version is available, the chat shows **Update now**. Click it,
 review the notice, then confirm. This saves and closes the current chat, installs
 into the same R library and prints progress in the RStudio Console.

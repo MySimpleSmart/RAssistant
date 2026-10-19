@@ -70,14 +70,18 @@ update_assistant <- function(ref = "main") {
   invisible(NULL)
 }
 
-.download_version_file <- function(path) {
+.download_version_file <- function(path, download = utils::download.file) {
   old <- options(timeout = 5L)
   on.exit(options(old), add = TRUE)
-  suppressWarnings(utils::download.file(
-    "https://api.github.com/repos/MySimpleSmart/RAssistant/contents/DESCRIPTION?ref=main",
+  # Read the public file without consuming the IP-shared REST API quota. A
+  # unique query and revalidation headers avoid reusing stale branch metadata.
+  nonce <- paste0(format(Sys.time(), "%Y%m%dT%H%M%OS6", tz = "UTC"), "-",
+    basename(tempfile(pattern = "")))
+  url <- paste0("https://raw.githubusercontent.com/MySimpleSmart/RAssistant/main/DESCRIPTION",
+    "?ra_check=", nonce)
+  suppressWarnings(download(url,
     destfile = path, method = "libcurl", quiet = TRUE, mode = "wb", cacheOK = FALSE,
-    headers = c(Accept = "application/vnd.github.raw+json",
-                "X-GitHub-Api-Version" = "2022-11-28")))
+    headers = c("Cache-Control" = "no-cache, max-age=0", Pragma = "no-cache")))
 }
 
 .fetch_latest_version <- function() {

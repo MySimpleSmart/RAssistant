@@ -1,3 +1,10 @@
+# RAssistant 0.2.1
+
+- Check versions through the public raw DESCRIPTION file without consuming the
+  IP-shared GitHub REST API quota. Use a fresh request URL and cache-revalidation
+  headers to avoid stale version metadata while retaining background checks,
+  timeouts and the existing one-hour session cache.
+
 # RAssistant 0.2.0
 
 - Add project-local History with New chat, Rename, confirmed Delete, Restore,

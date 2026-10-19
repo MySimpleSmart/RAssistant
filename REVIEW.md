@@ -231,3 +231,21 @@ workspace and Shiny namespace remained loaded. API calls, credentials and the
 RStudio launcher were synthetic. Native RStudio Viewer interaction and actual
 OS credential-store writes remain untested. Previously closed pre-0.2.0 chats
 cannot be recovered.
+
+## Version 0.2.1 public update-check reliability
+
+The contents API returned HTTP 403 with zero unauthenticated requests remaining.
+Its quota is shared by originating IP, so a low-frequency assistant check can
+fail when other requests on the same network exhaust the budget. Version checks
+now download the public raw DESCRIPTION file, with a unique query and explicit
+cache revalidation to avoid the stale branch response seen before 0.1.3. The
+background worker, five-second download timeout, ten-second worker deadline,
+one-hour session cache, metadata validation and manual refresh remain in place.
+
+All **25 update checks** passed, including four new regressions covering the
+public-file URL, fresh requests, cache headers and timeout restoration on success
+and failure. Live direct and background checks both read version 0.2.0 successfully
+while the REST API was rate-limited. Package validation of 0.2.1 finished with
+**Status: OK**, including the history, package and namespace-reload suites. The
+application snapshot remains byte-identical to 0.2.0. No model calls or real
+credential-store operations were needed.
