@@ -169,5 +169,5 @@ update_assistant <- function(ref = "main") {
   .start_update_check()
   list(version = .installed_info()$version, poll_update = .poll_update_check,
     refresh_update = function() .start_update_check(force = TRUE),
-    request_update = .schedule_update)
+    request_update = .schedule_update, history = .conversation_store())
 }

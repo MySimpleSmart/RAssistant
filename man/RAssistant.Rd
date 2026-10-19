@@ -34,6 +34,23 @@ does not send credentials or conversation data. Offline checks do not block chat
 Help offers a manual check; \code{options(RAssistant.check_updates = FALSE)}
 disables automatic checks while retaining explicit manual checks.
 
+New chat keeps the previous conversation in History, which offers Rename, Delete
+and Restore. Chats auto-save locally per project, outside the package installation,
+using \code{tools::R_user_dir("RAssistant", "data")}. The most recently used chat
+is restored by \code{launch()} after closing, restarting RStudio or updating.
+Opening RStudio does not automatically launch the assistant. Outside a project,
+the launch working directory defines the scope. Text, code, output, images and
+drafts are retained; run approvals are never restored. Source tab changes preserve
+the conversation, with historical Source context distinguished from the live editor.
+
+Follow-ups reuse up to three recent images, or older uploads named by their
+Image number. Text context is bounded and includes locally retrieved excerpts;
+the whole archive is not sent on every turn. Restoration does not call OpenAI.
+History uses plain JSON and deduplicated image files, not encrypted storage.
+Set \code{options(RAssistant.history_dir = "...")} before launch to change its
+location, or \code{options(RAssistant.save_history = FALSE)} to disable persistence.
+Already-closed conversations from versions before 0.2.0 cannot be recovered.
+
 Close the assistant before \code{update_assistant()}. Updates use the library
 containing the loaded package, retain normal installation locking and run in a
 separate R process. Run \code{launch()} afterward; it reloads the new package code
@@ -45,8 +62,8 @@ Credentials are stored separately and
 remain available after updates. A new R major/minor version can use a new library,
 requiring package reinstallation; the OS-stored key remains separate.
 
-The assistant sends the current Source, detected CSV headers and manually attached
-images only when Send is clicked. Approved validation can execute the entire
+The assistant sends the current Source, detected CSV headers, bounded conversation
+context and attached or retained images only when Send is clicked. Approved validation can execute the entire
 current R/Rmd file in a child process and send its output and captured plots.
 Validation is not a sandbox. Console output must be pasted manually.
 }

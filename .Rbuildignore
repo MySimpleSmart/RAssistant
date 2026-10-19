@@ -7,6 +7,6 @@
 ^\.DS_Store$
 ^\.Renviron.*$
 ^\.env.*$
-^tests/(helpers|regression|source-context|assignment-context|image-reading|live-image-reading|browser)\.R$
+^tests/(helpers|regression|source-context|assignment-context|image-reading|conversation-context|conversation-history|live-image-reading|browser)\.R$
 ^.*\.Rcheck$
 ^.*\.(tar\.gz|tgz|zip)$

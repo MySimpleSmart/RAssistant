@@ -1,3 +1,18 @@
+# RAssistant 0.2.0
+
+- Add project-local History with New chat, Rename, confirmed Delete, Restore,
+  auto-save and automatic restoration of the most recently used chat on launch.
+- Store conversation data outside package installations; retain text, code,
+  copied output, images and drafts across RStudio restarts and package updates.
+  Deduplicate image assets and retain a complete prior snapshot for recovery.
+- Reuse recent image pixels on follow-ups and support older uploads by Image
+  number. Preserve the conversation when changing Source tabs or losing Source
+  access; label historical Source context and keep fresh execution approval.
+- Include longer recent dialogue and locally retrieved older excerpts within a
+  bounded request, without extra model calls for summarizing or restoring.
+- Rebuild safe message rendering and Copy controls on restore. Never resume an
+  old run approval, serialize credentials or cached HTML, or alter the user's RNG.
+
 # RAssistant 0.1.5
 
 - Use the shared compact button styling for Help Close and update Cancel.

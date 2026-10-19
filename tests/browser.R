@@ -7,12 +7,16 @@ main <- function() {
   port <- httpuv::randomPort()
   update_marker <- tempfile()
   on.exit(unlink(update_marker),add=TRUE)
-  worker <- callr::r_bg(function(root,port,update_marker) {
+  history_root <- tempfile("ra-browser-history-");dir.create(history_root)
+  on.exit(unlink(history_root,recursive=TRUE),add=TRUE)
+  run_app <- function(root,port,update_marker,history_root) {
     setwd(root)
     source("tests/helpers.R")
+    store_env <- new.env(parent=globalenv());sys.source("R/history.R",store_env)
+    history <- store_env$.conversation_store(project=root,directory=history_root)
     available <- list(status="available",version="0.1.2",current="0.1.1")
     update_result <- available
-    app <- load_assistant(package_info=list(version="0.1.1",
+    app <- load_assistant(package_info=list(version="0.1.1",history=history,
       poll_update=function()update_result,
       refresh_update=function(){
         update_result <<- if(identical(update_result$status,"available"))
@@ -35,7 +39,10 @@ main <- function() {
              "Math: \\(\\alpha < 1\\).\n\n[[ACADEMIC_COMMENT]]Verified result.[[/ACADEMIC_COMMENT]]")
     }
     shiny::runApp(shiny::shinyApp(app$ui,app$server),host="127.0.0.1",port=port,launch.browser=FALSE,quiet=TRUE)
-  },args=list(root,port,update_marker),stdout="|",stderr="|",supervise=TRUE)
+  }
+  start_worker <- function(port)callr::r_bg(run_app,args=list(root,port,update_marker,history_root),
+    stdout="|",stderr="|",supervise=TRUE)
+  worker <- start_worker(port)
   on.exit(worker$kill(),add=TRUE)
   browser <- chromote::ChromoteSession$new()
   on.exit(browser$parent$close(),add=TRUE)
@@ -52,6 +59,7 @@ main <- function() {
         cat("Page tail:\n",tail(strsplit(js('document.body && document.body.innerText'),"\n")[[1]],40),sep="\n")
         cat("\nServer:\n",paste(worker$read_error_lines(),collapse="\n"),"\n")
         cat("\nMessages:\n",js('JSON.stringify(window.receivedMessages||[])'),"\n")
+        cat("\nControls:\n",js('JSON.stringify({send:document.getElementById("send")&&document.getElementById("send").disabled,prompt:document.getElementById("prompt")&&document.getElementById("prompt").value,users:document.querySelectorAll(".msg.user").length,errors:window.aisourceErrors})'),"\n")
         stop("Timed out: ",expression)
       }
       Sys.sleep(.05)
@@ -109,8 +117,8 @@ main <- function() {
     "opening Help and checking updates preserves the chat draft")
   js('document.getElementById("update_now").click();')
   wait_js('document.getElementById("confirm_update")!==null')
-  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("This conversation will end") && document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && !document.getElementById("shiny-modal").textContent.includes("Restart R")')),
-    "Update now explains chat closure and relaunching after installation")
+  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("This chat is saved locally") && document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && !document.getElementById("shiny-modal").textContent.includes("Restart R")')),
+    "Update now explains chat preservation and relaunching after installation")
   js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click();')
   wait_js('document.getElementById("shiny-modal")===null')
   check(!file.exists(update_marker),"cancelling an update leaves the app running without installing")
@@ -133,6 +141,44 @@ main <- function() {
   wait_js('window.copied!=="Verified result."')
   check(identical(js('window.copied'),expected), "clipboard denial uses the Viewer fallback")
   check(isTRUE(js('document.activeElement.id==="prompt" && document.activeElement.selectionStart===1 && document.activeElement.selectionEnd===3')), "fallback Copy restores composer focus and selection")
+  js('document.getElementById("history").click();')
+  wait_js('document.getElementById("history_selected")!==null')
+  check(isTRUE(js('document.getElementById("history_selected").options.length===1 && document.querySelectorAll("#shiny-modal .modal-footer .ai-btn").length===4')),
+    "History lists the current auto-saved chat with consistent controls")
+  js('window.firstChatId=document.getElementById("history_selected").value;document.getElementById("history_rename").click();')
+  wait_js('document.getElementById("history_name")!==null')
+  js('$("#history_name").val("Saved screenshot assignment").trigger("change");document.getElementById("history_save_name").click();')
+  wait_js('document.getElementById("history_selected")!==null && document.getElementById("history_selected").textContent.includes("Saved screenshot assignment")')
+  check(TRUE,"Rename persists the chosen chat title")
+  js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
+  wait_js('document.getElementById("shiny-modal")===null')
+  js('document.getElementById("new_chat").click();')
+  wait_js('document.querySelector(".empty")!==null')
+  js('document.getElementById("prompt").value="A separate history conversation";document.getElementById("send").click();')
+  wait_js('!document.getElementById("send").disabled && document.querySelectorAll(".msg.user").length===1')
+  js('document.getElementById("history").click();')
+  wait_js('document.getElementById("history_selected")!==null && document.getElementById("history_selected").options.length===2')
+  js('window.secondChatId=document.getElementById("history_selected").value;$("#history_selected").val(firstChatId).trigger("change");document.getElementById("history_restore").click();')
+  wait_js('document.getElementById("shiny-modal")===null && document.querySelectorAll(".msg.user").length===1 && document.querySelector(".msg.user").textContent.includes("Explain this")')
+  check(isTRUE(js('!document.getElementById("chat_stream").textContent.includes("A separate history conversation")')),
+    "Restore switches conversations without mixing their visible history")
+  js('document.getElementById("history").click();')
+  wait_js('document.getElementById("history_selected")!==null')
+  js('$("#history_selected").val(secondChatId).trigger("change");document.getElementById("history_delete").click();')
+  wait_js('document.getElementById("history_confirm_delete")!==null')
+  js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
+  wait_js('document.getElementById("shiny-modal")===null')
+  js('document.getElementById("history").click();')
+  wait_js('document.getElementById("history_selected")!==null')
+  check(isTRUE(js('document.getElementById("history_selected").options.length===2')),
+    "cancelling Delete preserves the saved conversation")
+  js('$("#history_selected").val(secondChatId).trigger("change");document.getElementById("history_delete").click();')
+  wait_js('document.getElementById("history_confirm_delete")!==null')
+  js('document.getElementById("history_confirm_delete").click();')
+  wait_js('document.getElementById("history_selected")!==null && document.getElementById("history_selected").options.length===1')
+  check(TRUE,"Delete removes the selected saved chat while retaining the active chat")
+  js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
+  wait_js('document.getElementById("shiny-modal")===null')
   js('window.canvas=document.createElement("canvas");canvas.width=12;canvas.height=12;canvas.getContext("2d").fillRect(0,0,12,12);window.imageData=canvas.toDataURL("image/png");window.imageBytes=Uint8Array.from(atob(imageData.split(",")[1]),function(c){return c.charCodeAt(0);});window.stage=function(files){var dt=new DataTransfer();files.forEach(function(f){dt.items.add(f);});var input=document.getElementById("plot_upload_native");input.files=dt.files;input.dispatchEvent(new Event("change",{bubbles:true}));};stage([new File([imageBytes],"plot.PNG",{type:""})]);')
   wait_js('document.querySelectorAll(".attachment-item").length===1 && !document.getElementById("send").disabled')
   check(isTRUE(js('document.querySelector(".attachment-item img").complete && document.querySelector(".attachment-item img").naturalWidth>0')), "an image with missing MIME type uploads and previews")
@@ -169,6 +215,8 @@ main <- function() {
   check(isTRUE(js('document.getElementById("send").disabled && !document.getElementById("new_chat").disabled')), "approval state blocks sends and allows New")
   check(isTRUE(js('document.getElementById("update_now").disabled')),
     "an update cannot interrupt a pending script approval")
+  check(isTRUE(js('document.getElementById("history").disabled')),
+    "history switching cannot interrupt a pending script approval")
   js('document.getElementById("no").click();')
   wait_js('!document.getElementById("send").disabled')
   check(isTRUE(js('document.querySelector(".run-status").textContent==="Not run"')), "No dismisses validation and restores controls")
@@ -199,6 +247,7 @@ main <- function() {
   check(isTRUE(js('document.getElementById("filename").textContent==="No Source document" && document.querySelectorAll(".msg.assistant").length===2')), "image-only chat succeeds after Source editor access fails")
   check(isTRUE(js('document.querySelector(".sent-attachment img").naturalWidth>0 && !document.body.textContent.includes("Cannot read the open script")')), "Source lookup failure does not block or discard uploaded images")
   check(isTRUE(js('window.aisourceErrors && window.aisourceErrors.length===0')), "browser completed without JavaScript errors")
+  js('$("#prompt").val("Unsent draft that survives relaunch").trigger("change");')
   js('document.getElementById("update_now").click();')
   wait_js('document.getElementById("confirm_update")!==null')
   js('document.getElementById("confirm_update").click();document.getElementById("confirm_update").click();')
@@ -208,6 +257,22 @@ main <- function() {
   }
   check(file.exists(update_marker) && identical(readLines(update_marker),"requested"),
     "confirming Update now requests one installation even after repeated clicks")
+  worker$wait(timeout=10000)
+  port <- httpuv::randomPort();worker <- start_worker(port)
+  url <- paste0("http://127.0.0.1:",port)
+  for(i in 1:100) {
+    ready <- suppressWarnings(tryCatch({con<-url(paste0(url,"/"),open="rb");close(con);TRUE},error=function(e)FALSE))
+    if(ready)break
+    Sys.sleep(.05)
+  }
+  browser$Page$navigate(url)
+  wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled && document.querySelectorAll(".msg.user").length===2 && document.getElementById("prompt").value==="Unsent draft that survives relaunch"')
+  check(isTRUE(js('document.querySelector(".sent-attachment img").complete && document.querySelector(".sent-attachment img").naturalWidth>0')),
+    "a new R server process restores the latest chat, draft and image preview")
+  js('window.copied=null;Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:function(t){window.copied=t;return Promise.resolve();}}});document.querySelector(".code-copy").click();')
+  wait_js('window.copied!==null')
+  check(identical(js('window.copied'),expected),"restored code Copy buttons preserve the exact code")
+  check(isTRUE(js('window.aisourceErrors.length===0')),"restoring history has no JavaScript errors")
   cat(checks,"browser checks passed\n")
 }
 main()

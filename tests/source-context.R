@@ -104,6 +104,9 @@ app$initial <- list(id="large-source",path=file.path(tempdir(),"large.R"),
 app$active_doc <- function(id=NULL) app$initial
 shiny::testServer(app$server, {
   session$flushReact()
+  before <- calls$n
+  session$setInputs(chat_submit=list(text="Review my code",nonce=29L))
+  check(calls$n==before && !state$busy,"a new text-only code request retains the Source size limit")
   session$setInputs(paste_image=list(image=data_url,filename="large-source.png",nonce=30L,epoch=state$upload_epoch))
   before <- calls$n
   session$setInputs(chat_submit=list(text="Interpret the plot",nonce=31L))
@@ -113,7 +116,8 @@ shiny::testServer(app$server, {
         "oversized Source text is explicitly omitted from the image request")
   before <- calls$n
   session$setInputs(chat_submit=list(text="Review my code",nonce=32L))
-  check(calls$n==before && !state$busy,"text-only code requests retain the Source size limit")
+  check(calls$n==before+1L && !state$busy && !grepl("LARGE_EDITOR_PAYLOAD",calls$prompt,fixed=TRUE),
+        "image follow-ups can continue when an oversized editor is omitted")
 })
 unlink(fixture)
 cat(checks,"Source-context checks passed\n")

@@ -14,7 +14,7 @@ main <- function() {
   checks <- 0L
   for (attached in c(FALSE, TRUE)) {
     passed <- callr::r(function(lib, other_lib, attached) {
-      options(RAssistant.check_updates = FALSE)
+      options(RAssistant.check_updates = FALSE, RAssistant.save_history = FALSE)
       Sys.unsetenv("OPENAI_API_KEY")
       .libPaths(c(other_lib, lib, .libPaths()))
       ns <- loadNamespace("RAssistant", lib.loc = lib)

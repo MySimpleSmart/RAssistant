@@ -16,7 +16,7 @@ The existing single-file Shiny application was repaired incrementally. Its launc
 | Math delimiter matching could consume code; Markdown links could retain executable URL schemes. | Code is protected before math parsing, and rendered links/images restrict URL schemes. Existing HTML escaping is retained. |
 | Every output update reparsed all messages and collapsed execution details. | Markdown is cached when messages are added; expanded details and reading position survive updates. |
 | Follow-up context omitted academic comments and verified execution output. | Bounded history includes both, labels prior image attachments, and excludes failed-request artifacts. Assignment context is kept separately without repeating identical turns. |
-| A short follow-up such as Exercise 1(a) could overwrite a previously supplied multipart assignment. | A complete brief stays available across part references and long follow-ups. A fuller brief can replace an initial short reference or generic context; New or switching Source documents clears it. |
+| A short follow-up such as Exercise 1(a) could overwrite a previously supplied multipart assignment. | A complete brief stays available across part references and long follow-ups. A fuller brief can replace an initial short reference or generic context; New chat opens a separate conversation while Source tab changes preserve the ongoing assignment. |
 | Repeated CSV preflight reads performed unnecessary I/O. | A session cache uses references, working directories, file sizes, and modification times; file changes invalidate it. |
 | Windows drive/network paths were treated as relative paths, and escaped separators were not decoded. | CSV lookup and caching recognize Windows absolute paths; captured R string literals are parsed without evaluation. Invalid R strings are ignored. Cross-platform fixtures quote paths correctly. |
 | Any plot-analysis failure triggered a second API request, including quota/authentication failures. | Numeric fallback occurs only for image-specific errors. Shared request handling supplies empty-response checks and default per-attempt timeout/retry limits, respecting existing ellmer options. |
@@ -39,7 +39,7 @@ Rscript tests/browser.R
 
 - **50 R/Shiny checks:** helper behavior, Windows/escaped CSV paths and caching, upload lifecycle, retries, replay suppression, context, document isolation, approval/source-change guards, real child-process R/Rmd execution, plot capture, execution errors, timeouts, cleanup, image-analysis fallback, credential-based ellmer construction without deprecated arguments or a network request, and persistent update-confirmation locking.
 - **28 Source-context checks:** Source lookup errors/NULL/invalid results, fresh document-ID fallback, document switching, Console rejection, image-only sends/retries without Source access, generic image prompts, Console-screenshot evidence, conditional statistical comments, no initial document, oversized editor omission, CSV preflight exclusion, loading/file cleanup, and retained validation/size guards.
-- **13 assignment-context checks:** a synthetic multipart brief survives seven part requests, long follow-ups, and the recent-history limit; a later full brief can replace a short reference; New and Source document changes clear it. The suite also passed using a locally supplied assignment, with a mocked API. User documents and data are not included in the repository.
+- **13 assignment-context checks:** a synthetic multipart brief survives seven part requests, long follow-ups, Source tab changes and the recent-history limit; a later full brief can replace a short reference; New chat clears the active context. The suite also passed using a locally supplied assignment, with a mocked API. User documents and data are not included in the repository.
 - **15 image-reading checks:** inspect outgoing image-only and user-directed payloads, absence of unsolicited statistical templates, unreadable-text guidance, optional background, unchanged image bytes/order, explicit/negated/mentioned academic-comment requests, and retained text-only/verified-run behavior.
 - **39 Chrome checks:** the existing UI/server with a fake API, exact code/comment/Help-command copying, narrow Viewer layout, update/version notices, manual checking, cancellation and duplicate update confirmation, draft preservation, clipboard fallback, focus/selection, native/pasted/image-only uploads, PNG/JPEG/WebP previews, limits, failed requests, validation controls, completed execution, preserved details/scroll, late-reader cancellation, simulated Source-access failure, and startup/runtime JavaScript errors.
 - R parsing and extracted JavaScript syntax checks passed.
@@ -56,11 +56,11 @@ The opt-in live test can be repeated with `AISOURCE_LIVE_VISION=1 Rscript tests/
 
 - Uploads: up to 3 PNG/JPEG/WebP images per message, at most 4 MB each. Other file formats are not supported by this image picker.
 - Text: at most 50,000 characters per message. Current Source code has a separate 50,000-character limit; oversized code is omitted for image requests.
-- Model context: up to 12 recent eligible messages, within 12,000 characters overall and 2,800 per message, plus up to 8,000 characters of assignment context. Earlier image pixels are not resent; upload those images again for a fresh comparison.
+- Model context (0.2.0): recent eligible messages and locally retrieved older excerpts fit within 32,000 characters, plus up to 8,000 characters of assignment context. Follow-ups resend up to three recent images, or older uploads explicitly referenced by their Image number. New uploads send the new batch. Local restoration and retrieval make no model calls.
 - Execution: approved R/Rmd runs have a 45-second limit. API requests default to 120 seconds per attempt and at most 2 attempts, respecting existing ellmer options.
-- Long sessions: displayed messages and base64 image previews remain in session memory; the entire message output is replaced on updates. Rendering is cached, but there is no pagination or bound on displayed history. Very long image-heavy sessions may consume substantial memory and become slower. New clears the session's conversation and previews.
+- Long sessions: displayed messages and base64 image previews remain in session memory; the entire message output is replaced on updates. Rendering is cached, but there is no pagination or bound on displayed history. Very long image-heavy sessions may consume substantial memory and become slower. New chat saves the old conversation and clears the active view. Stored images are deduplicated separately from JSON snapshots; text snapshots have a 64 MB limit and retain a previous complete save for recovery.
 
-These are code-enforced limits, not a measured guarantee for large workloads. Image-memory management, incremental history rendering, and older-context retention would need separate work before claiming large-session capacity. This label update does not change the limits or add new upload formats.
+These are code-enforced limits, not a measured guarantee for large workloads. Persistent storage and bounded retrieval do not make the model context unlimited. Image-memory management and incremental history rendering still need separate work before claiming large-session capacity.
 
 For multipart work, paste the complete assignment text first and keep one R/Rmd Source document open while asking for individual parts. The image picker does not accept PDFs, and automatic validation runs the entire current R/Rmd file, not only the requested part or selected chunk. RStudio can run individual R Markdown chunks; their Console output and images can then be supplied to chat. Automatic Quarto (.qmd) validation is not implemented.
 
@@ -196,3 +196,38 @@ An additional temporary Chrome inspection confirmed matching computed button
 styles and Upload/Send alignment at 240, 320, 380 and 900 pixels with idle,
 working, approval and disconnected status text. The 320-pixel composer and narrow
 Help screenshots were inspected. Package validation finished with **Status: OK**.
+
+## Version 0.2.0 conversation context and project History
+
+The installed package now auto-saves multiple conversations per project outside
+the package library. New chat archives the current conversation; History provides
+Rename, confirmed Delete and Restore. Launch restores the most recently used chat,
+including its unsent draft and original images, after closing RStudio or updating.
+Two complete snapshots support recovery from a damaged latest save. Images are
+deduplicated separately from JSON, permissions are restricted where supported,
+and write failures preserve the live conversation. Credentials, cached HTML and
+pending run approvals are excluded. History remains local and is not encrypted.
+
+Source changes preserve dialogue while current code always comes from a fresh
+editor read. Follow-ups resend the most recent image batch, or older uploads
+explicitly selected by their visible Image number. Context includes longer recent
+turns and locally selected older excerpts within a 32,000-character budget, plus
+the assignment and current Source. Neither restoration nor local retrieval calls
+the model. Saved history exceeds request context; recall remains bounded.
+
+All **272 checks** passed locally: 50 core, 29 Source-context, 13 assignment,
+15 image-reading, 14 conversation-context, 14 conversation-history, 48 Chrome,
+16 history-storage, 33 package, 21 update-discovery/lifecycle and 19 namespace
+reload checks. Chrome exercises History controls, failure recovery, draft capture
+and restoration in a new R process, original image previews and restored Copy
+controls. Storage tests verify project isolation, a new R process, deduplication,
+recovery snapshots, deletion and unchanged R random-number state. Final local
+`R CMD check --no-manual --no-vignettes` finished with **Status: OK**.
+
+A separate smoke test performed an actual archive reinstall into an isolated
+library, then reloaded the namespace and launched in the same R session. The
+project chat, draft, assignment and original screenshot bytes survived; the
+workspace and Shiny namespace remained loaded. API calls, credentials and the
+RStudio launcher were synthetic. Native RStudio Viewer interaction and actual
+OS credential-store writes remain untested. Previously closed pre-0.2.0 chats
+cannot be recovered.

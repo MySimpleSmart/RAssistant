@@ -110,7 +110,8 @@ shiny::testServer(app$server, {
   check(grepl("Verified result.",tail(calls$prompts,1)[[1]],fixed=TRUE), "follow-up API requests include the academic comment")
   app$initial$id <- "doc2"
   session$setInputs(chat_submit=list(text="New document question",nonce=204L))
-  check(length(state$messages)==2L && !grepl("Explain the comment",tail(calls$prompts,1)[[1]],fixed=TRUE), "switching documents isolates conversation history")
+  check(length(state$messages)>2L && grepl("Explain the comment",tail(calls$prompts,1)[[1]],fixed=TRUE),
+        "switching documents preserves the ongoing conversation")
   session$setInputs(chat_submit=list(text="Please run the script",nonce=205L))
   check(!is.null(state$pending), "validation requires approval")
   app$initial$contents <- "x <- 2"

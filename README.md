@@ -57,9 +57,9 @@ Close and relaunch the assistant after changing a key to use the new value.
 
 On launch, a background check reads this repository's public package version.
 When a newer version is available, the chat shows **Update now**. Click it,
-review the notice, then confirm. This closes the current chat, installs into
-the same R library and prints progress in the RStudio Console. The conversation
-ends when the app closes. After successful installation, run `RAssistant::launch()`.
+review the notice, then confirm. This saves and closes the current chat, installs
+into the same R library and prints progress in the RStudio Console.
+After successful installation, run `RAssistant::launch()` to restore the chat.
 The Console reports the old and new versions; the toolbar confirms the installed
 version when reopened.
 
@@ -111,14 +111,57 @@ that R version. The OS-stored key survives. Moving to another computer or OS use
 requires its own key setup. Updating this GitHub repository does not immediately
 modify other users' installations; they run the update command.
 
+## Conversations and History
+
+From 0.2.0, chats auto-save locally per RStudio project. **New chat** starts a
+separate conversation and keeps the previous one. **History** lists saved chats
+and offers **Rename**, **Delete** and **Restore**. Delete asks for confirmation.
+The most recently used chat reopens on the next `RAssistant::launch()`, including
+after restarting RStudio or updating the package. Opening RStudio alone does not
+automatically launch the assistant. Previously closed pre-0.2.0 chats cannot be recovered.
+
+Text, code, copied output, assignment context, images and unsent drafts are saved.
+Run approvals are never restored; any execution needs a fresh request and Yes.
+Switching Source tabs preserves the conversation and labels earlier Source
+context. Only a fresh editor read is treated as the current script.
+
+Follow-up messages reuse up to three recent images automatically. To refer to
+older uploads, use the labels shown under them, for example **Image 1** or
+**Compare Image 1 and Image 2**. Original pixels are read from local history;
+you do not need to upload those files again. A new upload sends the new batch.
+Text context is bounded to 32,000 characters, including recent turns and locally
+retrieved older excerpts, plus the assignment and current Source. Saved history
+is larger than the context supplied with each request; recall is not unlimited.
+Restoring and searching local history do not call OpenAI. Sending retained image
+pixels consumes image input tokens, as with a new upload.
+
+Storage uses `tools::R_user_dir("RAssistant", "data")`, outside the project and
+package library, with a separate folder per normalized project path. Outside an
+RStudio project, the launch working directory defines the scope. Chats use plain
+JSON and deduplicated image files, with owner-only file permissions where supported;
+history is not encrypted. API credentials remain in their separate OS store.
+One prior auto-save is retained for recovery; failed writes leave the live chat
+available and report an error. Snapshots have a 64 MB text limit; very long
+histories and image previews can still use substantial memory.
+
+Configure storage before launch if needed:
+
+```r
+options(RAssistant.history_dir = "~/my-rassistant-data")
+options(RAssistant.save_history = FALSE) # Disable durable History for this session
+```
+
+The standalone script retains in-session context; durable History is provided
+by the installed package.
+
 ## Use and limits
 
 - **Upload** accepts up to 3 PNG/JPEG/WebP images, 4 MB each. Screenshots use
   content-neutral reading guidance; include a message to request a specific task.
 - Paste Console output into chat manually. The assistant does not read live
   Console output or edit the Source document.
-- Recent conversation context and a remembered assignment support multipart work.
-  Context is bounded; earlier image pixels are not resent.
+- Recent dialogue, retrieved earlier excerpts, a remembered assignment and retained
+  images support multipart work. Use History to return to another conversation.
 - Script validation requires **Yes**, executes the entire current R/Rmd file in
   a child process, and may affect files. Only approved output/plots are shared.
 - Current Source text, detected CSV headers and uploaded images are sent to
@@ -137,6 +180,8 @@ Rscript tests/regression.R
 Rscript tests/source-context.R
 Rscript tests/assignment-context.R
 Rscript tests/image-reading.R
+Rscript tests/conversation-context.R
+Rscript tests/conversation-history.R
 ```
 
 `inst/app/AISource.R` is a generated, byte-identical snapshot. CI fails if it is
