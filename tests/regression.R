@@ -293,7 +293,8 @@ shiny::testServer(update_app$server,{
   check(identical(update_status()$version,"0.3.7"),
     "automatic discovery continues after an update banner is already visible")
   session$setInputs(check_updates=1L)
-  check(manual==1L && identical(update_status()$version,"0.3.8"),
+  check(manual==1L && identical(update_status()$version,"0.3.8") &&
+    identical(output$update_check_status,""),
     "Check for updates refreshes immediately without waiting for the timer")
   poll_failure <<- TRUE;session$elapse(1800000)
   check(identical(update_status()$status,"unavailable"),"unexpected polling errors leave the session usable")

@@ -123,7 +123,7 @@ main <- function() {
     "a newly published version automatically displays its banner without a manual check, lost draft or installation")
   js('document.getElementById("prompt").value="Keep this draft";document.getElementById("help").click();')
   wait_js('document.querySelector("#shiny-modal .code-copy")!==null')
-  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && document.getElementById("shiny-modal").textContent.includes("RAssistant::set_api_key()") && document.getElementById("shiny-modal").textContent.includes("hidden password prompt") && !document.getElementById("shiny-modal").textContent.includes("Restart R")')),
+  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && document.getElementById("shiny-modal").textContent.includes("RAssistant::set_api_key()") && document.getElementById("shiny-modal").textContent.includes("hidden password prompt") && !document.getElementById("shiny-modal").textContent.includes("Restart R") && document.querySelector(".toolbar-actions #check_updates")!==null && document.querySelector("#shiny-modal #check_updates")===null')),
     "Help explains launching, hidden key replacement and updates")
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
   wait_js('getComputedStyle(document.getElementById("shiny-modal")).opacity==="1" && document.querySelector("#shiny-modal .modal-dialog").getBoundingClientRect().width>0')
@@ -141,13 +141,13 @@ main <- function() {
   js('document.querySelectorAll("#shiny-modal .code-copy")[1].click();')
   check(identical(js('window.copied'),"RAssistant::set_api_key()\nRAssistant::launch()\n"),
     "the key-replacement instructions copy correctly")
-  js('document.getElementById("check_updates").click();')
-  wait_js('document.getElementById("update_now")===null && document.getElementById("update_help_status").textContent.includes("up to date")')
-  check(TRUE,"manual update checks refresh the Help status and remove an obsolete banner")
-  js('document.getElementById("check_updates").click();')
-  wait_js('document.getElementById("update_now")!==null')
   js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click();')
   wait_js('document.getElementById("shiny-modal")===null')
+  js('document.getElementById("check_updates").click();')
+  wait_js('document.getElementById("update_now")===null && document.getElementById("update_check_status").textContent.includes("up to date")')
+  check(TRUE,"toolbar update checks show results without opening Help and remove an obsolete banner")
+  js('document.getElementById("check_updates").click();')
+  wait_js('document.getElementById("update_now")!==null')
   check(isTRUE(js('document.getElementById("prompt").value==="Keep this draft"')),
     "opening Help and checking updates preserves the chat draft")
   js('document.getElementById("knowledge").click();')

@@ -102,7 +102,7 @@ version when reopened.
 
 Between automatic checks, results are cached for 30 minutes. A new launch checks
 immediately. Offline/failed checks do not prevent chat or hide an update already
-found. **Help > Check for updates** remains available and checks immediately,
+found. **Check for updates** in the main toolbar checks immediately,
 bypassing the cache.
 The check does not call OpenAI or transmit the key, Source text or chat history.
 To disable automatic discovery, set `options(RAssistant.check_updates = FALSE)`;

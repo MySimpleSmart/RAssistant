@@ -1,3 +1,9 @@
+# RAssistant 0.3.11
+
+- Move **Check for updates** from Help to the main toolbar before Help.
+  Show manual check progress and results in the main view; newer versions
+  continue to use the existing Update now banner.
+
 # RAssistant 0.3.10
 
 - Add **Attach current plot** beside Upload. Export the plot selected in
