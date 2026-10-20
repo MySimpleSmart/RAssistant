@@ -1,3 +1,8 @@
+# RAssistant 0.3.19
+
+- Move Check updates into More actions (...).
+- Put Console On/Off in the header beside New chat.
+
 # RAssistant 0.3.18
 
 - Show only the current file name in the header, without the Source prefix.

@@ -130,8 +130,8 @@ main <- function() {
   wait_js('document.querySelector(".empty")!==null')
   js('window.alerts=[];window.alert=function(x){alerts.push(x);};window.receivedMessages=[];$(document).on("shiny:message",function(e){if(e.message.custom)receivedMessages.push(e.message.custom);});')
   check(isTRUE(js('document.querySelector(".empty")!==null')), "existing Shiny UI connects and renders")
-  check(isTRUE(js('!document.getElementById("app_menu").open && document.querySelector("#app_menu #history")!==null && document.querySelector("#app_menu #knowledge")!==null && document.querySelector("#app_menu #help")!==null && document.querySelector("#app_menu #close")!==null && document.getElementById("check_updates").closest("#app_menu")===null')),
-    "secondary actions live in More actions while update checks remain directly available")
+  check(isTRUE(js('!document.getElementById("app_menu").open && document.querySelector("#app_menu #history")!==null && document.querySelector("#app_menu #knowledge")!==null && document.querySelector("#app_menu #help")!==null && document.querySelector("#app_menu #close")!==null && document.getElementById("check_updates").closest("#app_menu")!==null && document.getElementById("console_context").closest(".toolbar-actions")!==null && document.querySelector(".upload-row #console_context")===null')),
+    "Check updates lives in More actions and Console is visible in the header")
   js('document.querySelector("#app_menu>summary").click();document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));')
   check(isTRUE(js('!document.getElementById("app_menu").open && document.activeElement===document.querySelector("#app_menu>summary")')),
     "Escape closes the actions menu and restores keyboard focus")
@@ -150,7 +150,7 @@ main <- function() {
     "a newly published version automatically displays its banner without a manual check, lost draft or installation")
   js('document.getElementById("prompt").value="Keep this draft";openAction("help");')
   wait_js('document.querySelector("#shiny-modal .code-copy")!==null')
-  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && document.getElementById("shiny-modal").textContent.includes("RAssistant::set_api_key()") && document.getElementById("shiny-modal").textContent.includes("hidden password prompt") && !document.getElementById("shiny-modal").textContent.includes("Restart R") && document.querySelector(".toolbar-actions #check_updates")!==null && document.querySelector("#shiny-modal #check_updates")===null')),
+  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && document.getElementById("shiny-modal").textContent.includes("RAssistant::set_api_key()") && document.getElementById("shiny-modal").textContent.includes("hidden password prompt") && !document.getElementById("shiny-modal").textContent.includes("Restart R") && document.querySelector("#app_menu #check_updates")!==null && document.querySelector("#shiny-modal #check_updates")===null')),
     "Help explains launching, hidden key replacement and updates")
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
   wait_js('getComputedStyle(document.getElementById("shiny-modal")).opacity==="1" && document.querySelector("#shiny-modal .modal-dialog").getBoundingClientRect().width>0')
@@ -170,19 +170,19 @@ main <- function() {
     "the key-replacement instructions copy correctly")
   js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click();')
   wait_js('document.getElementById("shiny-modal")===null')
-  js('document.getElementById("check_updates").click();')
+  js('openAction("check_updates");')
   wait_js('document.getElementById("update_now")===null && document.getElementById("update_check_status").textContent.includes("up to date")')
-  check(TRUE,"toolbar update checks show results without opening Help and remove an obsolete banner")
+  check(isTRUE(js('!document.getElementById("app_menu").open')),"menu update checks close the menu and show results without opening Help")
   js('openAction("help");')
   wait_js('document.querySelector("#shiny-modal .code-copy")!==null')
   check(isTRUE(js('document.querySelector("#shiny-modal #update_help_status")===null && !document.getElementById("shiny-modal").textContent.includes("up to date")')),
-    "Help omits the up-to-date result while a manual toolbar result is active")
+    "Help omits the up-to-date result while a manual check result is active")
   js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click();')
   wait_js('document.getElementById("shiny-modal")===null')
   wait_js('document.getElementById("update_check_status").textContent===""',timeout=8)
   check(isTRUE(js('getComputedStyle(document.getElementById("update_check_status")).display==="none"')),
     "an up-to-date result expires and releases its banner space")
-  js('document.getElementById("check_updates").click();')
+  js('openAction("check_updates");')
   wait_js('document.getElementById("update_now")!==null')
   check(isTRUE(js('document.getElementById("prompt").value==="Keep this draft"')),
     "opening Help and checking updates preserves the chat draft")
@@ -208,8 +208,8 @@ main <- function() {
   check(isTRUE(js('document.querySelector(".attachment-item img").naturalWidth>0 && document.getElementById("prompt").value==="Keep this draft" && document.querySelectorAll(".msg.user").length===0')),
     "Attach current plot previews one image and preserves the draft without an AI request")
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
-  check(isTRUE(js('document.getElementById("attach_current_plot").getBoundingClientRect().right<=innerWidth && document.getElementById("send").getBoundingClientRect().right<=innerWidth && document.getElementById("source_context").closest(".toolbar")!==null && document.getElementById("source_context").textContent.trim()==="example.R" && document.querySelector(".toolbar").getBoundingClientRect().height<=40')),
-    "the file name has no Source prefix and shares a compact header row")
+  check(isTRUE(js('document.getElementById("attach_current_plot").getBoundingClientRect().right<=innerWidth && document.getElementById("send").getBoundingClientRect().right<=innerWidth && document.getElementById("source_context").closest(".toolbar")!==null && document.getElementById("source_context").textContent.trim()==="example.R" && document.getElementById("console_context").closest(".console-context").getBoundingClientRect().right<=innerWidth && document.querySelector(".toolbar").getBoundingClientRect().height<=40')),
+    "the file name and Console share a compact header in a narrow Viewer")
   screenshot<-Sys.getenv("RA_BROWSER_LAYOUT_SCREENSHOT")
   if(nzchar(screenshot)){
     js('document.querySelectorAll(".shiny-notification-close").forEach(function(b){b.click();});')

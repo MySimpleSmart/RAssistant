@@ -25,13 +25,13 @@ ellmer, to the versions RAssistant requires; `"never"` leaves them too old and
 installation fails. Use your personal R library if R offers to create one. RAssistant is installed in
 an R package library, separately from the RStudio application. The RStudio Addins
 menu also has an **RAssistant** entry after installation.
-The header keeps **Check updates** and **New chat** visible. The **More actions
-(...)** menu contains History, Knowledge, Help, Close and the installed version.
+The header keeps **Console On/Off** and **New chat** visible. The **More actions
+(...)** menu contains History, Knowledge, Check updates, Help, Close and the installed version.
 Help contains launch, API-key and update instructions with Copy buttons.
-Advanced commands are expandable; update results appear only in the toolbar.
+Advanced commands are expandable; manual update results appear below the header.
 The current file name shares the header row with the visible actions; long names have a tooltip.
 The controls retain their original bordered appearance. The two-line composer
-grows with your draft; Image, Plot, Console Off/On and Send share one action row.
+grows with your draft; Image, Plot and Send share one action row.
 While a request runs, Send shows a loading indicator without a separate Thinking
 notification or Working status row.
 If the Viewer disappears or disconnects after sleep or locking the Mac, use the
@@ -111,7 +111,7 @@ version when reopened.
 
 Between automatic checks, results are cached for 30 minutes. A new launch checks
 immediately. Offline/failed checks do not prevent chat or hide an update already
-found. **Check updates** in the main toolbar checks immediately,
+found. **More actions (...) > Check updates** checks immediately,
 bypassing the cache.
 An up-to-date result closes after five seconds. An available update keeps its
 Update now banner until you act on it.
@@ -268,7 +268,7 @@ Clear discards all staged images when multiple images are attached.
 
 ## Console context
 
-In the package app, **Console** starts enabled beside Image and Plot. Wait for
+In the package app, **Console** starts enabled in the header beside New chat. Wait for
 the status to say **On**, then run R code normally in RStudio. Ask about the result
 or error and press **Send**: the request includes up to 200 recent lines and
 12,000 characters of captured R output and associated commands. Copy/Paste is not required.

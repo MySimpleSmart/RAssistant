@@ -29,8 +29,8 @@ project, R history or a startup file. No prompt occurs merely by loading the pac
 \code{forget_api_key()} removes only RAssistant's saved credential; it does not
 unset or edit an existing environment variable.
 
-The toolbar keeps Check updates and New chat visible. More actions contains
-History, Knowledge, Help, Close and the installed version. Help has copyable
+The toolbar keeps Console On/Off and New chat visible. More actions contains
+History, Knowledge, Check updates, Help, Close and the installed version. Help has copyable
 Console commands. Source shares the header row with the visible actions; long
 names are truncated with a tooltip. Controls retain their original appearance. The composer starts
 at two lines and grows with the draft. Attachment thumbnails above it have
@@ -46,7 +46,7 @@ the assistant reopens automatically and restores any saved chat and draft.
 Discovery is cached between automatic checks, does not use the OpenAI API, and
 does not send credentials or conversation data. Offline checks do not block chat
 or hide a previously found update. A manual up-to-date result closes after five
-seconds; an available Update now banner remains. The main toolbar has a manual check that bypasses the
+seconds; an available Update now banner remains. More actions has a manual check that bypasses the
 cache immediately; \code{options(RAssistant.check_updates = FALSE)}
 disables automatic checks while retaining explicit manual checks.
 
@@ -96,7 +96,7 @@ Send submits the actual image through the normal attachment flow. Source is not
 rerun. Plots history selection is respected. The button is in chat, not in
 RStudio's Plots toolbar. Up to three images of 4 MB each can be attached.
 
-The package app enables Console context by default beside Image and Plot. Wait for
+The package app enables Console context by default in the header beside New chat. Wait for
 the On status, then run code normally. Send includes up to 200 recent lines and
 12,000 characters of new R output and associated commands, including ordinary
 uncaught errors, warnings and messages. Completed commands follow their output

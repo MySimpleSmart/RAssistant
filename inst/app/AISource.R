@@ -1275,7 +1275,10 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       shiny::div(id="source_context",class="source-context",title="Current Source document",
         shiny::textOutput("filename",inline=TRUE)),
       shiny::div(class="toolbar-actions",
-        if(!is.null(package_info)) shiny::actionButton("check_updates","Check updates",class="ai-btn",title="Check for updates now"),
+        if(!is.null(console_capture))shiny::div(class="console-context",title="Include recent Console commands and output",
+          shiny::checkboxInput("console_context",shiny::tagList("Console ",
+            shiny::textOutput("console_context_state",inline=TRUE)),value=TRUE),
+          shiny::div(class="console-hint",shiny::textOutput("console_context_status"))),
         shiny::actionButton("new_chat","New chat",class="ai-btn"),
         shiny::tags$details(id="app_menu",class="app-menu",
           shiny::tags$summary("\u22ef",title="More actions","aria-label"="More actions"),
@@ -1283,6 +1286,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             shiny::div(class="menu-actions",
               if(!is.null(package_info$history))shiny::actionButton("history","History",class="ai-btn"),
               if(!is.null(package_info$knowledge))shiny::actionButton("knowledge","Knowledge",class="ai-btn"),
+              if(!is.null(package_info))shiny::actionButton("check_updates","Check updates",class="ai-btn",title="Check for updates now"),
               shiny::actionButton("help","Help",class="ai-btn"),
               shiny::actionButton("close","Close",class="ai-btn")),
             if(!is.null(package_info))shiny::div(class="menu-version","RAssistant ",
@@ -1304,10 +1308,6 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             accept="image/png,image/jpeg,image/webp")),
         shiny::tags$button(id="attach_current_plot",type="button",class="attach-plot",
           title="Attach the plot selected in RStudio's Plots pane as a PNG", "Plot"),
-        if(!is.null(console_capture))shiny::div(class="console-context",title="Include recent Console commands and output",
-          shiny::checkboxInput("console_context",shiny::tagList("Console ",
-            shiny::textOutput("console_context_state",inline=TRUE)),value=TRUE),
-          shiny::div(class="console-hint",shiny::textOutput("console_context_status"))),
         shiny::actionButton("send","Send",class="ai-btn ai-send")
       ),
       shiny::div(id="compose_status",class="compose-status",hidden="hidden",
@@ -1683,7 +1683,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           shiny::tags$strong("Updates"),
           if(is.null(package_info)) shiny::p("Close, replace AISource.R, then source it again.")
           else shiny::tagList(
-            shiny::p("Use Check updates in the toolbar. The chat reopens after updating."),
+            shiny::p("More actions (...) > Check updates. The chat reopens after updating."),
             shiny::tags$details(shiny::tags$summary("Update from the Console"),
               shiny::p("Close the chat, then run:"),
               render_markdown("~~~r\nRAssistant::update_assistant()\n~~~")))

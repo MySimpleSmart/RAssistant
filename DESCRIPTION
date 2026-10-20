@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.3.18
+Version: 0.3.19
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -28,5 +28,5 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Show only the current file name in the header, without the Source prefix.
-    Enable Console context by default. Keep your On/Off choice when switching chats while clearing old captured output.
+Config/RAssistant/Changes: Move Check updates into More actions (...).
+    Put Console On/Off in the header beside New chat.
