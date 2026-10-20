@@ -183,10 +183,13 @@ main <- function() {
   check(isTRUE(js('document.querySelector(".attachment-item img").naturalWidth>0 && document.getElementById("prompt").value==="Keep this draft" && document.querySelectorAll(".msg.user").length===0')),
     "Attach current plot previews one image and preserves the draft without an AI request")
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
-  check(isTRUE(js('document.getElementById("attach_current_plot").getBoundingClientRect().right<=innerWidth && document.getElementById("send").getBoundingClientRect().right<=innerWidth')),
-    "the plot attachment control fits a narrow RStudio Viewer")
+  check(isTRUE(js('document.getElementById("attach_current_plot").getBoundingClientRect().right<=innerWidth && document.getElementById("send").getBoundingClientRect().right<=innerWidth && document.getElementById("source_context").closest(".toolbar")!==null && document.querySelector(".toolbar").getBoundingClientRect().height<=40')),
+    "Source shares a single header row and attachment controls fit a narrow Viewer")
   screenshot<-Sys.getenv("RA_BROWSER_LAYOUT_SCREENSHOT")
-  if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+  if(nzchar(screenshot)){
+    js('document.querySelectorAll(".shiny-notification-close").forEach(function(b){b.click();});')
+    writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+  }
   screenshot<-Sys.getenv("RA_BROWSER_PLOT_SCREENSHOT")
   if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
   browser$Emulation$clearDeviceMetricsOverride()

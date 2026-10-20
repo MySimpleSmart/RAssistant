@@ -31,7 +31,8 @@ unset or edit an existing environment variable.
 
 The toolbar keeps Check updates and New chat visible. More actions contains
 History, Knowledge, Help, Close and the installed version. Help has copyable
-Console commands. Source appears in a compact context line. The composer starts
+Console commands. Source shares the header row with the visible actions; long
+names are truncated with a tooltip. Controls retain their original appearance. The composer starts
 at two lines and grows with the draft. Attachment thumbnails above it have
 individual remove controls; Clear removes all when multiple images are attached.
 On launch and every 30 minutes while the assistant is open, a background

@@ -1,3 +1,10 @@
+# RAssistant 0.3.13
+
+- Restore the existing bordered button appearance, light-blue Send button
+  and original control colors and corner shapes while keeping the new layout.
+- Place Source in the same header row as the visible actions, truncating long
+  names with the full value in a tooltip instead of spending a separate row.
+
 # RAssistant 0.3.12
 
 - Keep Check updates and New chat in the header; move History, Knowledge,

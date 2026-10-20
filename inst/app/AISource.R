@@ -769,21 +769,19 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   body{font:12px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text)}
   .container-fluid{height:100vh;max-width:none!important;display:flex;flex-direction:column;
      padding:0!important;overflow:hidden}
-  .toolbar{flex:0 0 auto;min-height:36px;background:var(--panel);position:relative;z-index:5;
-     display:flex;align-items:center;justify-content:space-between;padding:4px 8px;gap:6px}
-  .app-brand{font-weight:650;font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .source-context{flex:0 0 auto;padding:0 9px 5px;border-bottom:1px solid var(--border);
-    background:var(--panel);font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .toolbar{flex:0 0 auto;min-height:33px;border-bottom:1px solid var(--border);background:var(--panel);position:relative;z-index:5;
+     display:flex;align-items:center;justify-content:space-between;padding:3px 8px;gap:6px}
+  .source-context{flex:1 1 auto;min-width:0;font-size:11px;color:var(--muted);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .toolbar-actions{display:flex;gap:4px;align-items:center;flex:0 0 auto}
-  .toolbar .btn.ai-btn{background:transparent;border-color:transparent;padding:4px 7px}
-  .toolbar .btn.ai-btn:hover{background:#e9edf1}
   .app-menu{position:relative}
-  .app-menu>summary{list-style:none;cursor:pointer;border-radius:5px;padding:0 7px;font-size:20px;line-height:25px}
+  .app-menu>summary{list-style:none;cursor:pointer;border:1px solid #ccd2d9;border-radius:3px;
+    padding:4px 9px;background:white;color:#29323c;font-size:16px;line-height:14px}
   .app-menu>summary::-webkit-details-marker{display:none}
-  .app-menu>summary:hover,.app-menu[open]>summary{background:#e9edf1}
+  .app-menu>summary:hover,.app-menu[open]>summary{background:#edf0f3}
   .menu-panel{position:absolute;right:0;top:calc(100% + 6px);width:178px;max-width:calc(100vw - 16px);
     max-height:65vh;overflow:auto;padding:5px;background:white;border:1px solid var(--border);
-    border-radius:7px;box-shadow:0 5px 18px #26354422}
+    border-radius:3px;box-shadow:0 5px 18px #26354422}
   .menu-actions{display:flex;flex-direction:column;gap:2px}
   .menu-actions>.btn.ai-btn{text-align:left;width:100%;padding:7px 9px}
   .menu-version{border-top:1px solid var(--border);margin-top:4px;padding:7px 9px 3px;color:var(--muted);font-size:10px}
@@ -803,7 +801,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .btn.ai-btn{margin:0;border:1px solid #ccd2d9;border-radius:3px;box-shadow:none;
     color:#29323c;background:white;font-size:11px;line-height:1.3;padding:4px 9px}
   .btn.ai-btn:hover{background:#edf0f3}
-  .btn.ai-send{background:#2b648c;border-color:#2b648c;color:white;font-weight:600;border-radius:5px}
+  .btn.ai-send{background:#e8f0f9;border-color:#a9bfd5;color:#1d486d;font-weight:600}
   .btn.ai-yes{background:#e8f6ea;border-color:#a6d1af;color:#24583a}
   .btn.ai-no{background:#fff;color:#545b64}
   .history{flex:1 1 auto;min-height:0;overflow:auto;padding:10px 10px 0}
@@ -855,9 +853,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .knowledge-hint{font:10px var(--mono);color:var(--muted);min-width:0;overflow-wrap:anywhere}
   .upload-row{display:flex;align-items:center;gap:5px;margin-top:5px}
   .upload-row>.attach-plot,.upload-row>#send{flex:0 0 auto}
-  .upload-row>#send{margin-left:auto;padding:5px 12px}
+  .upload-row>#send{margin-left:auto}
   .attach-plot{display:inline-flex;align-items:center;justify-content:center;
-    border:1px solid transparent;background:transparent;color:#465666;cursor:pointer;
+    border:1px solid #ccd2d9;background:white;color:#29323c;cursor:pointer;
     font:11px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     border-radius:3px;padding:4px 9px;margin:0}
   .attach-plot:hover{background:#edf0f3}
@@ -867,10 +865,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .attachment-preview{display:flex;align-items:center;gap:8px;padding-right:4px}
   .attachment-item{position:relative;width:56px;flex:0 0 56px}
   .attachment-item img{display:block;width:56px;height:42px;object-fit:contain;
-    background:white;border:1px solid var(--border);border-radius:5px}
+    background:white;border:1px solid var(--border);border-radius:3px}
   .remove-attachment{position:absolute;right:-4px;top:-4px;width:17px;height:17px;padding:0;
     line-height:13px;border:1px solid #c5cdd5;border-radius:50%;background:white;color:#47586a;cursor:pointer}
-  .btn.clear-attachments{padding:3px 4px;border:0;background:transparent;color:var(--muted);font-size:10px}
   .btn.ai-send:disabled{background:#e5e7eb;border-color:#ced3d8;color:#858d95;cursor:not-allowed;opacity:1}
   .uploading-indicator{color:#7b5e17;font:10px var(--mono);
     min-width:0;overflow-wrap:anywhere}
@@ -889,12 +886,12 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .console-context{color:var(--muted);flex:0 0 auto}
   .console-context .form-group{margin:0;width:auto!important}
   .console-context .checkbox{margin:0}
-  .console-context .checkbox label{display:inline-flex;align-items:center;gap:4px;padding:4px 6px;
-    border-radius:12px;background:#edf1f5;font:10px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#41586a}
-  .console-context input[type=checkbox]{position:static;margin:0;width:11px;height:11px;accent-color:#2b648c}
+  .console-context .checkbox label{display:inline-flex;align-items:center;gap:4px;padding:0;
+    font:11px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#314455}
+  .console-context input[type=checkbox]{position:static;margin:0;width:13px;height:13px}
   .console-hint{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
   textarea#prompt{resize:none!important;width:100%;height:54px;min-height:54px;
-    max-height:25vh;background:white;border:1px solid #c6ccd2;border-radius:6px;
+    max-height:25vh;background:white;border:1px solid #c6ccd2;border-radius:3px;
     padding:7px;font:12px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     box-shadow:none;overflow:auto}
   .empty{font-size:11px;color:#7d858e}
@@ -1177,6 +1174,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(window.jQuery){
         window.jQuery(document).on("input change","#prompt",resizePrompt);
         window.jQuery(document).on("shiny:value",function(e){
+          if(e.name==="filename")window.requestAnimationFrame(function(){
+            var source=document.getElementById("source_context");if(source)source.title=source.textContent.trim();
+          });
           if(e.name==="console_context_status")window.requestAnimationFrame(function(){
             var hint=document.getElementById("console_context_status"),control=document.querySelector(".console-context");
             if(hint && control)control.title=hint.textContent;
@@ -1219,8 +1219,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
 
   ui <- shiny::fluidPage(
     shiny::tags$head(shiny::tags$style(shiny::HTML(styles))),
-    shiny::div(class="toolbar",
-      shiny::span(class="app-brand","RAssistant"),
+    shiny::div(class="toolbar","aria-label"="RAssistant",
+      shiny::div(id="source_context",class="source-context",title="Current Source document",
+        "Source: ",shiny::textOutput("filename",inline=TRUE)),
       shiny::div(class="toolbar-actions",
         if(!is.null(package_info)) shiny::actionButton("check_updates","Check updates",class="ai-btn",title="Check for updates now"),
         shiny::actionButton("new_chat","New chat",class="ai-btn"),
@@ -1236,7 +1237,6 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
               shiny::span(class="app-version",paste0("v",package_info$version)))))
       )
     ),
-    shiny::div(class="source-context","Source: ",shiny::textOutput("filename",inline=TRUE)),
     if(!is.null(package_info))shiny::textOutput("update_check_status"),
     shiny::uiOutput("update_notice"),
     shiny::div(id="chat_stream",class="history",shiny::uiOutput("messages")),

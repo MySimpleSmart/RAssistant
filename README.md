@@ -28,7 +28,8 @@ menu also has an **RAssistant** entry after installation.
 The header keeps **Check updates** and **New chat** visible. The **More actions
 (...)** menu contains History, Knowledge, Help, Close and the installed version.
 Help contains launch, API-key and update instructions with Copy buttons.
-Source appears in a small context line below the header. The two-line composer
+Source shares the header row with the visible actions; long names have a tooltip.
+The controls retain their original bordered appearance. The two-line composer
 grows with your draft; Image, Plot, Console Off/On and Send share one action row.
 
 ### Windows troubleshooting
