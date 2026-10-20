@@ -40,6 +40,13 @@ main <- function() {
       },
       request_update=function(){cat("requested\n",file=update_marker,append=TRUE);invisible(TRUE)}))
     app$initial <- list(id="fixture",path=file.path(tempdir(),"example.R"),contents="plot(1:3)")
+    app$capture_current_plot <- function(directory){
+      Sys.sleep(.15)
+      path<-tempfile("browser-current-plot-",tmpdir=directory,fileext=".png")
+      grDevices::png(path,width=400,height=240)
+      par(mar=c(3,3,2,1));hist(1:40,main="Current RStudio plot",col="darkorange")
+      invisible(grDevices::dev.off());path
+    }
     source_unavailable <- FALSE
     app$active_doc <- function(id=NULL) {
       if(source_unavailable)stop("Simulated RStudio Source lookup failure")
@@ -158,6 +165,20 @@ main <- function() {
   js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click();')
   wait_js('document.getElementById("shiny-modal")===null')
   check(!file.exists(update_marker),"cancelling an update leaves the app running without installing")
+  js('document.getElementById("attach_current_plot").click();document.getElementById("attach_current_plot").click();')
+  check(isTRUE(js('document.getElementById("send").disabled && document.getElementById("attach_current_plot").disabled')),
+    "plot capture disables Send and repeat clicks immediately")
+  wait_js('document.querySelectorAll(".attachment-item").length===1 && !document.getElementById("send").disabled')
+  check(isTRUE(js('document.querySelector(".attachment-item img").naturalWidth>0 && document.getElementById("prompt").value==="Keep this draft" && document.querySelectorAll(".msg.user").length===0')),
+    "Attach current plot previews one image and preserves the draft without an AI request")
+  browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
+  check(isTRUE(js('document.getElementById("attach_current_plot").getBoundingClientRect().right<=innerWidth && document.getElementById("send").getBoundingClientRect().right<=innerWidth')),
+    "the plot attachment control fits a narrow RStudio Viewer")
+  screenshot<-Sys.getenv("RA_BROWSER_PLOT_SCREENSHOT")
+  if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+  browser$Emulation$clearDeviceMetricsOverride()
+  js('document.getElementById("clear_images").click();')
+  wait_js('document.querySelectorAll(".attachment-item").length===0')
   check(isTRUE(js('!document.getElementById("console_context").checked')),
     "Console context is an opt-in control")
   js('document.getElementById("console_context").click();')

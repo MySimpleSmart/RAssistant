@@ -609,6 +609,23 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     list(path = dest, label = basename(label), size = bytes)
   }
 
+  capture_current_plot <- function(directory) {
+    if (!rstudioapi::isAvailable() || !rstudioapi::hasFun("savePlotAsImage")) {
+      stop("Current plot capture requires RStudio with savePlotAsImage support.", call.=FALSE)
+    }
+    path <- tempfile("rstudio-current-plot-",tmpdir=directory,fileext=".png")
+    keep <- FALSE
+    on.exit(if(!keep)unlink(path),add=TRUE)
+    # Export the plot selected in RStudio's history, not ggplot2::last_plot()
+    # or a re-execution of the current Source.
+    rstudioapi::savePlotAsImage(path,format="png",width=1200L,height=900L)
+    if(!file.exists(path) || is.na(file.info(path)$size) || file.info(path)$size<12L) {
+      stop("No plot was captured. Create or select a plot in RStudio's Plots pane and try again.",call.=FALSE)
+    }
+    keep <- TRUE
+    path
+  }
+
   decode_image_upload <- function(data_url, directory) {
     if (!is.character(data_url) || length(data_url) != 1L || is.na(data_url) ||
         nchar(data_url, type = "bytes") > 6 * 1024^2 ||
@@ -909,14 +926,16 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     var uploadTimeout=null;
     var currentUploadId=null;
     var currentReader=null;
+    var plotCaptureId=null;
     function updateSendState(){
       var transfer=uploading || uploadQueue.length>0;
-      var working=submitId!==null || validationInFlight || serverBusy;
+      var working=submitId!==null || validationInFlight || serverBusy || plotCaptureId!==null;
       var busy=transfer || working || pending || !connected;
       var btn=document.getElementById("send");
       if(btn){btn.disabled=busy;btn.setAttribute("aria-busy",busy?"true":"false");}
       var picker=document.getElementById("plot_upload_native");
       if(picker)picker.disabled=busy;
+      var plot=document.getElementById("attach_current_plot");if(plot)plot.disabled=busy || readyCount>=3;
       var prompt=document.getElementById("prompt");if(prompt)prompt.disabled=working || pending || !connected;
       var fresh=document.getElementById("new_chat");if(fresh)fresh.disabled=working || !connected;
       var history=document.getElementById("history");if(history)history.disabled=busy;
@@ -928,7 +947,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       var note=document.getElementById("uploading_indicator");
       if(note)note.textContent=transfer?"Adding image\\u2026":"";
       var status=document.getElementById("request_indicator");
-      if(status)status.textContent=!connected?"Disconnected":working?"Working\\u2026":pending?"Awaiting run approval":"";
+      if(status)status.textContent=!connected?"Disconnected":plotCaptureId!==null?"Attaching plot\\u2026":working?"Working\\u2026":pending?"Awaiting run approval":"";
     }
     function resetTransfers(){
       uploadQueue=[];
@@ -1009,6 +1028,12 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       stageImages(files);
     },true);
     document.addEventListener("click",function(e){
+      var plot=e.target && e.target.closest && e.target.closest("#attach_current_plot");
+      if(plot && !plot.disabled){
+        plotCaptureId=++nonce;updateSendState();
+        Shiny.setInputValue("attach_current_plot",{nonce:plotCaptureId,epoch:uploadEpoch,
+          text:document.getElementById("prompt").value},{priority:"event"});
+      }
       var btn=e.target && e.target.closest && e.target.closest(".code-copy");
       if(!btn)return;
       var wrap=btn.closest(".code-wrap");
@@ -1059,6 +1084,12 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       function registerHandlers(){
         if(handlersRegistered || !window.Shiny || !Shiny.addCustomMessageHandler)return;
         handlersRegistered=true;
+        Shiny.addCustomMessageHandler("ai_plot_attach_complete",function(msg){
+          if(!msg || msg.id!==plotCaptureId)return;
+          plotCaptureId=null;
+          if(typeof msg.attachments==="number")readyCount=msg.attachments;
+          updateSendState();
+        });
         Shiny.addCustomMessageHandler("ai_image_upload_ack",function(msg){
           if(!uploading || !msg || msg.id!==currentUploadId)return;
           if(uploadTimeout!==null){clearTimeout(uploadTimeout);uploadTimeout=null;}
@@ -1094,7 +1125,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       function onConnected(){registerHandlers();Shiny.setInputValue("ai_client_ready",++nonce,{priority:"event"});}
       if(window.jQuery){window.jQuery(document).on("shiny:connected",onConnected);
         window.jQuery(document).on("shiny:disconnected",function(){
-          connected=false;submitId=null;validationInFlight=false;resetTransfers();
+          connected=false;submitId=null;plotCaptureId=null;validationInFlight=false;resetTransfers();
         });}
       document.addEventListener("shiny:connected",onConnected);
       updateSendState();
@@ -1154,6 +1185,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           shiny::tags$input(id="plot_upload_native",type="file",multiple="multiple",
             "data-shiny-no-bind-input"="",
             accept="image/png,image/jpeg,image/webp")),
+        shiny::tags$button(id="attach_current_plot",type="button",class="attach-plot",
+          title="Attach the plot selected in RStudio's Plots pane as a PNG", "Attach current plot"),
         shiny::span(id="uploading_indicator",class="uploading-indicator",role="status"),
         shiny::span(id="request_indicator",class="request-indicator",role="status"),
         shiny::actionButton("send","Send",class="ai-btn ai-send")
@@ -1517,7 +1550,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           if(!is.null(console_capture))shiny::tagList(
             shiny::tags$strong("Console context"),
             shiny::p("Enable Console context below the message box, then run code normally in RStudio. Your next Send includes up to 200 recent lines (12,000 characters). Completed commands are included even if they print no text; plot images are not captured. Errors and warnings are captured after launch returns to the Console prompt."),
-            shiny::p("Only new R output is recorded. Capture is temporary and stops when you turn it off, switch chats, Close, or update. Plots and output from some external processes are not captured."))
+            shiny::p("Only new R output is recorded. Capture is temporary and stops when you turn it off, switch chats, Close, or update. Use Attach current plot to add the plot selected in RStudio's Plots pane as an image, then press Send."))
         ),
         footer=shiny::tagList(
           if(!is.null(package_info)) shiny::actionButton("check_updates","Check for updates",class="ai-btn"),
@@ -1606,6 +1639,32 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       state$attachments <- append(state$attachments,list(prepared))
       TRUE
     }
+    recent_plot_requests <- character(0)
+    shiny::observeEvent(input$attach_current_plot,{
+      obj <- input$attach_current_plot
+      if(!is.list(obj) || length(obj$nonce)!=1L)return()
+      on.exit(session$sendCustomMessage("ai_plot_attach_complete",
+        list(id=obj$nonce,attachments=length(state$attachments))),add=TRUE)
+      if(state$busy || !is.null(state$pending) || !isTRUE(obj$epoch==state$upload_epoch) ||
+          as.character(obj$nonce) %in% recent_plot_requests)return()
+      recent_plot_requests <<- tail(c(recent_plot_requests,as.character(obj$nonce)),32L)
+      if(length(state$attachments)>=3L){
+        shiny::showNotification("Up to 3 images can be attached per message.",type="warning")
+        return()
+      }
+      state$busy <- TRUE;sync_client()
+      on.exit({state$busy<-FALSE;sync_client()},add=TRUE)
+      src <- tryCatch(capture_current_plot(attachment_dir),error=function(e)e)
+      if(inherits(src,"error")){
+        shiny::showNotification(paste("Could not attach the current plot:",conditionMessage(src)),type="error")
+        return()
+      }
+      on.exit(unlink(src),add=TRUE)
+      if(isTRUE(add_attachment(src,"Current RStudio plot.png"))){
+        state$draft <- chat_text(obj$text,state$draft)
+        persist_chat()
+      }
+    },ignoreInit=TRUE)
     shiny::observeEvent(input$cancel_image, {
       on.exit(persist_chat(),add=TRUE)
       obj <- input$cancel_image

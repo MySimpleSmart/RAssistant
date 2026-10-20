@@ -81,6 +81,12 @@ Credentials are stored separately and
 remain available after updates. A new R major/minor version can use a new library,
 requiring package reinstallation; the OS-stored key remains separate.
 
+Attach current plot, beside Upload, exports the plot selected in RStudio's Plots
+pane as a PNG using \code{rstudioapi::savePlotAsImage()}. It stages a preview;
+Send submits the actual image through the normal attachment flow. Source is not
+rerun. Plots history selection is respected. The button is in chat, not in
+RStudio's Plots toolbar. Up to three images of 4 MB each can be attached.
+
 The package app offers an opt-in Console context control. Enable it, wait for
 the On status, then run code normally. Send includes up to 200 recent lines and
 12,000 characters of new R output and associated commands, including ordinary

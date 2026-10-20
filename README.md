@@ -235,6 +235,19 @@ OCR first.
 install.packages("pdftools")
 ```
 
+## Attach the current RStudio plot
+
+Select a graph in RStudio's **Plots** pane, then click **Attach current plot**
+beside Upload in RAssistant. The selected plot is exported as a PNG and appears
+in the attachment previews. Type your question and press **Send** to submit it.
+There is no manual Export or clipboard step, and Source is not rerun.
+
+Each click captures the plot currently selected, including an older graph
+selected with the Plots history arrows. This uses RStudio's `savePlotAsImage()`
+API, not `ggplot2::last_plot()`. The button is in the chat; RStudio's own Plots
+toolbar is not modified. The existing three-image and 4 MB per-image limits apply.
+Attaching alone makes no AI request; Remove all discards staged plots.
+
 ## Console context
 
 In the package app, enable **Console context** below the message box, wait for

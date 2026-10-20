@@ -1,3 +1,11 @@
+# RAssistant 0.3.10
+
+- Add **Attach current plot** beside Upload. Export the plot selected in
+  RStudio's Plots pane as a PNG and stage it in chat with a preview. Send
+  submits the image through the normal attachment flow without rerunning Source.
+- Preserve the draft, enforce the three-image and 4 MB limits, and report
+  missing plots or unavailable RStudio export support without sending to AI.
+
 # RAssistant 0.3.9
 
 - Capture completed Console commands even when they print no text, including
