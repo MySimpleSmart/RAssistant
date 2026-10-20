@@ -1,3 +1,12 @@
+# RAssistant 0.3.9
+
+- Capture completed Console commands even when they print no text, including
+  plotting commands, assignments and invisible results. Label absent text
+  explicitly and keep the internal activation helper out of the transcript.
+- Explain that a captured plot command is execution context, not an image of
+  the plot. Keep earlier image uploads distinct from the current Console.
+- Distinguish an enabled but empty capture from a disabled capture in requests.
+
 # RAssistant 0.3.8
 
 - Include completed Console commands alongside their captured output. Preserve

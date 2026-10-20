@@ -255,9 +255,11 @@ The active API key is redacted from captured context before it is sent.
 
 Completed commands are recorded after their output with task boundaries. Errors
 include their condition call or stack entry when available; an enclosing call
-may not show the whole command. Comments and silent commands are not recorded.
+may not show the whole command. Commands that print no text, including plotting
+and assignments, are recorded with a no-text-output label. Comments are not recorded.
 The assistant uses this evidence rather than guessing the originating command
-from the current Source.
+from the current Source. A plotting command does not include the plot's pixels;
+earlier uploaded images remain historical context, not evidence of the latest plot.
 
 Only output produced after enabling is available. This is a bounded excerpt,
 not proof the current Source was executed. Plots, external-process output,

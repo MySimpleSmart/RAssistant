@@ -1,4 +1,4 @@
-# Opt-in capture of future R output. The spool is temporary; only a bounded
+# Opt-in capture of future R output and commands. The spool is temporary; only a bounded
 # tail is read on Send. stderr is never redirected or muffled.
 .new_console_capture <- function() {
   state <- new.env(parent = emptyenv())
@@ -13,6 +13,7 @@
   state$started_at <- NULL
   state$boundary <- 0
   limit <- 12000L
+  activation_helper <- call(":::", as.name("RAssistant"), as.name(".activate_console_capture"))
   call_text <- function(expr) {
     lines <- deparse(expr, width.cutoff = 100L, nlines = 31L)
     text <- paste(utils::head(lines, 30L), collapse = "\n+ ")
@@ -148,16 +149,18 @@
       return(!isTRUE(tryCatch(maintain(), error = function(e) FALSE)))
     }
     tryCatch({
-      if (state$active && !state$busy && owns_connection()) {
+      internal <- is.call(expr) && identical(expr[[1L]], activation_helper)
+      if (state$active && state$prepared && !state$busy && owns_connection() && !internal && isTRUE(ok)) {
         flush(state$connection)
         # R provides the completed expression after printing its value. Record
         # it after its output, with explicit boundaries; never infer it from
-        # Source or try to re-evaluate it. Silent tasks add no transcript noise.
-        if (file.info(state$path)$size > state$boundary) {
-          append_lines(c("", "[Completed Console command for preceding output]",
-            paste0("> ", call_text(expr)), "[End Console task]"))
-          mark_boundary()
-        }
+        # Source or try to re-evaluate it. Plotting and assignments may emit no
+        # text at all; their completed expressions are still useful evidence.
+        label <- if (file.info(state$path)$size > state$boundary)
+          "[Completed Console command for preceding output]" else
+          "[Completed Console command; no text output captured]"
+        append_lines(c("", label, paste0("> ", call_text(expr)), "[End Console task]"))
+        mark_boundary()
       }
       maintain()
     }, error = function(e) NULL)

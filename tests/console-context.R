@@ -25,9 +25,15 @@ app$api_key <- "synthetic-secret"
 app$initial <- app$empty_source_context()
 app$active_doc <- function(id=NULL)NULL
 app$ask_ai <- function(system_prompt,prompt,images=character()){
-  calls[[length(calls)+1L]]<<-list(system=system_prompt,prompt=prompt)
+  calls[[length(calls)+1L]]<<-list(system=system_prompt,prompt=prompt,image_count=length(images))
   "Use the supplied evidence."
 }
+fixture <- tempfile(fileext=".png")
+grDevices::png(fixture,width=80,height=80)
+par(mar=rep(0,4));plot.new();points(.5,.5)
+invisible(grDevices::dev.off())
+image_url <- paste0("data:image/png;base64,",jsonlite::base64_enc(readBin(fixture,"raw",file.info(fixture)$size)))
+unlink(fixture)
 shiny::testServer(app$server,{
   session$setInputs(console_context=FALSE)
   session$flushReact()
@@ -86,6 +92,28 @@ shiny::testServer(app$server,{
   check(length(calls)==4L && grepl("LARGE_SOURCE_CONSOLE_EVIDENCE",tail(calls,1L)[[1L]]$prompt,fixed=TRUE) &&
     !grepl(strrep("x",50001L),tail(calls,1L)[[1L]]$prompt,fixed=TRUE),
     "bounded Console context works even when an unrelated Source document is too large")
+  app$active_doc<-function(id=NULL)NULL
+  session$setInputs(paste_image=list(image=image_url,filename="earlier-plot.png",nonce=7L,epoch=state$upload_epoch))
+  session$setInputs(chat_submit=list(text="Read this image",nonce=7L))
+  text<<-paste("[Completed Console command; no text output captured]",
+    '> ggplot(truant, aes(x = long)) + geom_histogram(binwidth = 20) + labs(title = "Original Counts (long)") + theme_bw()',
+    "[End Console task]",sep="\n")
+  session$setInputs(chat_submit=list(text="What is in the Console now?",nonce=8L))
+  latest<-tail(calls,1L)[[1L]]
+  check(length(calls)==6L && grepl("ggplot(truant",latest$prompt,fixed=TRUE) &&
+    grepl("no text output captured",latest$prompt,fixed=TRUE),
+    "a plot-only Console command reaches Send even without a text result")
+  check(latest$image_count==1L && grepl("Retained images are historical uploads",latest$system,fixed=TRUE) &&
+    grepl("does not mean no Console activity occurred",latest$system,fixed=TRUE) &&
+    grepl("do not ask for pasted Console text already supplied",latest$system,fixed=TRUE) &&
+    grepl("Never claim to have seen the current plot",latest$system,fixed=TRUE),
+    "an earlier retained image cannot substitute for current Console evidence or imply new plot pixels")
+  text<<-""
+  session$setInputs(chat_submit=list(text="What is in the Console now?",nonce=9L))
+  latest<-tail(calls,1L)[[1L]]
+  check(length(calls)==7L && grepl("Capture is enabled, but no completed commands or text have been captured",latest$prompt,fixed=TRUE) &&
+    grepl("Retained images are historical uploads",latest$system,fixed=TRUE),
+    "an empty enabled capture is explicit even when an earlier image is retained")
   session$close()
   check(!enabled,"disconnecting a session stops capture")
 })

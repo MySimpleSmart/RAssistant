@@ -86,8 +86,10 @@ the On status, then run code normally. Send includes up to 200 recent lines and
 12,000 characters of new R output and associated commands, including ordinary
 uncaught errors, warnings and messages. Completed commands follow their output
 with task boundaries. Errors include condition calls and stack entries when
-available, which may be enclosing calls rather than full commands. Comments and
-silent commands are not recorded. A fixed registration helper runs in the RStudio Console without
+available, which may be enclosing calls rather than full commands. Silent commands,
+including plotting and assignments, are recorded with a no-text-output label.
+Comments are not recorded; plot pixels are not included. Earlier image uploads
+are historical context, not the latest plot. A fixed registration helper runs in the RStudio Console without
 changing focus. Activation refuses to overwrite an unfinished Console command.
 Capture starts off, keeps normal output visible, and clears on disable, chat
 changes, disconnect, Close or update. The raw temporary capture is not saved in

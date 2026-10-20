@@ -23,6 +23,19 @@ main <- function() {
     "cat('BEFORE_ENABLE_SENTINEL\\n')",
     "cap$prepare()",
     "cap$start()",
+    "RAssistant:::.activate_console_capture('ignored-test-token')",
+    "checks$activation_hidden <- !grepl('ignored-test-token',cap$snapshot(),fixed=TRUE)",
+    "silent_console_assignment <- 42L",
+    "silent <- cap$snapshot()",
+    "checks$silent_assignment <- grepl('[Completed Console command; no text output captured]\\n> silent_console_assignment <- 42L',silent,fixed=TRUE)",
+    "invisible(sqrt(4))",
+    "checks$invisible_call <- grepl('[Completed Console command; no text output captured]\\n> invisible(sqrt(4))',cap$snapshot(),fixed=TRUE)",
+    "grDevices::pdf('silent-histogram.pdf')",
+    "graphics::hist(1:40,",
+    "  breaks=10, main='Original Counts (long)')",
+    "histogram <- cap$snapshot()",
+    "checks$silent_plot <- grepl('[Completed Console command; no text output captured]\\n> graphics::hist(1:40, breaks = 10, main = \"Original Counts (long)\")',histogram,fixed=TRUE) && file.exists('silent-histogram.pdf')",
+    "invisible(grDevices::dev.off())",
     "cat('VISIBLE_CONSOLE_VALUE_42\\n')",
     "warning('VISIBLE_WARNING_17')",
     "message('VISIBLE_MESSAGE_23')",
@@ -53,7 +66,7 @@ main <- function() {
     "checks$stop <- cap$stop() && sink.number() == 0L && !file.exists(path) && identical(cap$snapshot(), '')",
     "cat('WHILE_OFF_SENTINEL\\n')",
     "cap$start()",
-    "checks$fresh_start <- identical(cap$snapshot(), '')",
+    "checks$fresh_start <- !grepl('WHILE_OFF_SENTINEL|VISIBLE_ERROR_31|silent_console_assignment',cap$snapshot())",
     "for(i in 1:1000) cat(sprintf('line-%04d %s\\n', i, strrep('x', 60)))",
     "bounded <- cap$snapshot()",
     "checks$bound <- nchar(bounded) <= 12000 && length(strsplit(bounded, '\\n')[[1]]) <= 200 && grepl('line-1000', bounded, fixed=TRUE) && !grepl('line-0001', bounded, fixed=TRUE)",
@@ -104,7 +117,7 @@ main <- function() {
     stdout=output, stderr=errors)
   if (!identical(code, 0L) || !file.exists(result)) stop("Console subprocess failed; ", paste(readLines(errors),collapse="\n"))
   checks <- readRDS(result)
-  stopifnot(length(checks) == 33L)
+  stopifnot(length(checks) == 37L)
   if (!all(vapply(checks, isTRUE, logical(1)))) stop("Console checks failed: ",
     paste(names(checks)[!vapply(checks,isTRUE,logical(1))],collapse=", "))
   visible <- paste(readLines(output,warn=FALSE),collapse="\n")
