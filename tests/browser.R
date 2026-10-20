@@ -268,21 +268,27 @@ main <- function() {
     "chat and file tooltip identify the Source snapshot actually sent")
   js('document.querySelector(".source-review").click();')
   wait_js('document.querySelector(".source-diff")!==null && document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
+  check(isTRUE(js('document.getElementById("shiny-modal")===null && document.querySelector("#chat_stream .code-wrap .source-edit-card")!==null && getComputedStyle(document.querySelector(".review-open > pre")).display==="none" && document.querySelector(".source-apply").textContent==="Replace"')),
+    "comparison replaces the code inline in chat with an explicit Replace button and no modal")
+  js('window.copied=null;document.querySelector(".review-open .code-copy").click();')
+  wait_js('window.copied!==null')
+  check(identical(js('window.copied'),expected) && !file.exists(edit_marker),
+    "Copy in an open comparison copies the proposed code without changing Source")
   check(!file.exists(edit_marker) && isTRUE(js('document.querySelector(".source-diff").textContent.includes("-plot(1:3)") && document.querySelector(".source-diff").textContent.includes("+x <-") && document.querySelector(".edit-check").textContent.includes("Not run")')),
     "Review shows syntax checking and a real comparison before any editor write")
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=480L,deviceScaleFactor=1,mobile=FALSE)
-  check(isTRUE(js('document.getElementById("cancel_source_edit").getBoundingClientRect().bottom<=innerHeight && document.querySelector("#shiny-modal .modal-dialog").getBoundingClientRect().right<=innerWidth')),
-    "the review dialog keeps Cancel accessible in a small Viewer")
+  check(isTRUE(js('document.querySelector(".source-edit-card").getBoundingClientRect().right<=innerWidth && document.querySelector(".source-diff").clientHeight<=280 && document.getElementById("cancel_source_edit").closest("#chat_stream")!==null && document.documentElement.scrollWidth<=innerWidth')),
+    "the inline comparison fits a small Viewer with bounded diff scrolling")
   browser$Emulation$clearDeviceMetricsOverride()
   screenshot<-Sys.getenv("RA_BROWSER_EDIT_SCREENSHOT")
   if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
   js('document.getElementById("cancel_source_edit").click();')
-  wait_js('document.getElementById("shiny-modal")===null')
-  check(!file.exists(edit_marker),"Cancel leaves Source untouched")
+  wait_js('document.getElementById("source-review-card")===null && document.querySelector(".review-open")===null')
+  check(!file.exists(edit_marker) && isTRUE(js('getComputedStyle(document.querySelector(".code-wrap > pre")).display!=="none"')),"Cancel leaves Source untouched and restores the code")
   js('document.querySelector(".source-review").click();')
   wait_js('document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
   js('document.querySelector(".source-apply").click();document.querySelector(".source-apply").click();')
-  wait_js('document.getElementById("shiny-modal")===null && !document.getElementById("send").disabled')
+  wait_js('document.getElementById("source-review-card")===null && !document.getElementById("send").disabled')
   check(file.exists(edit_marker) && length(readRDS(edit_marker))==1L && identical(readRDS(edit_marker)[[1L]]$text,expected),
     "Apply writes the exact reviewed bytes once after explicit approval")
   js('document.querySelector(".source-review").click();')
@@ -290,7 +296,7 @@ main <- function() {
   check(isTRUE(js('document.querySelector(".source-edit-mode select").value==="new_r"')),
     "a stale code answer cannot replace a changed Source snapshot")
   js('document.querySelector(".source-apply").click();')
-  wait_js('document.getElementById("shiny-modal")===null && !document.getElementById("send").disabled')
+  wait_js('document.getElementById("source-review-card")===null && !document.getElementById("send").disabled')
   check(length(readRDS(edit_marker))==2L && readRDS(edit_marker)[[2L]]$operation=="new",
     "a reviewed new-document proposal needs its own explicit approval")
   js('openAction("history");')

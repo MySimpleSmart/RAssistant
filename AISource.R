@@ -249,14 +249,17 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         "class=[\\\"']language-([[:alnum:]_+.-]+)[\\\"']", block, perl = TRUE
       ))[[1L]]
       kind <- if (length(language) > 1L) toupper(language[[2L]]) else "Code"
+      reviewable <- !is.null(review_id) && isTRUE(code_block_data(block)$reviewable)
       paste0(
         '<div class="code-wrap"><div class="code-top">',
         '<span class="code-type">', htmltools::htmlEscape(kind), '</span>',
         '<div class="code-actions"><button type="button" class="code-copy" aria-label="Copy code">Copy</button>',
-        if(!is.null(review_id) && isTRUE(code_block_data(block)$reviewable))paste0(
+        if(reviewable)paste0(
           '<button type="button" class="source-review" data-message="',as.integer(review_id),
           '" data-block="',i,'">Review</button>')else"",
-        '</div></div>', block, '</div>'
+        '</div></div>', block,
+        if(reviewable)paste0('<div id="source-review-slot-',as.integer(review_id),'-',i,'"></div>')else"",
+        '</div>'
       )
     }, character(1))
     regmatches(html, matches) <- list(unname(wrapped))
@@ -938,11 +941,12 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .code-copy:hover,.source-review:hover{background:#e7f0f8}
   .code-actions{display:flex;gap:5px}
   .source-read{font:10px var(--mono);color:var(--muted);margin:2px 0 5px}
-  .source-review-modal .modal-dialog{margin:10px auto}
-  .source-review-modal .modal-content{max-height:calc(100vh - 20px);display:flex;flex-direction:column;overflow:hidden}
-  .source-review-modal .modal-body{min-height:0;overflow-y:auto}
-  .source-review-modal .modal-header,.source-review-modal .modal-footer{flex:0 0 auto}
-  .source-diff{max-height:calc(100vh - 340px);min-height:60px;overflow:auto;font:11px/1.5 var(--mono);white-space:pre;
+  .code-wrap.review-open>pre{display:none}
+  .source-edit-card{padding:8px;border:1px solid var(--border);font-size:11px}
+  .source-edit-mode .form-group{margin-bottom:7px}
+  .source-edit-mode .form-control{font-size:11px;height:30px}
+  .source-edit-actions{display:flex;gap:6px;margin-top:7px}
+  .content pre.source-diff{max-height:280px;min-height:60px;overflow:auto;font:11px/1.5 var(--mono);white-space:pre;
     padding:8px;border:1px solid var(--border);background:#f5f6f7}
   .diff-add{background:#e7f5e9;color:#195b2a}
   .diff-remove{background:#fce9e9;color:#8a2323}
@@ -1034,7 +1038,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     var submitId=null, validationInFlight=false, serverBusy=false, pending=false;
     var readyCount=0, uploadEpoch=0, connected=false;
     var openDetails=Object.create(null);
-    var scrollLatest=function(){},editApplying=false,sourceReadDetail="";
+    var scrollLatest=function(){},holdReviewPosition=function(){},editApplying=false,sourceReadDetail="";
     function resizePrompt(){
       var field=document.getElementById("prompt");if(!field)return;
       var cap=Math.max(54,Math.min(140,window.innerHeight*.25));
@@ -1104,6 +1108,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       var clear=document.getElementById("clear_images");if(clear)clear.disabled=working;
       document.querySelectorAll(".remove-attachment").forEach(function(btn){btn.disabled=busy;});
       document.querySelectorAll(".source-review,.source-apply").forEach(function(btn){btn.disabled=busy || btn.getAttribute("data-invalid")==="true";});
+      document.querySelectorAll(".code-wrap").forEach(function(wrap){wrap.classList.toggle("review-open",!!wrap.querySelector(".source-edit-card"));});
       var imageLabel=document.getElementById("image_picker");if(imageLabel)imageLabel.setAttribute("aria-disabled",busy?"true":"false");
       ["check_updates","update_now","confirm_update"].forEach(function(id){
         var control=document.getElementById(id);if(control)control.disabled=busy;
@@ -1247,6 +1252,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(menu && (!menu.contains(e.target) || (e.target.closest && e.target.closest(".menu-actions button"))))menu.open=false;
       var review=e.target.closest && e.target.closest(".source-review");
       if(review && !review.disabled && connected && !serverBusy && !pending){
+        holdReviewPosition(review.closest(".code-wrap"));
         Shiny.setInputValue("review_source_change",{message:Number(review.getAttribute("data-message")),block:Number(review.getAttribute("data-block")),nonce:++nonce,epoch:uploadEpoch},{priority:"event"});
       }
       var apply=e.target.closest && e.target.closest(".source-apply");
@@ -1355,6 +1361,12 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         });
       }
       scrollLatest=function(){followTail=true;readingUntil=0;readerScrollPending=false;queueScroll();};
+      holdReviewPosition=function(wrap){
+        noteLatestMessage();followTail=false;readingUntil=0;readerScrollPending=false;
+        // Anchor the chosen code block while its comparison replaces the code.
+        savedTop=Math.max(0,root.scrollTop+wrap.getBoundingClientRect().top-root.getBoundingClientRect().top-8);
+        queueScroll();
+      };
       function readerIntent(){noteLatestMessage();readingUntil=Date.now()+1500;readerScrollPending=true;}
       root.addEventListener("wheel",function(e){readerIntent();if(e.deltaY<0)followTail=false;},{passive:true});
       root.addEventListener("touchstart",readerIntent,{passive:true});
@@ -1475,7 +1487,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     clear_source_review <- function(remove=TRUE) {
       open <- !is.null(shiny::isolate(review_context()))
       review_context(NULL);preview_job <<- NULL
-      if(open && remove)shiny::removeModal()
+      if(open && remove)shiny::removeUI(selector="#source-review-card",immediate=TRUE)
     }
     matching_source <- function(snapshot) {
       if(is.null(snapshot))return(NULL)
@@ -2069,11 +2081,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       mode_id <- paste0("source_edit_mode_",review_id)
       review_context(list(snapshot=snapshot,block=block,choices=choices,chat=state$chat$id,
         epoch=state$upload_epoch,notice=notice,review_id=review_id,mode_id=mode_id))
-      shiny::showModal(htmltools::tagAppendAttributes(shiny::modalDialog(title="Review Source changes",
+      shiny::insertUI(selector=paste0("#source-review-slot-",as.integer(obj$message),"-",as.integer(obj$block)),
+        where="beforeEnd",immediate=TRUE,ui=shiny::div(id="source-review-card",class="source-edit-card",
         if(nzchar(notice))shiny::p(notice),
         shiny::div(class="source-edit-mode",shiny::selectInput(mode_id,"Operation",choices=choices,selected=unname(choices[[1L]]),selectize=FALSE)),
-        shiny::uiOutput("source_change_preview"),
-        footer=shiny::actionButton("cancel_source_edit","Cancel",class="ai-btn"),easyClose=FALSE,size="l"),class="source-review-modal"))
+        shiny::uiOutput("source_change_preview")))
     },ignoreInit=TRUE)
     output$source_change_preview <- shiny::renderUI({
       ctx <- review_context();if(is.null(ctx))return(NULL)
@@ -2081,7 +2093,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(!is.character(mode) || length(mode)!=1L || !mode %in% unname(ctx$choices))mode <- unname(ctx$choices[[1L]])
       candidate <- tryCatch(prepare_source_change(ctx$snapshot,ctx$block,mode),error=function(e)e)
       preview_job <<- NULL
-      if(inherits(candidate,"error"))return(shiny::p(class="edit-check",conditionMessage(candidate)))
+      cancel <- shiny::actionButton("cancel_source_edit","Cancel",class="ai-btn")
+      if(inherits(candidate,"error"))return(shiny::tagList(shiny::p(class="edit-check",conditionMessage(candidate)),cancel))
       token <- basename(tempfile("source-review-"))
       preview_job <<- c(candidate,list(token=token,snapshot=ctx$snapshot,chat=ctx$chat,epoch=ctx$epoch,review_id=ctx$review_id))
       diff <- source_diff(candidate$before,candidate$after)
@@ -2092,10 +2105,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         shiny::tags$pre(class="source-diff",shiny::HTML(paste(vapply(diff,function(line)paste0(
           '<span class="',if(startsWith(line,"+"))"diff-add"else if(startsWith(line,"-"))"diff-remove"else"diff-context",'">',
           htmltools::htmlEscape(line),'</span>'),character(1)),collapse="\n"))),
-        shiny::p("Apply changes the editor only. Save and Run are separate."),
+        shiny::p(class="edit-check","Edits stay unsaved. Code is not run."),
+        shiny::div(class="source-edit-actions",
         shiny::tags$button(type="button",class="btn ai-btn ai-send source-apply",disabled=if(!candidate$syntax$ok)"disabled"else NULL,
           "data-invalid"=if(candidate$syntax$ok)"false"else"true","data-token"=token,
-          if(candidate$creating)"Create document"else"Apply to Source"))
+          if(candidate$creating)"Create document"else if(candidate$mode=="replace")"Replace"else"Append"),cancel))
     })
     shiny::observeEvent(input$cancel_source_edit,clear_source_review(),ignoreInit=TRUE)
     shiny::observeEvent(input$apply_source_change,{

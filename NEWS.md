@@ -1,3 +1,8 @@
+# RAssistant 0.4.1
+
+- Compare Source changes directly inside the chat code block, without a separate dialog.
+- Copy the proposed code or approve Replace, Append or Create. Cancel returns to the code.
+
 # RAssistant 0.4.0
 
 - Review code changes with a syntax check and comparison before approving Apply to Source.

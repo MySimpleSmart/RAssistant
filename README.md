@@ -323,7 +323,9 @@ the character count. The current limit is 50,000 characters in one active file.
 
 Click **Review** beside Copy on an AI R/Rmd code block. Choose **Replace entire
 file**, **Append to file**, or **New document**, then inspect the syntax result and
-the removed/added lines. **Apply to Source** or **Create document** is the approval.
+the removed/added lines directly inside the chat code block. **Replace**, **Append**
+or **Create document** is the approval. **Copy** copies the proposed code without
+editing Source; **Cancel** closes the comparison and returns to the code.
 Cancel leaves the editor unchanged. An R snippet appended to Rmd becomes a new R chunk.
 
 Checks parse R syntax, R Markdown/Quarto R chunks and inline R without executing
