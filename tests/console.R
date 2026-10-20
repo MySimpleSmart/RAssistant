@@ -32,6 +32,18 @@ main <- function() {
     "checks$warning <- grepl('Warning: VISIBLE_WARNING_17', captured, fixed=TRUE) && priorWarnings == 1L",
     "checks$message <- grepl('Message: VISIBLE_MESSAGE_23', captured, fixed=TRUE)",
     "checks$error <- grepl('Error: VISIBLE_ERROR_31', captured, fixed=TRUE)",
+    "checks$completed_command <- grepl('[Completed Console command for preceding output]\\n> cat(\"VISIBLE_CONSOLE_VALUE_42\\\\n\")', captured, fixed=TRUE)",
+    "checks$error_command <- grepl('[Error stack entry; may be an enclosing call] stop(\"VISIBLE_ERROR_31\")', captured, fixed=TRUE)",
+    "fail_nested <- function() stop('NESTED_ERROR')",
+    "fail_nested()",
+    "nested <- cap$snapshot()",
+    "checks$nested_error <- grepl('[Error condition call] fail_nested()',nested,fixed=TRUE) && grepl('[Error stack entry; may be an enclosing call] fail_nested()',nested,fixed=TRUE)",
+    "{message('HISTOGRAM_MESSAGE'); cat('MULTILINE_RESULT\\n')}",
+    "grouped <- cap$snapshot()",
+    "checks$multiline_command <- grepl('> {\\n+ ',grouped,fixed=TRUE) && grepl('message(\"HISTOGRAM_MESSAGE\")',grouped,fixed=TRUE)",
+    "checks$task_boundaries <- regexpr('[End failed Console task; full command may be unavailable]',grouped,fixed=TRUE)[[1]] < regexpr('Message: HISTOGRAM_MESSAGE',grouped,fixed=TRUE)[[1]] && grepl('MULTILINE_RESULT\\n\\n[Completed Console command for preceding output]',grouped,fixed=TRUE)",
+    paste0("{cat('LONG_COMMAND_OUTPUT\\n');", paste(rep("invisible(1L)",40L),collapse=";"),"}"),
+    "checks$command_truncation <- grepl('LONG_COMMAND_OUTPUT',cap$snapshot(),fixed=TRUE) && grepl('[command truncated]',cap$snapshot(),fixed=TRUE)",
     "checks$since_enable <- !grepl('BEFORE_ENABLE_SENTINEL', captured, fixed=TRUE)",
     "cat('synthetic-secret-key\\n')",
     "redacted <- cap$snapshot(redact='synthetic-secret-key')",
@@ -46,6 +58,8 @@ main <- function() {
     "bounded <- cap$snapshot()",
     "checks$bound <- nchar(bounded) <= 12000 && length(strsplit(bounded, '\\n')[[1]]) <= 200 && grepl('line-1000', bounded, fixed=TRUE) && !grepl('line-0001', bounded, fixed=TRUE)",
     "checks$spool_rotation <- file.info(environment(cap$start)$state$path)$size < 65536",
+    "{cat(strrep('r',70000)); invisible(cap$snapshot())}",
+    "checks$rotation_command <- grepl('invisible(cap$snapshot())',cap$snapshot(),fixed=TRUE) && grepl('[Completed Console command for preceding output]\\n> {',cap$snapshot(),fixed=TRUE)",
     "cat(strrep('z', 200000), 'LONG_LINE_TAIL', sep='')",
     "checks$long_line <- grepl('LONG_LINE_TAIL', cap$snapshot(), fixed=TRUE) && nchar(cap$snapshot()) <= 12000",
     "cat('\\nUTF8_', intToUtf8(c(0x43C,0x43E,0x43D,0x433,0x43E,0x43B)), '_END\\n', sep='')",
@@ -85,11 +99,12 @@ main <- function() {
     "checks$no_spool_files <- !length(list.files(tempdir(), pattern='^RAssistant-console-.*\\\\.log$'))",
     paste0("saveRDS(checks, ", q(result), ")"))
   writeLines(lines, script)
-  code <- system2(r, c("--vanilla", "--slave", "--interactive"), stdin=script,
+  interactive_flag <- if (.Platform$OS.type == "windows") "--ess" else "--interactive"
+  code <- system2(r, c("--vanilla", "--slave", interactive_flag), stdin=script,
     stdout=output, stderr=errors)
   if (!identical(code, 0L) || !file.exists(result)) stop("Console subprocess failed; ", paste(readLines(errors),collapse="\n"))
   checks <- readRDS(result)
-  stopifnot(length(checks) == 26L)
+  stopifnot(length(checks) == 33L)
   if (!all(vapply(checks, isTRUE, logical(1)))) stop("Console checks failed: ",
     paste(names(checks)[!vapply(checks,isTRUE,logical(1))],collapse=", "))
   visible <- paste(readLines(output,warn=FALSE),collapse="\n")

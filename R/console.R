@@ -11,7 +11,24 @@
   state$depth <- 0L
   state$notice <- ""
   state$started_at <- NULL
+  state$boundary <- 0
   limit <- 12000L
+  call_text <- function(expr) {
+    lines <- deparse(expr, width.cutoff = 100L, nlines = 31L)
+    text <- paste(utils::head(lines, 30L), collapse = "\n+ ")
+    if (length(lines) > 30L || nchar(text) > 4000L) {
+      text <- paste0(substr(text, 1L, 4000L), " [command truncated]")
+    }
+    text
+  }
+  append_lines <- function(text) {
+    flush(state$connection)
+    con <- file(state$path, "a", encoding = "UTF-8")
+    on.exit(close(con), add = TRUE)
+    writeLines(text, con)
+    flush(con)
+  }
+  mark_boundary <- function() state$boundary <- file.info(state$path)$size
   owns_connection <- function() {
     if (is.null(state$connection)) return(FALSE)
     tryCatch(identical(getConnection(as.integer(state$connection)), state$connection) &&
@@ -74,28 +91,39 @@
     flush(state$connection)
     size <- file.info(state$path)$size
     if (!is.na(size) && size > 64 * 1024 && sink.number() == state$depth) {
+      unfinished <- size > state$boundary
       text <- read_tail()
       sink()
       con <- file(state$path, "w", encoding = "UTF-8")
       tryCatch(writeLines(text, con), finally = close(con))
       open_sink()
+      if (unfinished) state$boundary <- 0 else mark_boundary()
     }
     TRUE
   }
-  record <- function(kind, condition) {
+  record <- function(kind, condition, calls = list()) {
     if (!state$active || state$busy || !owns_connection()) return(invisible(NULL))
     state$busy <- TRUE
     on.exit(state$busy <- FALSE, add = TRUE)
     # A failed logger must never replace the user's original error/warning.
     tryCatch({
-      flush(state$connection)
-      con <- file(state$path, "a", encoding = "UTF-8")
-      on.exit(close(con), add = TRUE)
-      cat(kind, ": ", conditionMessage(condition), "\n", sep = "", file = con)
+      text <- paste0(kind, ": ", conditionMessage(condition))
+      if (kind == "Error") {
+        origin <- conditionCall(condition)
+        if (!is.null(origin)) text <- c(text, paste0("[Error condition call] ", call_text(origin)))
+        # Top-level errors do not trigger addTaskCallback. Preserve the stack
+        # entry before unwinding, even when stop() supplies no condition call.
+        # This can be an enclosing function, not the full Console expression.
+        if (length(calls)) text <- c(text,
+          paste0("[Error stack entry; may be an enclosing call] ", call_text(calls[[1L]])))
+        text <- c(text, "[End failed Console task; full command may be unavailable]")
+      }
+      append_lines(text)
+      if (kind == "Error") mark_boundary()
     }, error = function(e) NULL)
     invisible(NULL)
   }
-  handlers <- list(error = function(e) record("Error", e),
+  handlers <- list(error = function(e) record("Error", e, sys.calls()),
     warning = function(w) record("Warning", w), message = function(m) record("Message", m))
   # Registration must run as a real top-level Console expression. Registering
   # from a task callback only changes the registry, not the live handler stack.
@@ -119,7 +147,20 @@
       }
       return(!isTRUE(tryCatch(maintain(), error = function(e) FALSE)))
     }
-    tryCatch(maintain(), error = function(e) NULL)
+    tryCatch({
+      if (state$active && !state$busy && owns_connection()) {
+        flush(state$connection)
+        # R provides the completed expression after printing its value. Record
+        # it after its output, with explicit boundaries; never infer it from
+        # Source or try to re-evaluate it. Silent tasks add no transcript noise.
+        if (file.info(state$path)$size > state$boundary) {
+          append_lines(c("", "[Completed Console command for preceding output]",
+            paste0("> ", call_text(expr)), "[End Console task]"))
+          mark_boundary()
+        }
+      }
+      maintain()
+    }, error = function(e) NULL)
     TRUE
   }
   callback <- addTaskCallback(task, name = paste0("RAssistant-console-", basename(tempfile())))
@@ -139,6 +180,7 @@
     state$notice <- ""
     state$active <- TRUE
     state$started_at <- Sys.time()
+    state$boundary <- 0
     invisible(TRUE)
   }
   snapshot <- function(redact = character()) {

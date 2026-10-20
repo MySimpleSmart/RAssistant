@@ -240,7 +240,7 @@ install.packages("pdftools")
 In the package app, enable **Console context** below the message box, wait for
 the status to say **On**, then run R code normally in RStudio. Ask about the result
 or error and press **Send**: the request includes up to 200 recent lines and
-12,000 characters of captured R output. Copy/Paste is not required.
+12,000 characters of captured R output and associated commands. Copy/Paste is not required.
 
 Capture starts off each time. To prepare error and warning logging, the app runs
 its own fixed helper in the RStudio Console without switching focus. Finish or
@@ -252,6 +252,12 @@ are recorded without suppressing them. The temporary capture is cleared when you
 turn the option off, change chats, disconnect, Close or update. Raw captured output
 is not added to saved chat snapshots, though answers based on it remain in chat.
 The active API key is redacted from captured context before it is sent.
+
+Completed commands are recorded after their output with task boundaries. Errors
+include their condition call or stack entry when available; an enclosing call
+may not show the whole command. Comments and silent commands are not recorded.
+The assistant uses this evidence rather than guessing the originating command
+from the current Source.
 
 Only output produced after enabling is available. This is a bounded excerpt,
 not proof the current Source was executed. Plots, external-process output,

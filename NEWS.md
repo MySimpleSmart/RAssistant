@@ -1,3 +1,12 @@
+# RAssistant 0.3.8
+
+- Include completed Console commands alongside their captured output. Preserve
+  error condition calls and stack entries before unwinding, including direct
+  `stop()` calls with no condition call. Mark task boundaries and partial evidence.
+- Tell the assistant to use captured execution evidence for Console questions
+  and never guess which Source expression produced a message.
+- Fix the Windows Console test runner to use Rterm's interactive `--ess` flag.
+
 # RAssistant 0.3.7
 
 - Add an opt-in **Console context** control below the composer. New R output,
