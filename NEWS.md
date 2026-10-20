@@ -1,3 +1,8 @@
+# RAssistant 0.4.2
+
+- Code reviews that find a concrete error now request a complete corrected file for Copy and inline Review, including when you ask what is wrong.
+- Preserve unrelated lines, comments and strings. Explanation-only requests still stay explanations.
+
 # RAssistant 0.4.1
 
 - Compare Source changes directly inside the chat code block, without a separate dialog.

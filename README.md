@@ -328,6 +328,10 @@ or **Create document** is the approval. **Copy** copies the proposed code withou
 editing Source; **Cancel** closes the comparison and returns to the code.
 Cancel leaves the editor unchanged. An R snippet appended to Rmd becomes a new R chunk.
 
+When a Source review finds a concrete error, the assistant is instructed to include
+the complete corrected file for these controls, even if you only ask what is wrong.
+Ask for explanation only if you do not want a code proposal.
+
 Checks parse R syntax, R Markdown/Quarto R chunks and inline R without executing
 them. They do not validate YAML, other languages, package availability or runtime
 results. Use the separate approved script-validation flow to run code.

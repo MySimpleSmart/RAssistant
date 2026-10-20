@@ -104,4 +104,37 @@ shiny::testServer(app$server,{
   session$close();approve(job()$token)
   check(length(editor$writes)==2L && length(editor$news)==2L,"a disconnected or retired session cannot apply an edit")
 })
+
+# The reported question must receive correction guidance, not just an explicit
+# "fix" command. The fake response exercises rendering/proposals, not a live LLM.
+original <- c("# Keep this comment", "X <- matrix(1:12, nrow = 3)",
+  rep("# Unrelated line stays unchanged",12L),"rtrtryydim(X)")
+corrected <- c(head(original,-1L),"dim(X)")
+editor$ctx <- list(id="reported-doc",path="/tmp/v2.R",contents=original)
+app$initial <- editor$ctx
+request <- NULL
+app$ask_ai <- function(system_prompt,prompt,images=character()) {
+  request <<- list(system=system_prompt,prompt=prompt)
+  paste0("The last function name is misspelled.\n\n```r\n",paste(corrected,collapse="\n"),"\n```")
+}
+shiny::testServer(app$server,{
+  session$flushReact()
+  writes <- length(editor$writes)
+  session$setInputs(chat_submit=list(text="Код дотор ямар алдаа байна?",nonce=1L))
+  session$flushReact()
+  check(grepl("even when the user only asks what is wrong",request$system,fixed=TRUE) &&
+    grepl("preserve every other line, comment and string verbatim",request$system,fixed=TRUE) &&
+    grepl("Respect requests for explanation only",request$system,fixed=TRUE) &&
+    grepl(paste(original,collapse="\n"),request$prompt,fixed=TRUE),
+    "the reported error-review question sends all 15 lines with complete-correction and explanation-only guidance")
+  answer <- tail(state$messages,1L)[[1L]]
+  session$setInputs(review_source_change=list(message=answer$sequence,block=1L,nonce=2L,epoch=state$upload_epoch))
+  session$flushReact();invisible(output$source_change_preview)
+  job <- get("preview_job",envir=environment(clear_source_review),inherits=FALSE)
+  check(grepl('class="source-review"',as.character(answer$html),fixed=TRUE) &&
+    identical(job$before,paste(original,collapse="\n")) &&
+    identical(job$after,paste0(paste(corrected,collapse="\n"),"\n")) &&
+    job$syntax$ok && length(editor$writes)==writes,
+    "a corrected 15-line answer exposes Review and preserves all unrelated lines without editing Source")
+})
 cat(checks,"Source editing checks passed\n")

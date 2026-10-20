@@ -32,6 +32,9 @@ shiny::testServer(app$server, {
   session$setInputs(paste_image=list(image=urls[[1L]],filename="plot.png",nonce=1L,epoch=state$upload_epoch))
   session$setInputs(chat_submit=list(text="",nonce=2L))
   request <- last_call()
+  check(grepl("even when the user only asks what is wrong",request$system,fixed=TRUE) &&
+    grepl("Do not generate an unrelated Source correction for an image-reading task",request$system,fixed=TRUE),
+    "image requests keep Source correction guidance scoped to the user's actual review task")
   check(!grepl("Please analyze",request$prompt,fixed=TRUE),"an image-only upload does not invent a user request")
   check(!grepl("statistics tutor",request$system,fixed=TRUE) &&
         !grepl("ACADEMIC_COMMENT",request$system,fixed=TRUE),"ordinary image reading has no statistics or academic-output template")
