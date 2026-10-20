@@ -1,3 +1,8 @@
+# RAssistant 0.3.5
+
+- Publish a version-only update to verify automatic relaunch from 0.3.4,
+  including restoration of the saved conversation and draft.
+
 # RAssistant 0.3.4
 
 - Automatically reopen the assistant in RStudio after a successful update from
