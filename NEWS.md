@@ -1,3 +1,11 @@
+# RAssistant 0.3.6
+
+- Check for new versions automatically on launch and every 30 minutes while
+  the assistant stays open, showing the update banner when a newer version is found.
+- Keep **Help > Check for updates** for immediate manual checks.
+- Preserve a known update banner during background checks and temporary
+  connection failures. Automatic checks still respect the existing opt-out.
+
 # RAssistant 0.3.5
 
 - Publish a version-only update to verify automatic relaunch from 0.3.4,

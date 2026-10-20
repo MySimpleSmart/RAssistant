@@ -30,13 +30,15 @@ project, R history or a startup file. No prompt occurs merely by loading the pac
 unset or edit an existing environment variable.
 
 The toolbar displays the installed version and Help with copyable Console
-commands. On launch, a background process checks the public GitHub package
-version. A newer version displays Update now. Confirming closes the current chat
+commands. On launch and every 30 minutes while the assistant is open, a background
+process checks the public GitHub package version. A newer version automatically
+displays Update now. Confirming closes the current chat
 and performs the update, with progress in the Console. After a successful update,
 the assistant reopens automatically and restores any saved chat and draft.
-Discovery is cached for one hour per R session, does not use the OpenAI API, and
-does not send credentials or conversation data. Offline checks do not block chat.
-Help offers a manual check; \code{options(RAssistant.check_updates = FALSE)}
+Discovery is cached between automatic checks, does not use the OpenAI API, and
+does not send credentials or conversation data. Offline checks do not block chat
+or hide a previously found update. Help retains a manual check that bypasses the
+cache immediately; \code{options(RAssistant.check_updates = FALSE)}
 disables automatic checks while retaining explicit manual checks.
 
 New chat keeps the previous conversation in History, which offers Rename, Delete

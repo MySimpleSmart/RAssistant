@@ -42,7 +42,7 @@ main <- function() {
   check(identical(result$status,"available") && identical(result$version,"0.1.2"),
     "a newer package version produces an update notice")
   env$.start_update_check()
-  check(starts==1L,"a completed check is cached for one hour")
+  check(starts==1L,"a completed check is cached between automatic checks")
   latest<-"0.1.1";env$.start_update_check(force=TRUE)
   check(starts==2L && identical(env$.poll_update_check()$status,"current"),
     "manual checking bypasses the cache and recognizes the installed version")
@@ -67,10 +67,69 @@ main <- function() {
   check(starts==before+1L,"an explicit manual check works even when automatic checks are disabled")
   alive<-FALSE;env$.poll_update_check()
   options(RAssistant.check_updates=TRUE)
-  env$.update_state$checked_at<-Sys.time()-3601
-  alive<-FALSE;latest<-"0.1.2";env$.start_update_check()
-  check(starts==before+2L,"expired metadata is refreshed on the next launch")
-  env$.poll_update_check()
+  env$.update_state$checked_at<-Sys.time()-1801
+  alive<-FALSE;latest<-"0.1.2"
+  result<-env$.poll_update_status()
+  check(starts==before+2L && identical(result$status,"available"),
+    "an open session automatically discovers a new version after 30 minutes")
+  before<-starts
+  env$.update_state$checked_at<-Sys.time()-60
+  env$.poll_update_status()
+  check(starts==before && env$.update_poll_delay()>1700000,
+    "one minute does not trigger another network check or frequent idle polling")
+  env$.update_state$checked_at<-Sys.time()-1790
+  env$.poll_update_status()
+  check(starts==before && env$.update_poll_delay()>5000 && env$.update_poll_delay()<=10000,
+    "the next automatic check waits for the remaining 30-minute interval")
+  env$.update_state$checked_at<-Sys.time()-1801;alive<-TRUE
+  result<-env$.poll_update_status()
+  check(starts==before+1L && identical(result$status,"available") && env$.update_poll_delay()==250,
+    "a known banner stays visible while the next background check runs")
+  env$.poll_update_status()
+  check(starts==before+1L,"repeated polling never starts a second in-flight worker")
+  alive<-FALSE;failure<-TRUE
+  result<-env$.poll_update_status()
+  check(identical(result$status,"available") && env$.update_poll_delay()>1790000,
+    "a temporary connection failure keeps the known banner and schedules a later retry")
+  factory<-env$.new_update_worker
+  env$.new_update_worker<-function()stop("Synthetic worker startup failure")
+  env$.update_state$checked_at<-Sys.time()-1801
+  result<-env$.poll_update_status()
+  check(identical(result$status,"available") && env$.update_poll_delay()>1790000,
+    "a worker startup failure preserves the banner without a rapid retry loop")
+  env$.new_update_worker<-factory
+  env$.update_state$result<-list(status="current")
+  env$.update_state$checked_at<-Sys.time()-1801
+  check(identical(env$.poll_update_status()$status,"unavailable"),
+    "a failed check without a known update does not invent a banner")
+  failure<-FALSE;latest<-"0.1.3"
+  env$.update_state$checked_at<-Sys.time()-1801
+  check(identical(env$.poll_update_status()$version,"0.1.3"),
+    "an offline session resumes automatic discovery when connectivity returns")
+
+  env$.conversation_store<-env$.knowledge_store<-function()NULL
+  before<-starts
+  info<-env$.package_ui_info()
+  check(starts==before+1L && identical(info$poll_update()$version,"0.1.3"),
+    "a new launch checks immediately despite a recent cached result")
+  before<-starts
+  latest<-"0.1.4";info$refresh_update()
+  check(starts==before+1L && identical(info$poll_update()$version,"0.1.4"),
+    "Check for updates remains available and bypasses the automatic interval")
+  options(RAssistant.check_updates=FALSE);before<-starts
+  info<-env$.package_ui_info()
+  check(starts==before && identical(info$poll_update()$status,"disabled") &&
+    info$update_poll_delay()==1800000,"disabled discovery starts no work on launch or idle polling")
+  alive<-TRUE;info$refresh_update()
+  check(starts==before+1L && identical(info$poll_update()$status,"checking"),
+    "automatic polling does not cancel an explicit check when automatic discovery is disabled")
+  alive<-FALSE
+  check(identical(info$poll_update()$version,"0.1.4"),
+    "manual results still display when automatic discovery is disabled")
+  before<-starts;env$.update_state$checked_at<-Sys.time()-1801
+  check(identical(info$poll_update()$status,"available") && starts==before,
+    "disabled automatic checks preserve manual results without repeating network requests")
+  options(RAssistant.check_updates=TRUE)
 
   # Synthetic Git HTTP packets exercise exact-commit discovery without network,
   # an installed Git executable, REST API access or stale branch-file metadata.

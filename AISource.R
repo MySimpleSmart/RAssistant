@@ -1407,7 +1407,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         update_generation()
         status <- tryCatch(package_info$poll_update(),error=function(e)list(status="unavailable"))
         update_status(status)
-        if (identical(status$status,"checking")) shiny::invalidateLater(250,session)
+        delay <- if(is.function(package_info$update_poll_delay)) package_info$update_poll_delay()
+          else if(identical(status$status,"checking"))250 else 30*60*1000
+        shiny::invalidateLater(delay,session)
       })
     }
     update_status_text <- function(status) {
@@ -1455,6 +1457,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           if(is.null(package_info)) shiny::p(
             "Click Close, replace AISource.R with the updated script, then source it again.")
           else shiny::tagList(
+            shiny::p("New versions are checked automatically on launch and every 30 minutes while the assistant is open. Check for updates checks immediately."),
             shiny::p("Use Update now when offered, or Close and run:"),
             render_markdown("~~~r\nRAssistant::update_assistant()\n~~~"),
             shiny::p("After a successful update, the assistant reopens automatically and restores your saved chat. Your saved key is kept."),

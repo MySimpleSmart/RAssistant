@@ -99,6 +99,7 @@ update_assistant <- function(ref = "main", relaunch = TRUE) {
 .update_state$result <- list(status = "disabled")
 .update_state$checked_at <- NULL
 .update_state$started_at <- NULL
+.update_check_interval <- 30 * 60
 
 .stop_update_worker <- function() {
   if (!is.null(.update_state$worker)) try(.update_state$worker$kill(), silent = TRUE)
@@ -201,12 +202,17 @@ update_assistant <- function(ref = "main", relaunch = TRUE) {
   }
   age <- if (is.null(.update_state$checked_at)) Inf else
     as.numeric(difftime(Sys.time(), .update_state$checked_at, units = "secs"))
-  if (!force && is.finite(age) && age >= 0 && age < 3600) return(invisible(NULL))
-  .update_state$result <- list(status = "checking")
+  if (!force && is.finite(age) && age >= 0 && age < .update_check_interval) return(invisible(NULL))
+  # Keep a known update visible while refreshing, including an offline retry.
+  if (!identical(.update_state$result$status, "available")) {
+    .update_state$result <- list(status = "checking")
+  }
   .update_state$started_at <- Sys.time()
   .update_state$worker <- tryCatch(.new_update_worker(), error = function(e) NULL)
   if (is.null(.update_state$worker)) {
-    .update_state$result <- list(status = "unavailable")
+    if (!identical(.update_state$result$status, "available")) {
+      .update_state$result <- list(status = "unavailable")
+    }
     .update_state$checked_at <- Sys.time()
   }
   invisible(NULL)
@@ -217,7 +223,7 @@ update_assistant <- function(ref = "main", relaunch = TRUE) {
   if (is.null(worker)) return(.update_state$result)
   alive <- tryCatch(worker$is_alive(),error=function(e)FALSE)
   if (alive && as.numeric(difftime(Sys.time(), .update_state$started_at, units = "secs")) < 10) {
-    return(list(status = "checking"))
+    return(.update_state$result)
   }
   if (alive) try(worker$kill(), silent = TRUE)
   version <- if (alive) NULL else tryCatch(worker$get_result(), error = function(e) NULL)
@@ -227,8 +233,28 @@ update_assistant <- function(ref = "main", relaunch = TRUE) {
     current <- .installed_info()$version
     list(status = if (package_version(version) > package_version(current)) "available" else "current",
       version = version, current = current)
+  } else if (identical(.update_state$result$status, "available")) {
+    .update_state$result
   } else list(status = "unavailable")
   .update_state$result
+}
+
+.poll_update_status <- function() {
+  if (isTRUE(getOption("RAssistant.check_updates", TRUE))) .start_update_check()
+  .poll_update_check()
+}
+
+.update_poll_delay <- function() {
+  # Only poll quickly while a background worker is running. Idle sessions wait
+  # until the next network check is due; manual checks bypass that wait.
+  if (!is.null(.update_state$worker)) return(250)
+  if (!isTRUE(getOption("RAssistant.check_updates", TRUE))) {
+    return(.update_check_interval * 1000)
+  }
+  age <- if (is.null(.update_state$checked_at)) .update_check_interval else
+    as.numeric(difftime(Sys.time(), .update_state$checked_at, units = "secs"))
+  if (!is.finite(age)) return(1000)
+  max(1000, min(.update_check_interval, .update_check_interval - age) * 1000)
 }
 
 .schedule_update <- function() {
@@ -254,8 +280,10 @@ update_assistant <- function(ref = "main", relaunch = TRUE) {
 }
 
 .package_ui_info <- function() {
-  .start_update_check()
-  list(version = .installed_info()$version, poll_update = .poll_update_check,
+  # Each new launch checks immediately, even if a previous session checked recently.
+  .start_update_check(force = isTRUE(getOption("RAssistant.check_updates", TRUE)))
+  list(version = .installed_info()$version, poll_update = .poll_update_status,
+    update_poll_delay = .update_poll_delay,
     refresh_update = function() .start_update_check(force = TRUE),
     request_update = .schedule_update, history = .conversation_store(),
     knowledge = .knowledge_store())

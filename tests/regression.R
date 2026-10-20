@@ -258,4 +258,51 @@ test_upload_lifecycle <- function() {
     "failed startup registration restores the earlier upload setting")
 }
 test_upload_lifecycle()
+
+# Keep checking after a completed result; advance Shiny's virtual clock rather
+# than waiting 30 minutes. No network calls, installs or AI requests are made.
+polls <- 0L; manual <- 0L; installs <- 0L; poll_failure <- FALSE
+notice <- list(status="current",version="0.3.5",current="0.3.5")
+update_app <- load_assistant(package_info=list(version="0.3.5",
+  poll_update=function(){
+    polls<<-polls+1L
+    if(poll_failure)stop("Synthetic poll failure")
+    notice
+  },
+  refresh_update=function(){
+    manual<<-manual+1L
+    notice<<-list(status="available",version="0.3.8",current="0.3.5")
+  },
+  request_update=function(){installs<<-installs+1L}))
+update_app$initial <- update_app$empty_source_context()
+update_app$ask_ai <- function(...)stop("Update discovery must not call AI")
+shiny::testServer(update_app$server,{
+  session$flushReact()
+  before <- polls
+  session$setInputs(prompt="Keep this unsent draft")
+  session$elapse(60000)
+  check(polls==before && identical(update_status()$status,"current"),
+    "automatic update discovery does not run every minute")
+  notice <<- list(status="available",version="0.3.6",current="0.3.5")
+  session$elapse(1740000)
+  check(polls>before && identical(update_status()$version,"0.3.6") &&
+    grepl("0.3.6",output$update_notice$html,fixed=TRUE) && manual==0L,
+    "an update banner appears after 30 minutes without pressing Check for updates")
+  notice <<- list(status="available",version="0.3.7",current="0.3.5")
+  session$elapse(1800000)
+  check(identical(update_status()$version,"0.3.7"),
+    "automatic discovery continues after an update banner is already visible")
+  session$setInputs(check_updates=1L)
+  check(manual==1L && identical(update_status()$version,"0.3.8"),
+    "Check for updates refreshes immediately without waiting for the timer")
+  poll_failure <<- TRUE;session$elapse(1800000)
+  check(identical(update_status()$status,"unavailable"),"unexpected polling errors leave the session usable")
+  poll_failure <<- FALSE;session$elapse(1800000)
+  check(identical(update_status()$version,"0.3.8") &&
+    identical(input$prompt,"Keep this unsent draft") && installs==0L,
+    "automatic polling recovers after errors without changing the draft or installing")
+  before <- polls
+  session$close();session$elapse(1800000)
+  check(polls==before,"closing the session stops its automatic update timer")
+})
 cat(checks, "checks passed\n")

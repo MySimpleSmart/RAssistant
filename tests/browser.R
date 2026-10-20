@@ -7,9 +7,11 @@ main <- function() {
   port <- httpuv::randomPort()
   update_marker <- tempfile()
   on.exit(unlink(update_marker),add=TRUE)
+  available_marker <- tempfile()
+  on.exit(unlink(available_marker),add=TRUE)
   history_root <- tempfile("ra-browser-history-");dir.create(history_root)
   on.exit(unlink(history_root,recursive=TRUE),add=TRUE)
-  run_app <- function(root,port,update_marker,history_root,standalone=FALSE) {
+  run_app <- function(root,port,update_marker,history_root,available_marker,standalone=FALSE) {
     setwd(root)
     source("tests/helpers.R")
     store_env <- new.env(parent=globalenv())
@@ -17,9 +19,16 @@ main <- function() {
     history <- store_env$.conversation_store(project=root,directory=history_root)
     knowledge <- store_env$.knowledge_store(project=root,directory=history_root)
     available <- list(status="available",version="0.1.2",current="0.1.1")
-    update_result <- available
+    update_result <- list(status="current",version="0.1.1",current="0.1.1")
+    published <- FALSE
     app <- load_assistant(package_info=if(standalone)NULL else list(version="0.1.1",history=history,knowledge=knowledge,
-      poll_update=function()update_result,
+      poll_update=function(){
+        if(!published && file.exists(available_marker)){
+          published <<- TRUE;update_result <<- available
+        }
+        update_result
+      },
+      update_poll_delay=function()500,
       refresh_update=function(){
         update_result <<- if(identical(update_result$status,"available"))
           list(status="current",version="0.1.1",current="0.1.1") else available
@@ -48,7 +57,7 @@ main <- function() {
     while(identical(handle$status(),"running"))later::run_now(.05)
     stopifnot(identical(getOption("shiny.maxRequestSize"),previous_limit))
   }
-  start_worker <- function(port,standalone=FALSE)callr::r_bg(run_app,args=list(root,port,update_marker,history_root,standalone),
+  start_worker <- function(port,standalone=FALSE)callr::r_bg(run_app,args=list(root,port,update_marker,history_root,available_marker,standalone),
     stdout="|",stderr="|",supervise=TRUE)
   worker <- start_worker(port)
   on.exit(worker$kill(),add=TRUE)
@@ -91,9 +100,13 @@ main <- function() {
   wait_js('document.querySelector(".empty")!==null')
   js('window.alerts=[];window.alert=function(x){alerts.push(x);};window.receivedMessages=[];$(document).on("shiny:message",function(e){if(e.message.custom)receivedMessages.push(e.message.custom);});')
   check(isTRUE(js('document.querySelector(".empty")!==null')), "existing Shiny UI connects and renders")
+  check(isTRUE(js('document.getElementById("update_now")===null')),
+    "no banner appears when the installed version is current")
+  js('document.getElementById("prompt").value="Keep this draft";')
+  writeLines("new version published",available_marker)
   wait_js('document.getElementById("update_now")!==null')
-  check(isTRUE(js('document.querySelector(".app-version").textContent==="v0.1.1" && document.querySelector(".update-notice").textContent.includes("0.1.2")')),
-    "the installed version and a newer-version Update now notice are visible")
+  check(isTRUE(js('document.querySelector(".app-version").textContent==="v0.1.1" && document.querySelector(".update-notice").textContent.includes("0.1.2") && document.getElementById("prompt").value==="Keep this draft"')) && !file.exists(update_marker),
+    "a newly published version automatically displays its banner without a manual check, lost draft or installation")
   js('document.getElementById("prompt").value="Keep this draft";document.getElementById("help").click();')
   wait_js('document.querySelector("#shiny-modal .code-copy")!==null')
   check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && document.getElementById("shiny-modal").textContent.includes("RAssistant::set_api_key()") && document.getElementById("shiny-modal").textContent.includes("hidden password prompt") && !document.getElementById("shiny-modal").textContent.includes("Restart R")')),

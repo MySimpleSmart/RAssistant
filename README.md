@@ -87,6 +87,8 @@ Close and relaunch the assistant after changing a key to use the new value.
 ## Update
 
 On launch, a background check reads this repository's public package version.
+From 0.3.6, it checks again every 30 minutes while the assistant is open, so
+new versions display the update banner without opening Help or restarting the app.
 From 0.2.2, it resolves the current main commit over public Git HTTP and reads
 that commit's version file, avoiding stale branch-file caches and GitHub's
 IP-shared REST API quota. No GitHub token or Git executable is needed for checks.
@@ -98,8 +100,10 @@ and restores the saved chat and draft (when local history is enabled).
 The Console reports the old and new versions; the toolbar confirms the installed
 version when reopened.
 
-Checks are cached for one hour within the current R session. Offline/failed
-checks do not prevent chat. **Help > Check for updates** retries immediately.
+Between automatic checks, results are cached for 30 minutes. A new launch checks
+immediately. Offline/failed checks do not prevent chat or hide an update already
+found. **Help > Check for updates** remains available and checks immediately,
+bypassing the cache.
 The check does not call OpenAI or transmit the key, Source text or chat history.
 To disable automatic discovery, set `options(RAssistant.check_updates = FALSE)`;
 manual checking and Console updates still work.
