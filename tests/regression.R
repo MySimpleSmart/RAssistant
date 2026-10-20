@@ -263,6 +263,7 @@ test_upload_lifecycle()
 # than waiting 30 minutes. No network calls, installs or AI requests are made.
 polls <- 0L; manual <- 0L; installs <- 0L; poll_failure <- FALSE
 notice <- list(status="current",version="0.3.5",current="0.3.5")
+manual_result <- list(status="available",version="0.3.8",current="0.3.5")
 update_app <- load_assistant(package_info=list(version="0.3.5",
   poll_update=function(){
     polls<<-polls+1L
@@ -271,11 +272,19 @@ update_app <- load_assistant(package_info=list(version="0.3.5",
   },
   refresh_update=function(){
     manual<<-manual+1L
-    notice<<-list(status="available",version="0.3.8",current="0.3.5")
+    notice<<-manual_result
   },
   request_update=function(){installs<<-installs+1L}))
 update_app$initial <- update_app$empty_source_context()
 update_app$ask_ai <- function(...)stop("Update discovery must not call AI")
+expiry_callbacks <- list()
+update_app$`::` <- function(pkg,name){
+  p<-as.character(substitute(pkg));n<-as.character(substitute(name))
+  if(p=="later" && n=="later")return(function(func,delay){
+    expiry_callbacks[[length(expiry_callbacks)+1L]]<<-func;invisible(NULL)
+  })
+  base::getExportedValue(p,n)
+}
 shiny::testServer(update_app$server,{
   session$flushReact()
   before <- polls
@@ -302,8 +311,24 @@ shiny::testServer(update_app$server,{
   check(identical(update_status()$version,"0.3.8") &&
     identical(input$prompt,"Keep this unsent draft") && installs==0L,
     "automatic polling recovers after errors without changing the draft or installing")
+  manual_result<<-list(status="current",version="0.3.5",current="0.3.5")
+  session$setInputs(check_updates=2L)
+  check(grepl("up to date",output$update_check_status,fixed=TRUE),"a completed manual check displays its result before expiry")
+  expiry<-tail(expiry_callbacks,1L)[[1L]];expiry();session$flushReact()
+  check(identical(output$update_check_status,""),"an expired up-to-date status is removed")
+  session$setInputs(check_updates=3L);old_expiry<-tail(expiry_callbacks,1L)[[1L]]
+  manual_result<<-list(status="checking");session$setInputs(check_updates=4L)
+  old_expiry();session$flushReact()
+  check(grepl("Checking",output$update_check_status,fixed=TRUE),"an old expiry cannot dismiss a newer check in progress")
+  manual_result<<-list(status="current",version="0.3.5",current="0.3.5")
+  session$setInputs(check_updates=5L);new_expiry<-tail(expiry_callbacks,1L)[[1L]]
+  old_expiry();session$flushReact()
+  check(grepl("up to date",output$update_check_status,fixed=TRUE),"an old expiry cannot dismiss a newer completed check")
+  manual_result<<-list(status="available",version="0.3.8",current="0.3.5")
+  session$setInputs(check_updates=6L);new_expiry();session$flushReact()
+  check(grepl("0.3.8",output$update_notice$html,fixed=TRUE),"status expiry never hides an available update banner")
   before <- polls
-  session$close();session$elapse(1800000)
+  session$close();new_expiry();session$elapse(1800000)
   check(polls==before,"closing the session stops its automatic update timer")
 })
 cat(checks, "checks passed\n")

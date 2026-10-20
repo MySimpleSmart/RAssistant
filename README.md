@@ -107,6 +107,8 @@ Between automatic checks, results are cached for 30 minutes. A new launch checks
 immediately. Offline/failed checks do not prevent chat or hide an update already
 found. **Check updates** in the main toolbar checks immediately,
 bypassing the cache.
+An up-to-date result closes after five seconds. An available update keeps its
+Update now banner until you act on it.
 The check does not call OpenAI or transmit the key, Source text or chat history.
 To disable automatic discovery, set `options(RAssistant.check_updates = FALSE)`;
 manual checking and Console updates still work.
@@ -168,6 +170,11 @@ and offers **Rename**, **Delete** and **Restore**. Delete asks for confirmation.
 The most recently used chat reopens on the next `RAssistant::launch()`, including
 after restarting RStudio or updating the package. Opening RStudio alone does not
 automatically launch the assistant. Previously closed pre-0.2.0 chats cannot be recovered.
+
+New replies and restored conversations open at the latest response. Image loads,
+composer resizing and status dismissal keep that position stable. You can still
+scroll back to read older messages between replies; sending a new question
+returns to the newest response.
 
 Text, code, copied output, assignment context, images and unsent drafts are saved.
 Run approvals are never restored; any execution needs a fresh request and Yes.

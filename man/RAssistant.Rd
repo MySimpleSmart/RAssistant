@@ -35,6 +35,9 @@ Console commands. Source shares the header row with the visible actions; long
 names are truncated with a tooltip. Controls retain their original appearance. The composer starts
 at two lines and grows with the draft. Attachment thumbnails above it have
 individual remove controls; Clear removes all when multiple images are attached.
+New replies and restored conversations show the latest response. Image loads,
+composer resizing and status dismissal preserve that position. Intentional
+reading of older messages is preserved between replies.
 On launch and every 30 minutes while the assistant is open, a background
 process checks the public GitHub package version. A newer version automatically
 displays Update now. Confirming closes the current chat
@@ -42,7 +45,8 @@ and performs the update, with progress in the Console. After a successful update
 the assistant reopens automatically and restores any saved chat and draft.
 Discovery is cached between automatic checks, does not use the OpenAI API, and
 does not send credentials or conversation data. Offline checks do not block chat
-or hide a previously found update. The main toolbar has a manual check that bypasses the
+or hide a previously found update. A manual up-to-date result closes after five
+seconds; an available Update now banner remains. The main toolbar has a manual check that bypasses the
 cache immediately; \code{options(RAssistant.check_updates = FALSE)}
 disables automatic checks while retaining explicit manual checks.
 

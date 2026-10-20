@@ -1,3 +1,11 @@
+# RAssistant 0.3.14
+
+- Dismiss the manual up-to-date message after five seconds, without hiding
+  a newer check or the Update now banner for an available version.
+- Follow the newest chat reply after Send, validation and conversation restore.
+  Keep the viewport stable as images load or the composer and status change size.
+  Preserve intentional reading of older messages between replies.
+
 # RAssistant 0.3.13
 
 - Restore the existing bordered button appearance, light-blue Send button

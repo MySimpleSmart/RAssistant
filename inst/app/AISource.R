@@ -804,7 +804,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .btn.ai-send{background:#e8f0f9;border-color:#a9bfd5;color:#1d486d;font-weight:600}
   .btn.ai-yes{background:#e8f6ea;border-color:#a6d1af;color:#24583a}
   .btn.ai-no{background:#fff;color:#545b64}
-  .history{flex:1 1 auto;min-height:0;overflow:auto;padding:10px 10px 0}
+  .history{flex:1 1 auto;min-height:0;overflow:auto;padding:10px 10px 0;overflow-anchor:none;scroll-behavior:auto}
   .msg{margin:0 0 15px;min-width:0}
   .role{font:600 10px/1.5 var(--mono);color:#607080;margin-bottom:4px}
   .msg.user .role{color:#386890}
@@ -905,6 +905,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     var submitId=null, validationInFlight=false, serverBusy=false, pending=false;
     var readyCount=0, uploadEpoch=0, connected=false;
     var openDetails=Object.create(null);
+    var scrollLatest=function(){};
     function resizePrompt(){
       var field=document.getElementById("prompt");if(!field)return;
       var cap=Math.max(54,Math.min(140,window.innerHeight*.25));
@@ -917,7 +918,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(!connected || submitId!==null || validationInFlight || serverBusy || pending || uploading || uploadQueue.length>0 || plotCaptureId!==null)return;
       var field=document.getElementById("prompt");
       if(!field || (!field.value.trim() && !readyCount) || !window.Shiny || !Shiny.setInputValue) return;
-      submitId=++nonce;updateSendState();
+      submitId=++nonce;scrollLatest();updateSendState();
       try{Shiny.setInputValue("chat_submit", {text:field.value, nonce:submitId}, {priority:"event"});}
       catch(err){submitId=null;updateSendState();}
     }
@@ -1154,13 +1155,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           uploadEpoch=msg.epoch;connected=true;updateSendState();
         });
         Shiny.addCustomMessageHandler("ai_submit_complete",function(msg){
-          if(msg && msg.id===submitId){submitId=null;updateSendState();window.requestAnimationFrame(resizePrompt);}
+          if(msg && msg.id===submitId){submitId=null;scrollLatest();updateSendState();window.requestAnimationFrame(resizePrompt);}
         });
         Shiny.addCustomMessageHandler("ai_validation_complete",function(msg){
-          validationInFlight=false;updateSendState();
+          validationInFlight=false;scrollLatest();updateSendState();
         });
         Shiny.addCustomMessageHandler("ai_chat_reset",function(msg){
-          openDetails=Object.create(null);followTail=true;savedTop=0;window.requestAnimationFrame(resizePrompt);
+          openDetails=Object.create(null);scrollLatest();window.requestAnimationFrame(resizePrompt);
         });
       }
       registerHandlers();
@@ -1187,30 +1188,72 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       updateSendState();
       // Outputs are built by Shiny; headers/buttons are rendered server-side.
       var root=document.getElementById("chat_stream");if(!root)return;
-      var followTail=true, rendering=false, savedTop=0;
+      // Only user scroll intent changes reading mode. DOM replacement and
+      // image/layout changes must not masquerade as a move into older history.
+      var followTail=true, rendering=false, savedTop=0, lastMessage=null;
+      var scrollFrame=null, settleFrame=null, readingUntil=0, dragging=false, readerScrollPending=false;
+      function noteLatestMessage(){
+        var messages=root.querySelectorAll(".msg"), last=messages[messages.length-1];
+        var identity=last?(last.getAttribute("data-message-id") || "count:"+messages.length):null;
+        if(last && identity!==lastMessage){lastMessage=identity;followTail=true;readingUntil=0;readerScrollPending=false;}
+      }
+      function queueScroll(){
+        rendering=true;
+        if(settleFrame!==null){window.cancelAnimationFrame(settleFrame);settleFrame=null;}
+        if(scrollFrame!==null)return;
+        scrollFrame=window.requestAnimationFrame(function(){
+          scrollFrame=null;
+          noteLatestMessage();
+          root.scrollTop=followTail?root.scrollHeight:savedTop;
+          if(followTail)savedTop=root.scrollTop;
+          settleFrame=window.requestAnimationFrame(function(){settleFrame=null;rendering=false;});
+        });
+      }
+      scrollLatest=function(){followTail=true;readingUntil=0;readerScrollPending=false;queueScroll();};
+      function readerIntent(){noteLatestMessage();readingUntil=Date.now()+1500;readerScrollPending=true;}
+      root.addEventListener("wheel",function(e){readerIntent();if(e.deltaY<0)followTail=false;},{passive:true});
+      root.addEventListener("touchstart",readerIntent,{passive:true});
+      root.addEventListener("touchmove",readerIntent,{passive:true});
+      root.addEventListener("pointerdown",function(){dragging=true;readerIntent();});
+      root.addEventListener("pointermove",function(){if(dragging)readerIntent();});
+      function endDrag(){dragging=false;}
+      window.addEventListener("pointerup",endDrag);window.addEventListener("pointercancel",endDrag);
+      root.addEventListener("keydown",function(e){
+        if(["ArrowUp","ArrowDown","PageUp","PageDown","Home","End"," "].indexOf(e.key)>=0)readerIntent();
+      });
       root.addEventListener("scroll",function(){
-        if(!rendering){savedTop=root.scrollTop;followTail=root.scrollHeight-root.scrollTop-root.clientHeight<48;}
+        var intentional=dragging || Date.now()<readingUntil;
+        if(rendering && !(readerScrollPending && intentional))return;
+        if(intentional){
+          readerScrollPending=false;
+          savedTop=root.scrollTop;followTail=root.scrollHeight-root.scrollTop-root.clientHeight<48;
+        } else if((followTail && root.scrollHeight-root.scrollTop-root.clientHeight>1) ||
+          (!followTail && Math.abs(root.scrollTop-Math.min(savedTop,Math.max(0,root.scrollHeight-root.clientHeight)))>1))queueScroll();
       });
       root.addEventListener("toggle",function(e){
         var id=e.target.getAttribute("data-detail-id");if(id)openDetails[id]=e.target.open;
       },true);
       if(window.jQuery)window.jQuery(document).on("shiny:value",function(e){
         if(e.name!=="messages")return;
-        savedTop=root.scrollTop;rendering=true;
-        window.requestAnimationFrame(function(){
-          root.scrollTop=followTail?root.scrollHeight:savedTop;rendering=false;
-        });
+        queueScroll();
       });
       var obs=new MutationObserver(function(){
+        noteLatestMessage();
         root.querySelectorAll("details[data-detail-id]").forEach(function(detail){
           var id=detail.getAttribute("data-detail-id");
           if(Object.prototype.hasOwnProperty.call(openDetails,id) && detail.open!==openDetails[id])detail.open=openDetails[id];
         });
-        if(followTail)root.scrollTop=root.scrollHeight;
-        else if(rendering)root.scrollTop=savedTop;
+        queueScroll();
         updateSendState();
       });
       obs.observe(root,{childList:true,subtree:true});
+      if(typeof ResizeObserver!=="undefined"){
+        var sizes=new ResizeObserver(queueScroll);sizes.observe(root);
+        var content=document.getElementById("messages");if(content)sizes.observe(content);
+      }
+      root.addEventListener("load",queueScroll,true);
+      window.addEventListener("resize",queueScroll);
+      queueScroll();
     }
     if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);
     else init();
@@ -1589,6 +1632,17 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       update_status_text(update_status())
     })
     shiny::outputOptions(output,"update_check_status",suspendWhenHidden=FALSE)
+    shiny::observeEvent(list(update_generation(),update_status()),{
+      if(!manual_update_check() || !identical(update_status()$status,"current"))return()
+      generation <- update_generation()
+      later::later(function(){
+        if(session$isClosed())return(invisible(NULL))
+        shiny::isolate({
+          if(identical(update_generation(),generation) && identical(update_status()$status,"current"))
+            manual_update_check(FALSE)
+        })
+      },delay=5)
+    },ignoreInit=TRUE)
     output$update_help_status <- shiny::renderText(update_status_text(update_status()))
     shiny::observeEvent(input$help,{
       shiny::showModal(shiny::modalDialog(title="RAssistant Help",
@@ -1829,11 +1883,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if (!length(state$messages)) return(shiny::div(class="empty","Ask about an open R script, or upload an image. Copy code into the editor yourself."))
       shiny::withMathJax(shiny::tagList(lapply(state$messages,function(msg){
         if (identical(msg$type,"logs")) {
-          return(shiny::div(class="msg",shiny::tags$details(class="log-details","data-detail-id"=paste0("logs-",msg$sequence),
+          return(shiny::div(class="msg","data-message-id"=msg$sequence,shiny::tags$details(class="log-details","data-detail-id"=paste0("logs-",msg$sequence),
             shiny::tags$summary("Execution output"),shiny::tags$pre(class="runlog",msg$text))))
         }
         if (identical(msg$type,"plots")) {
-          return(shiny::div(class="msg",shiny::tags$details(class="plot-gallery","data-detail-id"=paste0("plots-",msg$sequence),
+          return(shiny::div(class="msg","data-message-id"=msg$sequence,shiny::tags$details(class="plot-gallery","data-detail-id"=paste0("plots-",msg$sequence),
             shiny::tags$summary(paste0("Captured plots (",length(msg$images),")")),
             lapply(seq_along(msg$images),function(i){shiny::tags$img(src=msg$images[[i]],alt=paste("Plot",i))}))))
         }
@@ -1876,7 +1930,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
               }
             }))
         } else NULL
-        shiny::div(class=paste("msg",if(identical(msg$role,"You"))"user" else "assistant"),
+        shiny::div(class=paste("msg",if(identical(msg$role,"You"))"user" else "assistant"),"data-message-id"=msg$sequence,
           shiny::div(class="role",msg$role),
           shiny::div(class="content",msg$html),attachments,academic,sources,controls)
       })))
