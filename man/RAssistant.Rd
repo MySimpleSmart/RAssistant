@@ -37,7 +37,8 @@ at two lines and grows with the draft. Attachment thumbnails above it have
 individual remove controls; Clear removes all when multiple images are attached.
 Each Send reads the current Source buffer, including unsaved changes, up to
 50,000 characters. Chat labels the file and line count sent.
-Review on an AI code block checks syntax and shows an inline comparison in chat.
+A single Source correction automatically shows a numbered inline comparison
+with syntax checking and highlighted changes. Review opens other edit operations.
 Copy keeps Source unchanged; Replace, Append or Create requires an explicit click.
 Users can replace or append to the captured file, or create an unsaved R/Rmd
 document. R snippets appended to Rmd are wrapped in an R chunk. Static checks

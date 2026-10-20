@@ -1,3 +1,8 @@
+# RAssistant 0.4.3
+
+- A single Source correction now opens its comparison automatically inside the chat code block, with Copy and Replace.
+- Show exact old/new line numbers and highlight changed characters. Request precise file, line, cause and correction in error explanations.
+
 # RAssistant 0.4.2
 
 - Code reviews that find a concrete error now request a complete corrected file for Copy and inline Review, including when you ask what is wrong.

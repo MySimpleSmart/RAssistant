@@ -321,7 +321,13 @@ Each Send rereads the current Source buffer, including unsaved changes. Chat sho
 the file name and line count actually sent; hovering over the header name shows
 the character count. The current limit is 50,000 characters in one active file.
 
-Click **Review** beside Copy on an AI R/Rmd code block. Choose **Replace entire
+When an answer contains one correction for the current Source, its comparison
+opens automatically inside the code block. Source and proposed line numbers,
+removed/added lines and highlighted characters show the precise changes.
+**Copy** copies the corrected code; **Replace** applies it after your click.
+Multiple alternative code blocks require choosing **Review** on the one you want.
+
+You can also click **Review** beside Copy on an AI R/Rmd code block. Choose **Replace entire
 file**, **Append to file**, or **New document**, then inspect the syntax result and
 the removed/added lines directly inside the chat code block. **Replace**, **Append**
 or **Create document** is the approval. **Copy** copies the proposed code without

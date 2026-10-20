@@ -45,6 +45,10 @@ main <- function() {
       },
       request_update=function(){cat("requested\n",file=update_marker,append=TRUE);invisible(TRUE)}))
     app$initial <- list(id="fixture",path=file.path(tempdir(),"example.R"),contents="plot(1:3)")
+    if(standalone)app$initial <- list(id="fixture",path=file.path(tempdir(),"v2.R"),contents=c(
+      "library(tidyverse)","","# 1. Read data",'birth_data <- read_csv("BIRTH_reduced.csv")',"",
+      "# 2. Select four numeric variables","X_df <- birth_data %>%", "  select(matage, gestage, birthwt, head)","",
+      "# 3. Convert to a matrix","X <- as.matrix(X_df)","","# 4. Check matrix dimensions","rtrtryydim(X)",""))
     edits <- list()
     app$write_source <- function(id,text){
       stopifnot(identical(id,app$initial$id))
@@ -74,6 +78,8 @@ main <- function() {
       Sys.sleep(.2)
       if(grepl("SIMULATED_FAILURE",prompt,fixed=TRUE))stop("Simulated API failure")
       if(grepl("SIMULATE_SOURCE_LOSS",prompt,fixed=TRUE))source_unavailable <<- TRUE
+      if(standalone)return(paste0("v2.R, line 14: rtrtryydim is a misspelled function name. Use dim(X). Static review; not run.\n\n```r\n",
+        sub("rtrtryydim(X)","dim(X)",paste(app$initial$contents,collapse="\n"),fixed=TRUE),"```"))
       paste0("Response ",count,if(grepl("CONSOLE_BROWSER_VALUE_42",prompt,fixed=TRUE))" Console evidence received."else"",
              "\n\n```r\nx <- c(\"<tag>\", \"&lt;\", \"\\\\(x\\\\)\", \"$$\")\nkeep <- x > \"a\" & x < \"z\"\n```\n\n",
              "Math: \\(\\alpha < 1\\).\n\n[[ACADEMIC_COMMENT]]Verified result.[[/ACADEMIC_COMMENT]]")
@@ -266,14 +272,15 @@ main <- function() {
   check(isTRUE(js('document.activeElement.id==="prompt" && document.activeElement.selectionStart===1 && document.activeElement.selectionEnd===3')), "fallback Copy restores composer focus and selection")
   check(isTRUE(js('document.querySelector(".source-read").textContent.includes("example.R") && document.getElementById("source_context").title.includes("sent to AI")')),
     "chat and file tooltip identify the Source snapshot actually sent")
-  js('document.querySelector(".source-review").click();')
   wait_js('document.querySelector(".source-diff")!==null && document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
   check(isTRUE(js('document.getElementById("shiny-modal")===null && document.querySelector("#chat_stream .code-wrap .source-edit-card")!==null && getComputedStyle(document.querySelector(".review-open > pre")).display==="none" && document.querySelector(".source-apply").textContent==="Replace"')),
-    "comparison replaces the code inline in chat with an explicit Replace button and no modal")
-  js('window.copied=null;document.querySelector(".review-open .code-copy").click();')
+    "the answer automatically shows its comparison, Replace and Copy inside the code block without Review or a modal")
+  check(isTRUE(js('document.querySelector(".diff-remove").getAttribute("data-old-line")==="1" && document.querySelector(".diff-add").getAttribute("data-new-line")==="1" && document.querySelector(".diff-word")!==null && document.querySelector(".diff-location").textContent.includes("Source lines 1")')),
+    "the comparison numbers the actual Source and proposed lines and highlights the changed characters")
+  js('window.copied=null;document.querySelector(".source-proposal-copy").click();')
   wait_js('window.copied!==null')
   check(identical(js('window.copied'),expected) && !file.exists(edit_marker),
-    "Copy in an open comparison copies the proposed code without changing Source")
+    "Copy beside Replace copies the exact proposed code without changing Source")
   check(!file.exists(edit_marker) && isTRUE(js('document.querySelector(".source-diff").textContent.includes("-plot(1:3)") && document.querySelector(".source-diff").textContent.includes("+x <-") && document.querySelector(".edit-check").textContent.includes("Not run")')),
     "Review shows syntax checking and a real comparison before any editor write")
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=480L,deviceScaleFactor=1,mobile=FALSE)
@@ -502,6 +509,15 @@ main <- function() {
   check(identical(js('window.copied'),'source("AISource.R")\n'),"standalone Help copies the exact script launch command")
   js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
   wait_js('document.getElementById("shiny-modal")===null')
+  js('document.getElementById("prompt").value="Кодонд ямар алдаа байна?";document.getElementById("send").click();')
+  wait_js('document.querySelector(".source-proposal-copy")!==null && !document.getElementById("send").disabled')
+  check(isTRUE(js('document.querySelector(".source-read").textContent.includes("15 lines") && document.querySelector(".diff-location").textContent.includes("Source lines 14 / Proposed lines 14") && document.querySelector(".diff-remove").textContent.includes("rtrtryydim(X)") && document.querySelector(".diff-add").textContent.includes("+dim(X)") && document.querySelector(".diff-remove .diff-word").textContent==="rtrtryy" && document.getElementById("shiny-modal")===null')),
+    "the reported v2.R example automatically marks the actual faulty line 14 in a 15-line file and its exact correction")
+  js('window.copied=null;document.querySelector(".source-proposal-copy").click();')
+  wait_js('window.copied!==null')
+  check(isTRUE(js('window.copied.startsWith("library(tidyverse)") && window.copied.includes("BIRTH_reduced.csv") && window.copied.includes("dim(X)") && !window.copied.includes("rtrtryydim")')),
+    "the reported example copies the complete corrected file beside Replace")
+  if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),sub("\\.png$","-v2.png",screenshot))
   js('openAction("close");')
   worker$wait(timeout=10000)
   check(identical(worker$get_exit_status(),0L),"standalone Close restores the upload option")

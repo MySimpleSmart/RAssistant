@@ -161,8 +161,68 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(nzchar(after))paste0("+",strsplit(after,"\n",fixed=TRUE)[[1L]]))
   }
 
+  source_diff_rows <- function(before,after) {
+    lines <- source_diff(before,after);old <- 1L;new <- 1L
+    lapply(seq_along(lines),function(i) {
+      line <- lines[[i]]
+      hunk <- regmatches(line,regexec("^@@ -([0-9]+)(?:,[0-9]+)? \\+([0-9]+)(?:,[0-9]+)? @@",line,perl=TRUE))[[1L]]
+      if(length(hunk)) {old <<- as.integer(hunk[[2L]]);new <<- as.integer(hunk[[3L]])}
+      kind <- if(i<=2L || length(hunk) || startsWith(line,"\\"))"meta"else
+        if(startsWith(line,"-"))"remove"else if(startsWith(line,"+"))"add"else"context"
+      result <- list(kind=kind,text=line,old=if(kind %in% c("remove","context"))old else NA_integer_,
+        new=if(kind %in% c("add","context"))new else NA_integer_)
+      if(kind %in% c("remove","context"))old <<- old+1L
+      if(kind %in% c("add","context"))new <<- new+1L
+      result
+    })
+  }
+  source_diff_display <- function(before,after) {
+    rows <- source_diff_rows(before,after)
+    escaped <- vapply(rows,function(row)as.character(htmltools::htmlEscape(row$text)),character(1))
+    # Highlight the precise changed characters within paired old/new lines.
+    groups <- split(seq_along(rows),cumsum(vapply(rows,function(row)row$kind=="context" || startsWith(row$text,"@@"),logical(1))))
+    for(group in groups) {
+      removed <- Filter(function(i)rows[[i]]$kind=="remove",group)
+      added <- Filter(function(i)rows[[i]]$kind=="add",group)
+      for(k in seq_len(min(length(removed),length(added)))) {
+        pair <- c(removed[[k]],added[[k]])
+        texts <- lapply(pair,function(i)strsplit(substring(rows[[i]]$text,2L),"",fixed=TRUE)[[1L]])
+        prefix <- 0L;short <- min(lengths(texts))
+        while(prefix<short && identical(texts[[1L]][[prefix+1L]],texts[[2L]][[prefix+1L]]))prefix <- prefix+1L
+        suffix <- 0L
+        while(suffix<short-prefix && identical(texts[[1L]][[length(texts[[1L]])-suffix]],texts[[2L]][[length(texts[[2L]])-suffix]]))suffix <- suffix+1L
+        for(i in pair) {
+          text <- substring(rows[[i]]$text,2L);finish <- nchar(text)-suffix
+          esc <- function(x)as.character(htmltools::htmlEscape(x))
+          escaped[[i]] <- paste0(substr(rows[[i]]$text,1L,1L),esc(substr(text,1L,prefix)),
+            if(finish>prefix)paste0('<mark class="diff-word">',esc(substr(text,prefix+1L,finish)),'</mark>')else"",
+            esc(substring(text,finish+1L)))
+        }
+      }
+    }
+    number <- function(x)if(is.na(x))""else as.character(x)
+    visible <- which(vapply(rows,function(row)row$kind!="meta",logical(1)))
+    html <- paste0('<span class="diff-meta"><span class="diff-number">Old</span><span class="diff-number">New</span></span>\n',
+      paste(vapply(visible,function(i) {
+      row <- rows[[i]]
+      paste0('<span class="diff-row diff-',row$kind,'" data-old-line="',number(row$old),'" data-new-line="',number(row$new),'">',
+        '<span class="diff-number" aria-label="Source line">',number(row$old),'</span>',
+        '<span class="diff-number" aria-label="Proposed line">',number(row$new),'</span>',
+        '<span class="diff-code">',escaped[[i]],'</span></span>')
+    },character(1)),collapse="\n"))
+    locations <- function(side) {
+      values <- unique(Filter(Negate(is.na),vapply(Filter(function(row)row$kind %in% c("remove","add"),rows),
+        function(row)row[[side]],integer(1))))
+      if(!length(values))return("-")
+      paste0(paste(head(values,6L),collapse=", "),if(length(values)>6L)", ..."else"")
+    }
+    list(html=html,location=paste0("Source lines ",locations("old")," / Proposed lines ",locations("new")))
+  }
+
   source_edit_instructions <- paste(
     "When reviewing the CURRENT EDITOR for errors, if you identify a concrete bug and can determine its correction, briefly explain it AND provide the COMPLETE corrected file, even when the user only asks what is wrong rather than explicitly asking you to fix it.",
+    "Locate each bug precisely: name the file and 1-based Source line, quote the exact faulty expression, explain WHY it fails, and state its exact correction. Count blank lines and comments as Source lines. Distinguish syntax errors from runtime errors; an unknown function call can parse successfully but fail when executed. Do not invent execution results or numeric dimensions.",
+    "Keep the diagnosis specific to the faulty line rather than giving a general code summary. The app computes and displays a real numbered old/new comparison from the exact Source snapshot; do not write a simulated diff or put diff markers inside executable code.",
     "An inline-code correction or a prose explanation alone does not expose the app's Copy and Review controls. Put the complete corrected file in a fenced r block (or a FOUR-backtick rmd block for R Markdown/Quarto so inner chunk fences remain intact).",
     "For a correction such as a misspelled function on the last line, preserve every other line, comment and string verbatim. Never supply only that line as a replacement for the entire file, and never use ellipses or placeholders for unchanged code.",
     "Also provide the complete updated file when asked to fix or update Source. Clearly distinguish appendable additions from complete replacements; do not mix alternative versions in one code block.",
@@ -961,6 +1021,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     padding:8px;border:1px solid var(--border);background:#f5f6f7}
   .diff-add{background:#e7f5e9;color:#195b2a}
   .diff-remove{background:#fce9e9;color:#8a2323}
+  .diff-row{display:inline-block;min-width:100%}
+  .diff-number{display:inline-block;width:3.5em;padding-right:8px;text-align:right;color:#68737e;user-select:none}
+  .diff-meta{color:var(--muted)}
+  .diff-word{background:transparent;color:inherit;font-weight:700;padding:0}
+  .diff-remove .diff-word{background:#f3bcbc}
+  .diff-add .diff-word{background:#b9e3bf}
+  .diff-location{font:10px var(--mono);color:var(--muted);margin:4px 0}
   .edit-check{font-size:11px;margin:7px 0}
   .content table{font-size:11px;border-collapse:collapse;display:block;overflow:auto}
   .content td,.content th{padding:3px 6px;border:1px solid var(--border)}
@@ -1215,10 +1282,12 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         Shiny.setInputValue("attach_current_plot",{nonce:plotCaptureId,epoch:uploadEpoch,
           text:document.getElementById("prompt").value},{priority:"event"});
       }
-      var btn=e.target && e.target.closest && e.target.closest(".code-copy");
+      var btn=e.target && e.target.closest && e.target.closest(".code-copy,.source-proposal-copy");
       if(!btn)return;
       var wrap=btn.closest(".code-wrap");
-      var code=wrap && wrap.querySelector("pre code");
+      var code=btn.classList.contains("source-proposal-copy")?
+        btn.closest(".source-edit-card").querySelector(".source-proposal-text"):
+        wrap && wrap.querySelector("pre code");
       if(!code)return;
       var raw=code.textContent;  // HTML entities have been decoded by the browser.
       copyText(raw).then(function(){
@@ -1853,7 +1922,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             shiny::tags$details(shiny::tags$summary("Environment key"),
               shiny::p("OPENAI_API_KEY overrides the saved key. Remove that environment setting to use the saved replacement."))),
           shiny::tags$ul(
-            shiny::tags$li("Review checks a code block and shows its diff. Apply changes Source; Save and Run are separate."),
+            shiny::tags$li("Corrections show numbered changes in the code block. Replace edits Source; Save and Run stay separate."),
             if(!is.null(history))shiny::tags$li("History manages saved chats. New chat keeps the previous conversation."),
             if(!is.null(knowledge))shiny::tags$li("Knowledge adds course files and instructions for this project."),
             if(!is.null(console_capture))shiny::tags$li("Console starts On and includes new output. Plot attaches the selected RStudio plot.")),
@@ -2066,9 +2135,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       }
       length(state$messages)
     }
-    shiny::observeEvent(input$review_source_change,{
-      obj <- input$review_source_change
-      if(!session_active || state$busy || !is.null(state$pending) || !is.list(obj) ||
+    open_source_review <- function(obj,automatic=FALSE) {
+      if(!session_active || (!automatic && state$busy) || !is.null(state$pending) || !is.list(obj) ||
           !isTRUE(obj$epoch==state$upload_epoch) || !is.numeric(obj$message) || length(obj$message)!=1L || !is.finite(obj$message))return()
       index <- which(vapply(state$messages,function(m)isTRUE(m$sequence==obj$message) && identical(m$role,"AI") && identical(m$type,"text"),logical(1)))
       if(length(index)!=1L || !is.numeric(obj$block) || length(obj$block)!=1L ||
@@ -2093,11 +2161,23 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       review_context(list(snapshot=snapshot,block=block,choices=choices,chat=state$chat$id,
         epoch=state$upload_epoch,notice=notice,review_id=review_id,mode_id=mode_id))
       shiny::insertUI(selector=paste0("#source-review-slot-",as.integer(obj$message),"-",as.integer(obj$block)),
-        where="beforeEnd",immediate=TRUE,ui=shiny::div(id="source-review-card",class="source-edit-card",
+        where="beforeEnd",immediate=!automatic,ui=shiny::div(id="source-review-card",class="source-edit-card",
         if(nzchar(notice))shiny::p(notice),
-        shiny::div(class="source-edit-mode",shiny::selectInput(mode_id,"Operation",choices=choices,selected=unname(choices[[1L]]),selectize=FALSE)),
+        if(!automatic)shiny::div(class="source-edit-mode",shiny::selectInput(mode_id,"Operation",choices=choices,selected=unname(choices[[1L]]),selectize=FALSE)),
         shiny::uiOutput("source_change_preview")))
-    },ignoreInit=TRUE)
+    }
+    shiny::observeEvent(input$review_source_change,open_source_review(input$review_source_change),ignoreInit=TRUE)
+    auto_review_source <- function(msg) {
+      snapshot <- msg$source_snapshot
+      if(is.null(snapshot) || !snapshot$kind %in% c("R","Rmd") || is.null(matching_source(snapshot)))return()
+      blocks <- source_code_blocks(as.character(msg$html))
+      eligible <- which(vapply(blocks,function(block)isTRUE(block$reviewable) && identical(block$kind,snapshot$kind),logical(1)))
+      # Multiple alternative blocks need the user's choice; never guess which.
+      if(length(eligible)!=1L)return()
+      block <- blocks[[eligible]]
+      if(identical(sub("\n$","",snapshot$text),sub("\n$","",block$code)))return()
+      open_source_review(list(message=msg$sequence,block=as.integer(eligible),epoch=state$upload_epoch),automatic=TRUE)
+    }
     output$source_change_preview <- shiny::renderUI({
       ctx <- review_context();if(is.null(ctx))return(NULL)
       mode <- input[[ctx$mode_id]]
@@ -2108,19 +2188,19 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(inherits(candidate,"error"))return(shiny::tagList(shiny::p(class="edit-check",conditionMessage(candidate)),cancel))
       token <- basename(tempfile("source-review-"))
       preview_job <<- c(candidate,list(token=token,snapshot=ctx$snapshot,chat=ctx$chat,epoch=ctx$epoch,review_id=ctx$review_id))
-      diff <- source_diff(candidate$before,candidate$after)
+      diff <- source_diff_display(candidate$before,candidate$after)
       shiny::tagList(
-        shiny::p(title=if(candidate$creating)"New unsaved document"else ctx$snapshot$path,
-          paste0(candidate$target," - ",nchar(candidate$before)," to ",nchar(candidate$after)," characters")),
+        shiny::p(class="diff-location",title=if(candidate$creating)"New unsaved document"else ctx$snapshot$path,
+          paste0(candidate$target," - ",diff$location)),
         shiny::p(class="edit-check",candidate$syntax$text),
-        shiny::tags$pre(class="source-diff",shiny::HTML(paste(vapply(diff,function(line)paste0(
-          '<span class="',if(startsWith(line,"+"))"diff-add"else if(startsWith(line,"-"))"diff-remove"else"diff-context",'">',
-          htmltools::htmlEscape(line),'</span>'),character(1)),collapse="\n"))),
+        shiny::tags$pre(class="source-diff",shiny::HTML(diff$html)),
+        shiny::span(class="source-proposal-text",hidden="hidden",candidate$after),
         shiny::p(class="edit-check","Edits stay unsaved. Code is not run."),
         shiny::div(class="source-edit-actions",
         shiny::tags$button(type="button",class="btn ai-btn ai-send source-apply",disabled=if(!candidate$syntax$ok)"disabled"else NULL,
           "data-invalid"=if(candidate$syntax$ok)"false"else"true","data-token"=token,
-          if(candidate$creating)"Create document"else if(candidate$mode=="replace")"Replace"else"Append"),cancel))
+          if(candidate$creating)"Create document"else if(candidate$mode=="replace")"Replace"else"Append"),
+        shiny::tags$button(type="button",class="btn ai-btn source-proposal-copy","Copy"),cancel))
     })
     shiny::observeEvent(input$cancel_source_edit,clear_source_review(),ignoreInit=TRUE)
     shiny::observeEvent(input$apply_source_change,{
@@ -2481,8 +2561,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           "\n\nYour message and attachments are ready to retry."),extra=list(context=FALSE))
       } else {
         parsed <- parse_academic_comment(response)
-        push("AI",parsed$text,extra=list(academic=parsed$academic,references=course$sources,source_snapshot=sent_source))
+        answer_index <- push("AI",parsed$text,extra=list(academic=parsed$academic,references=course$sources,source_snapshot=sent_source))
         clear_attachments()
+        auto_review_source(state$messages[[answer_index]])
         state$draft <- ""
         shiny::updateTextAreaInput(session,"prompt",value="")
       }

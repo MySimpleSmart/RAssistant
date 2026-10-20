@@ -40,6 +40,21 @@ check(startsWith(appended$after,snapshot$text) && grepl("```{r}\nz <- 3\n```",ap
   "appending an R snippet to Rmd preserves the original document and adds an R chunk")
 check(any(startsWith(app$source_diff("x <- 1\n","x <- 2\n"),"-x <- 1")) &&
   any(startsWith(app$source_diff("x <- 1\n","x <- 2\n"),"+x <- 2")),"comparison displays both removed and added code")
+diff <- app$source_diff_display(paste0(paste(rep("# unchanged",14L),collapse="\n"),"\nrtrtryydim(X)"),
+  paste0(paste(rep("# unchanged",14L),collapse="\n"),"\ndim(X)\n"))
+check(identical(diff$location,"Source lines 15 / Proposed lines 15") &&
+  grepl('diff-remove" data-old-line="15"',diff$html,fixed=TRUE) &&
+  grepl('diff-add" data-old-line="" data-new-line="15"',diff$html,fixed=TRUE) &&
+  grepl('<mark class="diff-word">rtrtryy</mark>dim(X)',diff$html,fixed=TRUE),
+  "the exact reported typo is located on line 15 and highlighted even without an original final newline")
+diff <- app$source_diff_display(paste0(paste(rep("# unchanged",13L),collapse="\n"),"\nrtrtryydim(X)\n"),
+  paste0(paste(rep("# unchanged",13L),collapse="\n"),"\ndim(X)\n"))
+check(identical(diff$location,"Source lines 14 / Proposed lines 14"),
+  "a trailing empty Source line does not mislabel the actual faulty line as the file's last line")
+diff <- app$source_diff_display("x <- '<script>'\ny <- 2\nz <- 3\n","x <- '<img>'\nadded <- 1\ny <- 2\nz <- 3\n")
+check(!grepl("<script>",diff$html,fixed=TRUE) && !grepl("<img>",diff$html,fixed=TRUE) &&
+  grepl('diff-context" data-old-line="2" data-new-line="3"',diff$html,fixed=TRUE),
+  "numbered comparisons escape code and track different old/new line positions after insertions")
 
 shiny::testServer(app$server,{
   nonce <- 0L
@@ -128,13 +143,24 @@ shiny::testServer(app$server,{
     grepl(paste(original,collapse="\n"),request$prompt,fixed=TRUE),
     "the reported error-review question sends all 15 lines with complete-correction and explanation-only guidance")
   answer <- tail(state$messages,1L)[[1L]]
-  session$setInputs(review_source_change=list(message=answer$sequence,block=1L,nonce=2L,epoch=state$upload_epoch))
-  session$flushReact();invisible(output$source_change_preview)
+  check(!is.null(review_context()) && identical(review_context()$epoch,state$upload_epoch),
+    "a single corrected file opens its comparison automatically with the final current epoch")
+  invisible(output$source_change_preview)
   job <- get("preview_job",envir=environment(clear_source_review),inherits=FALSE)
   check(grepl('class="source-review"',as.character(answer$html),fixed=TRUE) &&
     identical(job$before,paste(original,collapse="\n")) &&
     identical(job$after,paste0(paste(corrected,collapse="\n"),"\n")) &&
     job$syntax$ok && length(editor$writes)==writes,
     "a corrected 15-line answer exposes Review and preserves all unrelated lines without editing Source")
+  session$setInputs(apply_source_change=list(token=job$token,nonce=2L));session$flushReact()
+  check(length(editor$writes)==writes+1L && identical(app$full_text(editor$ctx),job$after),
+    "Replace on the automatically opened comparison applies exactly the reviewed bytes without a Review click")
+  reply <- "Unchanged"
+  app$ask_ai <- function(...)paste0("```r\n",app$full_text(editor$ctx),"```")
+  session$setInputs(chat_submit=list(text="Explain this code",nonce=3L));session$flushReact()
+  check(is.null(review_context()),"an unchanged code block does not open a misleading comparison for its final newline")
+  app$ask_ai <- function(...)"```r\nx <- 1\n```\nOr:\n```r\nx <- 2\n```"
+  session$setInputs(chat_submit=list(text="Show alternatives",nonce=4L));session$flushReact()
+  check(is.null(review_context()),"multiple alternative blocks are never automatically selected for replacement")
 })
 cat(checks,"Source editing checks passed\n")
