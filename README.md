@@ -29,7 +29,7 @@ The header keeps **Check updates** and **New chat** visible. The **More actions
 (...)** menu contains History, Knowledge, Help, Close and the installed version.
 Help contains launch, API-key and update instructions with Copy buttons.
 Advanced commands are expandable; update results appear only in the toolbar.
-Source shares the header row with the visible actions; long names have a tooltip.
+The current file name shares the header row with the visible actions; long names have a tooltip.
 The controls retain their original bordered appearance. The two-line composer
 grows with your draft; Image, Plot, Console Off/On and Send share one action row.
 While a request runs, Send shows a loading indicator without a separate Thinking
@@ -268,12 +268,12 @@ Clear discards all staged images when multiple images are attached.
 
 ## Console context
 
-In the package app, enable **Console** beside Image and Plot, wait for
+In the package app, **Console** starts enabled beside Image and Plot. Wait for
 the status to say **On**, then run R code normally in RStudio. Ask about the result
 or error and press **Send**: the request includes up to 200 recent lines and
 12,000 characters of captured R output and associated commands. Copy/Paste is not required.
 
-Capture starts off each time. To prepare error and warning logging, the app runs
+Capture starts on each time you open the Viewer; you can turn it off. To prepare error and warning logging, the app runs
 its own fixed helper in the RStudio Console without switching focus. Finish or
 clear a command already being typed there before enabling capture. The status
 shows On when logging is ready; hover for detailed status. Activation does not call OpenAI.
@@ -282,6 +282,7 @@ Normal output remains visible, and ordinary uncaught errors, warnings and messag
 are recorded without suppressing them. The temporary capture is cleared when you
 turn the option off, change chats, disconnect, Close or update. Raw captured output
 is not added to saved chat snapshots, though answers based on it remain in chat.
+Switching chats preserves the On/Off choice and starts a fresh buffer when On.
 The active API key is redacted from captured context before it is sent.
 
 Completed commands are recorded after their output with task boundaries. Errors
@@ -310,7 +311,7 @@ a long-running command can temporarily grow the spool before control returns.
   images support multipart work. Use History to return to another conversation.
 - Script validation requires **Yes**, executes the entire current R/Rmd file in
   a child process, and may affect files. Only approved output/plots are shared.
-- Current Source text, detected CSV headers, opted-in Console context and uploaded images are sent to
+- Current Source text, detected CSV headers, enabled Console context and uploaded images are sent to
   OpenAI when you click **Send**. An API account/key and internet access are needed.
 - Standalone `source("AISource.R")` remains supported with `OPENAI_API_KEY` set.
 

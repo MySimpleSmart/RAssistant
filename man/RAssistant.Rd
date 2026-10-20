@@ -96,7 +96,7 @@ Send submits the actual image through the normal attachment flow. Source is not
 rerun. Plots history selection is respected. The button is in chat, not in
 RStudio's Plots toolbar. Up to three images of 4 MB each can be attached.
 
-The package app offers an opt-in Console control beside Image and Plot. Enable it, wait for
+The package app enables Console context by default beside Image and Plot. Wait for
 the On status, then run code normally. Send includes up to 200 recent lines and
 12,000 characters of new R output and associated commands, including ordinary
 uncaught errors, warnings and messages. Completed commands follow their output
@@ -106,16 +106,17 @@ including plotting and assignments, are recorded with a no-text-output label.
 Comments are not recorded; plot pixels are not included. Earlier image uploads
 are historical context, not the latest plot. A fixed registration helper runs in the RStudio Console without
 changing focus. Activation refuses to overwrite an unfinished Console command.
-Capture starts off, keeps normal output visible, and clears on disable, chat
+Capture starts on, can be switched off, keeps normal output visible, and clears on disable, chat
 changes, disconnect, Close or update. The raw temporary capture is not saved in
 chat snapshots; answers based on it remain in chat. The active API key is redacted.
+Switching chats preserves the On/Off choice with a fresh buffer when enabled.
 Old output, plots, external-process output and conditions caught by other handlers
 may be absent. Cleanup waits for any output sink placed above ours; updates wait
 for that cleanup. Large output is trimmed when control returns between commands
 or to app polling, so a running command can temporarily grow the spool.
 
 The assistant sends the current Source, detected CSV headers, bounded conversation,
-opted-in Console context and attached or retained images only when Send is clicked. Approved validation can execute the entire
+enabled Console context and attached or retained images only when Send is clicked. Approved validation can execute the entire
 current R/Rmd file in a child process and send its output and captured plots.
 Validation is not a sandbox. Console output may also be pasted manually.
 Calling \code{launch()} again reopens the running app in RStudio's Viewer,

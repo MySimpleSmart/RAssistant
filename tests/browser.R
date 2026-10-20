@@ -208,8 +208,8 @@ main <- function() {
   check(isTRUE(js('document.querySelector(".attachment-item img").naturalWidth>0 && document.getElementById("prompt").value==="Keep this draft" && document.querySelectorAll(".msg.user").length===0')),
     "Attach current plot previews one image and preserves the draft without an AI request")
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
-  check(isTRUE(js('document.getElementById("attach_current_plot").getBoundingClientRect().right<=innerWidth && document.getElementById("send").getBoundingClientRect().right<=innerWidth && document.getElementById("source_context").closest(".toolbar")!==null && document.querySelector(".toolbar").getBoundingClientRect().height<=40')),
-    "Source shares a single header row and attachment controls fit a narrow Viewer")
+  check(isTRUE(js('document.getElementById("attach_current_plot").getBoundingClientRect().right<=innerWidth && document.getElementById("send").getBoundingClientRect().right<=innerWidth && document.getElementById("source_context").closest(".toolbar")!==null && document.getElementById("source_context").textContent.trim()==="example.R" && document.querySelector(".toolbar").getBoundingClientRect().height<=40')),
+    "the file name has no Source prefix and shares a compact header row")
   screenshot<-Sys.getenv("RA_BROWSER_LAYOUT_SCREENSHOT")
   if(nzchar(screenshot)){
     js('document.querySelectorAll(".shiny-notification-close").forEach(function(b){b.click();});')
@@ -220,8 +220,12 @@ main <- function() {
   browser$Emulation$clearDeviceMetricsOverride()
   js('document.querySelector(".remove-attachment").click();')
   wait_js('document.querySelectorAll(".attachment-item").length===0')
-  check(isTRUE(js('!document.getElementById("console_context").checked')),
-    "Console context is an opt-in control")
+  check(isTRUE(js('document.getElementById("console_context").checked')),
+    "Console context is checked by default")
+  wait_js('document.getElementById("console_context_status").textContent.includes("On: 1 line")')
+  js('document.getElementById("console_context").click();')
+  wait_js('document.getElementById("console_context_state").textContent==="Off"')
+  check(isTRUE(js('!document.getElementById("console_context").checked')),"the default Console capture can still be switched off")
   js('document.getElementById("console_context").click();')
   wait_js('document.getElementById("console_context_status").textContent.includes("On: 1 line")')
   js('window.thinkingShown=false;window.notificationObserver=new MutationObserver(function(){document.querySelectorAll(".shiny-notification").forEach(function(n){if(n.textContent.includes("Thinking"))window.thinkingShown=true;});});notificationObserver.observe(document.body,{childList:true,subtree:true});document.getElementById("prompt").value="Explain this";document.getElementById("send").click();document.getElementById("send").click();')
@@ -419,7 +423,7 @@ main <- function() {
   check(TRUE,"a replacement Viewer saves the still-connected session before restoring its draft")
   old_state <- old_browser$Runtime$evaluate('document.getElementById("send").disabled',returnByValue=TRUE)
   check(isTRUE(old_state$result$value),"the superseded Viewer disconnects and cannot send a duplicate request")
-  js('document.getElementById("console_context").click();$("#prompt").val("Newest Viewer draft").trigger("change");')
+  js('$("#prompt").val("Newest Viewer draft").trigger("change");')
   wait_js('document.getElementById("console_context_status").textContent.includes("On: 1 line")')
   js('new Promise(function(resolve){setTimeout(resolve,1200);})')
   check(isTRUE(js('document.getElementById("console_context").checked && document.getElementById("console_context_status").textContent.includes("On: 1 line")')),
@@ -427,7 +431,7 @@ main <- function() {
   old_browser$close()
   browser$Page$navigate(url)
   wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled && document.getElementById("prompt").value==="Newest Viewer draft"')
-  check(isTRUE(js('document.querySelectorAll(".msg.user").length===2 && !document.getElementById("console_context").checked')),
+  check(isTRUE(js('document.querySelectorAll(".msg.user").length===2 && document.getElementById("console_context").checked')),
     "late old-session saves cannot overwrite the replacement chat or newest draft")
   js('openAction("close");')
   worker$wait(timeout=10000)

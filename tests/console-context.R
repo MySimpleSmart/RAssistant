@@ -35,9 +35,15 @@ invisible(grDevices::dev.off())
 image_url <- paste0("data:image/png;base64,",jsonlite::base64_enc(readBin(fixture,"raw",file.info(fixture)$size)))
 unlink(fixture)
 shiny::testServer(app$server,{
+  session$setInputs(console_context=TRUE)
+  session$flushReact()
+  check(enabled && ready && prepares==1L && !length(calls),
+    "the default checked control activates Console capture on its first input without an AI request")
+  set_console_context(TRUE)
+  check(prepares==1L,"repeated startup activation does not enqueue another Console registration command")
   session$setInputs(console_context=FALSE)
   session$flushReact()
-  check(!enabled && !length(calls) && prepares==0L,"Console context is off by default and makes no AI request")
+  check(!enabled && !length(calls) && prepares==1L,"Console context can be disabled before sending a message")
   session$setInputs(chat_submit=list(text="Explain this",nonce=1L))
   check(length(calls)==1L && !grepl("RECENT R CONSOLE OUTPUT",calls[[1L]]$prompt,fixed=TRUE),
     "disabled Console capture sends no output")
@@ -46,7 +52,7 @@ shiny::testServer(app$server,{
     "[Error stack entry; may be an enclosing call] stop(\"missing_data not found\")",
     "[End failed Console task; full command may be unavailable]",sep="\n")
   session$elapse(1500)
-  check(enabled && ready && prepares==1L && length(calls)==1L &&
+  check(enabled && ready && prepares==2L && length(calls)==1L &&
     grepl("On:",output$console_context_status,fixed=TRUE),"enabling capture prepares it without calling AI or turning itself off")
   session$setInputs(chat_submit=list(text="Explain the recent error",nonce=2L))
   current<-tail(calls,1L)[[1L]]
@@ -83,8 +89,11 @@ shiny::testServer(app$server,{
   check(length(calls)==3L,"Send waits for real Console activation to finish")
   ready<<-TRUE;text<<-"Only new output"
   session$setInputs(new_chat=1L)
-  check(!enabled && !nzchar(text),"New chat stops capture and clears old Console context")
+  check(enabled && !nzchar(text),"New chat keeps Console on while clearing old captured output")
   session$setInputs(console_context=FALSE)
+  text<<-"Old disabled buffer"
+  session$setInputs(new_chat=2L)
+  check(!enabled && !nzchar(text),"New chat also preserves an explicit Console Off choice")
   session$setInputs(console_context=TRUE)
   text<<-"LARGE_SOURCE_CONSOLE_EVIDENCE"
   app$active_doc<-function(id=NULL)list(id="large",path="large.R",contents=strrep("x",50001L))

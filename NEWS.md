@@ -1,3 +1,8 @@
+# RAssistant 0.3.18
+
+- Show only the current file name in the header, without the Source prefix.
+- Enable Console context by default. Keep your On/Off choice when switching chats while clearing old captured output.
+
 # RAssistant 0.3.17
 
 - See release changes before updating.

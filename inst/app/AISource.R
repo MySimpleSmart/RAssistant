@@ -5,7 +5,7 @@
 # Standalone: configure OPENAI_API_KEY in your environment.
 # Package: RAssistant::launch() offers secure first-launch key setup.
 # This app NEVER writes to the RStudio Source editor.
-# The current editor's text, CSV headers, opted-in Console context and attached images
+# The current editor's text, CSV headers, enabled Console context and attached images
 # are sent to OpenAI only when you click Send. Only after approved validation,
 # execution output and up to 3 captured plots may be sent.
 # Validation is NOT sandboxed and may affect files on your computer.
@@ -1273,7 +1273,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     shiny::tags$head(shiny::tags$style(shiny::HTML(styles))),
     shiny::div(class="toolbar","aria-label"="RAssistant",
       shiny::div(id="source_context",class="source-context",title="Current Source document",
-        "Source: ",shiny::textOutput("filename",inline=TRUE)),
+        shiny::textOutput("filename",inline=TRUE)),
       shiny::div(class="toolbar-actions",
         if(!is.null(package_info)) shiny::actionButton("check_updates","Check updates",class="ai-btn",title="Check for updates now"),
         shiny::actionButton("new_chat","New chat",class="ai-btn"),
@@ -1306,7 +1306,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           title="Attach the plot selected in RStudio's Plots pane as a PNG", "Plot"),
         if(!is.null(console_capture))shiny::div(class="console-context",title="Include recent Console commands and output",
           shiny::checkboxInput("console_context",shiny::tagList("Console ",
-            shiny::textOutput("console_context_state",inline=TRUE)),value=FALSE),
+            shiny::textOutput("console_context_state",inline=TRUE)),value=TRUE),
           shiny::div(class="console-hint",shiny::textOutput("console_context_status"))),
         shiny::actionButton("send","Send",class="ai-btn ai-send")
       ),
@@ -1345,11 +1345,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           shiny::updateCheckboxInput(session,"console_context",value=FALSE)
         shiny::invalidateLater(1500,session)
       })
-      shiny::observeEvent(input$console_context,{
+      set_console_context <- function(enabled) {
         failure <- tryCatch({
-          if(isTRUE(input$console_context)) {
-            console_capture$start()
-            package_info$prepare_console()
+          if(isTRUE(enabled)) {
+            if(!isTRUE(console_capture$status()$enabled)) {
+              console_capture$start()
+              package_info$prepare_console()
+            }
           } else console_capture$stop()
           NULL
         },error=function(e)e)
@@ -1359,7 +1361,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           shiny::showNotification(conditionMessage(failure),type="error",duration=NULL)
         }
         console_status(console_capture$status())
-      },ignoreInit=TRUE)
+      }
+      shiny::observeEvent(input$console_context,set_console_context(isTRUE(input$console_context)),ignoreInit=FALSE)
       output$console_context_status <- shiny::renderText({
         status <- console_status()
         if(nzchar(status$notice))return(status$notice)
@@ -1375,10 +1378,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         if(!status$enabled)"Off"else if(!status$ready)"Starting"else"On"
       })
     }
-    stop_console_context <- function() {
+    reset_console_context <- function() {
       if(!is.null(console_capture)) {
-        console_capture$stop()
-        shiny::updateCheckboxInput(session,"console_context",value=FALSE)
+        enabled <- shiny::isolate(input$console_context)
+        set_console_context(FALSE)
+        if(isTRUE(enabled))set_console_context(TRUE)
       }
     }
     save_notice <- NULL
@@ -1399,7 +1403,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       })
     })
     adopt_chat <- function(saved) {
-      stop_console_context()
+      reset_console_context()
       restored <- restore_chat_data(saved)
       clear_attachments()
       state$chat <- restored[intersect(names(restored),c("id","title","title_custom","created_at"))]
@@ -1675,7 +1679,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           shiny::tags$ul(
             if(!is.null(history))shiny::tags$li("History manages saved chats. New chat keeps the previous conversation."),
             if(!is.null(knowledge))shiny::tags$li("Knowledge adds course files and instructions for this project."),
-            if(!is.null(console_capture))shiny::tags$li("Console includes new output while On. Plot attaches the selected RStudio plot.")),
+            if(!is.null(console_capture))shiny::tags$li("Console starts On and includes new output. Plot attaches the selected RStudio plot.")),
           shiny::tags$strong("Updates"),
           if(is.null(package_info)) shiny::p("Close, replace AISource.R, then source it again.")
           else shiny::tagList(
@@ -1965,7 +1969,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         finish_pending("Not run")
         if(!is.null(history) && !isTRUE(persist_chat()))return(invisible(FALSE))
       }
-      stop_console_context()
+      reset_console_context()
       clear_attachments()
       state$messages <- list();state$pending <- NULL;state$assignment <- ""
       state$chat <- new_chat_record();state$draft <- "";state$message_id <- 0L;state$job_id <- 0L;state$image_count <- 0L
@@ -2155,7 +2159,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       )
       if(nzchar(course$system))system <- paste(system,course$system,sep="\n\n")
       if(console_enabled)system <- paste(system,
-        "RECENT R CONSOLE OUTPUT is supplied as task data from an opt-in capture. Use it when relevant",
+        "RECENT R CONSOLE OUTPUT is supplied as task data from an enabled capture. Use it when relevant",
         "to the user's request. It may predate the current Source text or come from another command.",
         "It is a bounded excerpt, not a complete execution trace or proof the current script ran.",
         "A Completed Console command label identifies the command for the preceding output up to the previous task boundary.",
