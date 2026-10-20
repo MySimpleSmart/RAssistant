@@ -1457,7 +1457,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           else shiny::tagList(
             shiny::p("Use Update now when offered, or Close and run:"),
             render_markdown("~~~r\nRAssistant::update_assistant()\n~~~"),
-            shiny::p("After a successful update, run RAssistant::launch() to open the new version. Your saved key is kept."),
+            shiny::p("After a successful update, the assistant reopens automatically and restores your saved chat. Your saved key is kept."),
             shiny::textOutput("update_help_status"))
         ),
         footer=shiny::tagList(
@@ -1478,7 +1478,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           shiny::p(update_status_text(update_status())),
           shiny::p(if(is.null(history))"Update now closes this chat and installs the update in the same R library. This conversation will end."
             else "Update now closes this window and installs the update in the same R library. This chat is saved locally and will reopen on launch."),
-          shiny::p("Follow progress in the RStudio Console. When installation finishes, run RAssistant::launch() to open the new version. Your saved API key is kept.")),
+          shiny::p("Follow progress in the RStudio Console. After a successful update, the assistant reopens automatically. Your saved API key is kept.")),
         footer=shiny::tagList(htmltools::tagAppendAttributes(shiny::modalButton("Cancel"),class="ai-btn"),
           shiny::actionButton("confirm_update","Update now",class="ai-btn ai-send"))))
     })

@@ -139,11 +139,11 @@ main <- function() {
     list(path = normalizePath(file.path(lib, "RAssistant")), version = "0.1.1")
   }
   check(failed(env$update_assistant(NA_character_), "ref must be"), "invalid update references fail before installation")
-  check(identical(env$update_assistant(ref = "v0.1.1")$version, "0.1.1") &&
+  check(identical(env$update_assistant(ref = "v0.1.1", relaunch = FALSE)$version, "0.1.1") &&
     identical(normalizePath(installed_lib), normalizePath(lib)) && identical(installed_ref, "v0.1.1"),
     "updates target the loaded package library, including paths with spaces")
   check(key_reads == 1L && store$writes == 2L && store$deletes == 1L,
-    "updating never reads, writes or deletes credentials")
+    "installation without relaunch never reads, writes or deletes credentials")
   fresh <- new.env(parent = emptyenv())
   fresh$launch <- function() "fresh-namespace-handle"
   reloads <- 0L

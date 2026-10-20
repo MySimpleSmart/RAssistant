@@ -12,9 +12,12 @@ main <- function() {
   stopifnot(nzchar(installed), file.copy(installed, lib, recursive = TRUE),
     file.copy(installed, other_lib, recursive = TRUE))
   checks <- 0L
-  for (attached in c(FALSE, TRUE)) {
-    passed <- callr::r(function(lib, other_lib, attached) {
-      options(RAssistant.check_updates = FALSE, RAssistant.save_history = FALSE)
+  for (trigger in c("manual_launch", "console_update", "ui_update")) for (attached in c(FALSE, TRUE)) {
+    passed <- callr::r(function(lib, other_lib, attached, trigger) {
+      data <- tempfile("reload-data-")
+      on.exit(unlink(data, recursive = TRUE), add = TRUE)
+      options(RAssistant.check_updates = FALSE, RAssistant.save_history = TRUE,
+        RAssistant.history_dir = data, RAssistant.knowledge_dir = data)
       Sys.unsetenv("OPENAI_API_KEY")
       .libPaths(c(other_lib, lib, .libPaths()))
       ns <- loadNamespace("RAssistant", lib.loc = lib)
@@ -22,6 +25,12 @@ main <- function() {
       # Force old lazy bindings before simulating the changed installed app.
       for (name in ls(ns, all.names = TRUE)) get(name, envir = ns, inherits = FALSE)
       old_launch <- get("launch", ns)
+      old_state <- get(".app_state", ns)
+      history <- get(".conversation_store", ns)()
+      chat <- list(id = history$new_id(), title = "Before updating",
+        messages = list(list(role = "You", type = "text", text = "Keep this chat", sequence = 1L)),
+        draft = "Unsent follow-up", attachments = list())
+      history$save(chat)
       patch <- function(ns, name, value) {
         unlockBinding(name, ns)
         assign(name, value, envir = ns)
@@ -35,22 +44,42 @@ main <- function() {
         fresh <- asNamespace("RAssistant")
         patch(fresh, ".in_rstudio", function() TRUE)
         patch(fresh, ".resolve_api_key", function() {
+          stopifnot(!old_state$update_queued)
           key_reads <<- key_reads + 1L
           "synthetic-reload-key"
         })
       }, action = "append")
       writeLines(c("function(api_key, package_info) {",
         "  list(status = function() 'running', generation = 'updated',",
-        "    version = package_info$version, key = api_key)", "}"),
+        "    version = package_info$version, key = api_key, restored = package_info$history$load())", "}"),
         file.path(lib, "RAssistant", "app", "AISource.R"))
       killed <- 0L
       old_updates <- get(".update_state", ns)
       old_updates$worker <- list(kill = function() { killed <<- killed + 1L })
-      old_state <- get(".app_state", ns)
-      old_state$updated <- TRUE
+      installs <- 0L; stops <- 0L
+      patch(ns, ".install_from_github", function(lib, ref) {
+        installs <<- installs + 1L
+        list(path = normalizePath(file.path(lib, "RAssistant")),
+          version = get(".installed_info", ns)()$version, sha = "synthetic-new-commit")
+      })
       dependency <- asNamespace("shiny")
       assign("ra_workspace_sentinel", data.frame(value = 42L), envir = globalenv())
-      handle <- old_launch()
+      if (trigger == "manual_launch") {
+        old_state$updated <- TRUE
+        handle <- old_launch()
+      } else if (trigger == "console_update") {
+        result <- get("update_assistant", ns)()
+        stopifnot(result$updated, result$relaunched)
+        handle <- get(".app_state", asNamespace("RAssistant"))$handle
+      } else {
+        running <- TRUE
+        old_state$handle <- list(status = function() if (running) "running" else "success",
+          stop = function() { running <<- FALSE; stops <<- stops + 1L })
+        schedule <- get(".schedule_update", ns)
+        stopifnot(schedule(), !schedule())
+        later::run_now(timeoutSecs = .3)
+        handle <- get(".app_state", asNamespace("RAssistant"))$handle
+      }
       fresh <- asNamespace("RAssistant")
       checks <- c(
         namespace = !identical(ns, fresh),
@@ -62,6 +91,11 @@ main <- function() {
         fresh_state = !get(".app_state", fresh)$updated &&
           identical(get(".app_state", fresh)$handle, handle),
         old_worker = killed == 1L && is.null(get(".update_state", ns)$worker),
+        lifecycle = !old_state$update_queued && installs == as.integer(trigger != "manual_launch") &&
+          stops == as.integer(trigger == "ui_update"),
+        history = identical(handle$restored$id, chat$id) &&
+          identical(handle$restored$draft, chat$draft) &&
+          identical(handle$restored$messages[[1L]]$text, chat$messages[[1L]]$text),
         workspace = identical(get("ra_workspace_sentinel", globalenv()), data.frame(value = 42L)),
         dependency = identical(asNamespace("shiny"), dependency),
         attachment = identical("package:RAssistant" %in% search(), attached),
@@ -71,10 +105,10 @@ main <- function() {
         attached_exports = identical(environment(get("launch", as.environment("package:RAssistant"))), fresh))
       if (!all(checks)) stop("Reload failed: ", paste(names(checks)[!checks], collapse = ", "))
       names(checks)
-    }, args = list(lib, other_lib, attached),
+    }, args = list(lib, other_lib, attached, trigger),
       libpath = .libPaths(), user_profile = FALSE, system_profile = FALSE)
     for (name in passed) {
-      cat("PASS", if (attached) "attached" else "namespace-only", name, "\n")
+      cat("PASS", trigger, if (attached) "attached" else "namespace-only", name, "\n")
       checks <- checks + 1L
     }
   }

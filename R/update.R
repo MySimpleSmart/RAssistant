@@ -32,9 +32,12 @@
   libpath = unique(c(lib, .libPaths())), show = TRUE)
 }
 
-update_assistant <- function(ref = "main") {
+update_assistant <- function(ref = "main", relaunch = TRUE) {
   if (!is.character(ref) || length(ref) != 1L || is.na(ref) || !nzchar(trimws(ref))) {
     stop("ref must be a branch, tag or commit reference.", call. = FALSE)
+  }
+  if (!is.logical(relaunch) || length(relaunch) != 1L || is.na(relaunch)) {
+    stop("relaunch must be TRUE or FALSE.", call. = FALSE)
   }
   if (.app_running()) stop("Close RAssistant using its Close button before updating.", call. = FALSE)
   before <- .installed_info()
@@ -59,11 +62,25 @@ update_assistant <- function(ref = "main") {
   if (result$updated) {
     .app_state$updated <- TRUE
     message("Updated RAssistant ", before$version, " -> ", result$version, " in ", lib,
-      ". Run RAssistant::launch() to open the new version. Your saved API key is unchanged.")
+      ". Your saved API key is unchanged.")
   } else {
     message("RAssistant is already up to date (", result$version, ").")
   }
+  result$relaunched <- if (relaunch) .relaunch_after_update() else FALSE
   invisible(result)
+}
+
+.relaunch_after_update <- function() {
+  if (!.in_rstudio()) return(FALSE)
+  tryCatch({
+    message("Reopening RAssistant...")
+    launch()
+    TRUE
+  }, error = function(e) {
+    message("The update succeeded, but RAssistant could not reopen: ", conditionMessage(e),
+      "\nRun RAssistant::launch() in the Console to retry.")
+    FALSE
+  })
 }
 
 .installed_info <- function() {
@@ -219,13 +236,19 @@ update_assistant <- function(ref = "main") {
   .app_state$update_queued <- TRUE
   later::later(function() {
     on.exit(.app_state$update_queued <- FALSE, add = TRUE)
-    tryCatch({
+    installed <- tryCatch({
       if (.app_running()) .app_state$handle$stop()
-      update_assistant()
+      update_assistant(relaunch = FALSE)
+      TRUE
     }, error = function(e) {
       message("Update failed: ", conditionMessage(e),
         "\nRetry RAssistant::update_assistant() in the Console, or reopen with RAssistant::launch().")
+      FALSE
     })
+    # launch() rejects a queued installation. Release the old namespace's lock
+    # before it reloads the installed package and restores the saved chat.
+    .app_state$update_queued <- FALSE
+    if (installed) .relaunch_after_update()
   }, delay = 0.05)
   invisible(TRUE)
 }

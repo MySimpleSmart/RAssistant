@@ -148,24 +148,84 @@ main <- function() {
   running<-TRUE;events<-character()
   env$.app_state$handle<-list(status=function()if(running)"running" else "success",
     stop=function(){running<<-FALSE;events<<-c(events,"stop")})
-  env$update_assistant<-function(){events<<-c(events,"install")}
+  env$.in_rstudio<-function()TRUE
+  env$launch<-function(){
+    stopifnot(!env$.app_state$update_queued)
+    events<<-c(events,"launch")
+  }
+  env$update_assistant<-function(relaunch){
+    stopifnot(identical(relaunch,FALSE))
+    events<<-c(events,"install")
+  }
   check(isTRUE(env$.schedule_update()) && !isTRUE(env$.schedule_update()),
     "repeated Update now clicks queue only one installation")
   later::run_now(timeoutSecs=.3)
-  check(identical(events,c("stop","install")) && !env$.app_state$update_queued,
-    "the app stops before installation begins and releases the update lock")
-  env$update_assistant<-function()stop("Synthetic install failure")
+  check(identical(events,c("stop","install","launch")) && !env$.app_state$update_queued,
+    "Update now stops the old app, installs and reopens exactly once after releasing the lock")
+  events<-character()
+  env$update_assistant<-function(relaunch)stop("Synthetic install failure")
   env$.schedule_update();later::run_now(timeoutSecs=.3)
-  check(!env$.app_state$update_queued,"failed deferred updates release their lock and report recovery instructions")
+  check(!env$.app_state$update_queued && !length(events),
+    "failed deferred installations release their lock without relaunching")
 
-  # An unchanged GitHub SHA/version should not reload the namespace.
+  # Exercise the Console updater, including unchanged installations and failures.
   env$update_assistant<-get("update_assistant",ns);environment(env$update_assistant)<-env
   env$.package_path<-function()system.file(package="RAssistant")
   env$.installed_info<-function()list(version="0.1.2",sha="same-sha")
-  env$.install_from_github<-function(lib,ref)list(
-    path=normalizePath(file.path(lib,"RAssistant")),version="0.1.2",sha="same-sha")
-  check(!env$update_assistant()$updated && !env$.app_state$updated,
-    "a no-change update reports up to date without requiring a reload")
+  installs<-0L;sha<-"same-sha"
+  env$.install_from_github<-function(lib,ref){
+    installs<<-installs+1L
+    list(path=normalizePath(file.path(lib,"RAssistant")),version="0.1.2",sha=sha)
+  }
+  result<-withVisible(env$update_assistant())
+  check(!result$visible && !result$value$updated && result$value$relaunched &&
+    !env$.app_state$updated && identical(events,"launch"),
+    "an unchanged update reopens the app without requesting a namespace reload")
+  events<-character()
+  result<-env$update_assistant(relaunch=FALSE)
+  check(!result$relaunched && !length(events),
+    "relaunch FALSE leaves a successful installation closed")
+  before<-installs
+  invalid<-list(NA,logical(),c(TRUE,FALSE),"yes",1L,NULL)
+  check(all(vapply(invalid,function(value)inherits(
+    tryCatch(env$update_assistant(relaunch=value),error=identity),"error"),logical(1))) &&
+    installs==before,"invalid relaunch arguments are rejected before installation")
+  sha<-"new-sha"
+  result<-env$update_assistant()
+  check(result$updated && result$relaunched && env$.app_state$updated &&
+    identical(events,"launch"),"a changed Console update requests a reload and reopens by default")
+  events<-character()
+  env$.in_rstudio<-function()FALSE
+  result<-env$update_assistant()
+  check(result$updated && !result$relaunched && !length(events),
+    "updates outside RStudio install successfully without attempting to open an app")
+  env$.in_rstudio<-function()TRUE
+  env$launch<-function(){
+    stopifnot(!env$.app_state$update_queued)
+    events<<-c(events,"launch")
+    stop("Synthetic launch failure")
+  }
+  messages<-character()
+  capture_messages<-function(expr)withCallingHandlers(expr,message=function(m){
+    messages<<-c(messages,conditionMessage(m));invokeRestart("muffleMessage")
+  })
+  result<-capture_messages(env$update_assistant())
+  check(result$updated && !result$relaunched && identical(events,"launch") &&
+    any(grepl("update succeeded, but",messages,fixed=TRUE)) &&
+    any(grepl("RAssistant::launch()",messages,fixed=TRUE)) &&
+    !any(grepl("Update failed",messages,fixed=TRUE)),
+    "a relaunch failure preserves successful installation and explains how to retry")
+  events<-messages<-character();before<-installs
+  env$.schedule_update();capture_messages(later::run_now(timeoutSecs=.3))
+  check(installs==before+1L && identical(events,"launch") && !env$.app_state$update_queued &&
+    any(grepl("update succeeded, but",messages,fixed=TRUE)) &&
+    !any(grepl("Update failed",messages,fixed=TRUE)),
+    "a deferred relaunch failure neither repeats nor misreports the installation")
+  events<-character();env$.app_state$updated<-FALSE
+  env$.install_from_github<-function(lib,ref)stop("Synthetic install failure")
+  result<-tryCatch(env$update_assistant(),error=identity)
+  check(inherits(result,"error") && !env$.app_state$updated && !length(events),
+    "a failed Console installation never launches or marks the namespace updated")
   fixture_env <- new.env(parent=baseenv())
   fixture_env$fixture_version <- function()"0.1.2"
   environment(fixture_env$fixture_version)<-baseenv()

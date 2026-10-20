@@ -10,9 +10,13 @@ optional OS-stored API credential, or update the installed package from GitHub.}
 launch()
 set_api_key()
 forget_api_key()
-update_assistant(ref = "main")
+update_assistant(ref = "main", relaunch = TRUE)
 }
-\arguments{\item{ref}{A GitHub branch, tag or commit reference.}}
+\arguments{
+\item{ref}{A GitHub branch, tag or commit reference.}
+\item{relaunch}{Whether to reopen the assistant after a successful update.
+Defaults to \code{TRUE}; only opens the app when running in RStudio.}
+}
 \details{
 Run \code{launch()} in the RStudio Console. An existing
 \env{OPENAI_API_KEY} takes precedence. Otherwise the first launch prompts for a
@@ -28,7 +32,8 @@ unset or edit an existing environment variable.
 The toolbar displays the installed version and Help with copyable Console
 commands. On launch, a background process checks the public GitHub package
 version. A newer version displays Update now. Confirming closes the current chat
-and performs the update, with progress and relaunch instructions in the Console.
+and performs the update, with progress in the Console. After a successful update,
+the assistant reopens automatically and restores any saved chat and draft.
 Discovery is cached for one hour per R session, does not use the OpenAI API, and
 does not send credentials or conversation data. Offline checks do not block chat.
 Help offers a manual check; \code{options(RAssistant.check_updates = FALSE)}
@@ -60,9 +65,14 @@ excerpt budget. Adding PDFs requires the suggested \pkg{pdftools} package.
 
 Close the assistant before \code{update_assistant()}. Updates use the library
 containing the loaded package, retain normal installation locking and run in a
-separate R process. Run \code{launch()} afterward; it reloads the new package code
+separate R process. After a successful update, the assistant reopens automatically
+in RStudio; it reloads the new package code
 without clearing the workspace or unloading dependencies. If another package
 imports RAssistant or reloading fails, a restart may still be needed.
+Use \code{relaunch = FALSE} to install without reopening. If installation succeeds
+but reopening fails, the Console gives a separate message and a manual retry command.
+The first upgrade from 0.3.3 or earlier still uses the old updater; run
+\code{launch()} once afterward. Subsequent updates reopen automatically.
 For the first upgrade from 0.1.3 or earlier, close the assistant and run
 \code{unloadNamespace("RAssistant")} after updating, then \code{launch()}.
 Credentials are stored separately and
@@ -76,7 +86,9 @@ Validation is not a sandbox. Console output must be pasted manually.
 }
 \value{\code{launch()} invisibly returns a Shiny app handle.
 \code{set_api_key()} and \code{forget_api_key()} invisibly return \code{NULL}.
-\code{update_assistant()} invisibly returns the installed path and version.}
+\code{update_assistant()} invisibly returns a list with the installed path,
+version, commit SHA, \code{updated} (whether the installation changed) and
+\code{relaunched} (whether the assistant reopened).}
 \examples{
 \dontrun{
 RAssistant::launch()

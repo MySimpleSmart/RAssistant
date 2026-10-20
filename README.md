@@ -93,7 +93,8 @@ IP-shared REST API quota. No GitHub token or Git executable is needed for checks
 When a newer version is available, the chat shows **Update now**. Click it,
 review the notice, then confirm. This saves and closes the current chat, installs
 into the same R library and prints progress in the RStudio Console.
-After successful installation, run `RAssistant::launch()` to restore the chat.
+From 0.3.4, after successful installation the assistant reopens automatically
+and restores the saved chat and draft (when local history is enabled).
 The Console reports the old and new versions; the toolbar confirms the installed
 version when reopened.
 
@@ -111,16 +112,25 @@ Click **Close** in the assistant, then run:
 RAssistant::update_assistant()
 ```
 
-Run `RAssistant::launch()` again. It reloads RAssistant's updated code while
+The assistant reopens automatically in RStudio. It reloads RAssistant's updated code while
 preserving your R workspace and loaded dependencies. A restart is only needed
 if reloading fails, such as when another loaded package imports RAssistant.
+If installation succeeds but reopening fails, the Console reports this separately
+and gives `RAssistant::launch()` as the retry command.
 The updater installs from this repository's `main` branch into the **same R
 library containing the loaded RAssistant package**, rather than whichever
 library happens to be first. It uses a clean R process and normal installation
-locking. It does not read, replace or delete the saved key. No updates run
+locking. Installation does not read, replace or delete the saved key; reopening
+uses the existing key through the normal launcher. No updates run
 automatically. You can choose a tag/commit with `update_assistant(ref = "...")`.
 An unchanged installed version and GitHub commit reports **already up to date**
-and does not require reloading.
+and reopens without reloading the namespace. Use
+`RAssistant::update_assistant(relaunch = FALSE)` to install without reopening.
+Outside RStudio, updates install without attempting to open the assistant.
+
+The first update from **0.3.3 or earlier** still runs the old updater.
+Run `RAssistant::launch()` once after that update; subsequent updates reopen
+automatically.
 
 When upgrading from 0.1.3 or earlier, the already-loaded old launcher still has
 its restart guard. After the update finishes and the assistant is closed, reload
@@ -130,8 +140,6 @@ it once without clearing your workspace:
 unloadNamespace("RAssistant")
 RAssistant::launch()
 ```
-
-Subsequent updates through `update_assistant()` reload on the next launch.
 
 Inspect the installed package location and version:
 

@@ -45,7 +45,7 @@
 launch <- function() {
   if (!.in_rstudio()) stop("Open RStudio and run RAssistant::launch() in its Console.", call. = FALSE)
   if (isTRUE(.app_state$update_queued)) {
-    stop("An update is in progress. Wait for it to finish, then run RAssistant::launch().", call. = FALSE)
+    stop("An update is in progress. The assistant will reopen when it finishes.", call. = FALSE)
   }
   if (.app_running()) {
     message("RAssistant is already running. Use its Viewer tab, or Close it before reopening.")

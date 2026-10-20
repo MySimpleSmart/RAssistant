@@ -133,7 +133,7 @@ main <- function() {
   wait_js('document.getElementById("shiny-modal")===null')
   js('document.getElementById("update_now").click();')
   wait_js('document.getElementById("confirm_update")!==null')
-  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("This chat is saved locally") && document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && !document.getElementById("shiny-modal").textContent.includes("Restart R")')),
+  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("This chat is saved locally") && document.getElementById("shiny-modal").textContent.includes("reopens automatically") && !document.getElementById("shiny-modal").textContent.includes("Restart R")')),
     "Update now explains chat preservation and relaunching after installation")
   js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click();')
   wait_js('document.getElementById("shiny-modal")===null')

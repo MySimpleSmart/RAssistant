@@ -1,3 +1,16 @@
+# RAssistant 0.3.4
+
+- Automatically reopen the assistant in RStudio after a successful update from
+  **Update now** or `update_assistant()`, restoring the saved conversation and
+  draft through the normal launcher without clearing the R workspace.
+- Release the update lock before relaunching, and keep installation failures
+  separate from successful updates that need a manual launch retry.
+- Add `update_assistant(relaunch = FALSE)` for installation without reopening.
+  Updates outside RStudio continue to install without starting the app.
+- The first update from 0.3.3 or earlier still uses the old updater: run
+  `RAssistant::launch()` once afterward to activate automatic relaunch for
+  subsequent updates.
+
 # RAssistant 0.3.3
 
 - Reject validation of Source text over 50,000 characters even when the chat
