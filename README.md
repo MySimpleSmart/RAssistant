@@ -325,6 +325,21 @@ When an answer contains one correction for the current Source, its comparison
 opens automatically inside the code block. Source and proposed line numbers,
 removed/added lines and highlighted characters show the precise changes.
 **Copy** copies the corrected code; **Replace** applies it after your click.
+Each separate changed section has **Apply/Replace** and **Skip**. Applying one
+refreshes the remaining comparisons against the new editor contents. **Apply all**
+approves the complete proposal. Skip never writes to Source. Changing Source
+manually invalidates the pending edits. Partial changes remain unsaved if you close
+the comparison; Cancel does not undo changes you already approved.
+
+Click the `filename:line` link or an old line number in a comparison to select
+that line in the matching Source editor, including unsaved documents.
+
+Select one non-empty range in Source, then choose **... > Selected code >
+Explain, Fix or Improve**. The current draft can add instructions. Explain stays
+read-only; Fix/Improve propose replacements only within that captured range,
+preserving text before and after it, including on the same line. Moving the
+selection later does not change the proposed target. Source edits still require
+approval and never save or run automatically.
 Multiple alternative code blocks require choosing **Review** on the one you want.
 
 You can also click **Review** beside Copy on an AI R/Rmd code block. Choose **Replace entire
@@ -360,6 +375,7 @@ Rscript tools/sync-app.R --check
 Rscript tests/regression.R
 Rscript tests/source-context.R
 Rscript tests/source-edits.R
+Rscript tests/source-workflow.R
 Rscript tests/assignment-context.R
 Rscript tests/image-reading.R
 Rscript tests/conversation-context.R

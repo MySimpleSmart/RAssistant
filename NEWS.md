@@ -1,3 +1,9 @@
+# RAssistant 0.5.0
+
+- Apply or skip individual changes, with fresh comparisons after each approval.
+- Click a file-and-line link or Source line number to select that line in RStudio.
+- Selected code in More actions offers Explain, Fix and Improve. Fixes stay within the selected range.
+
 # RAssistant 0.4.3
 
 - A single Source correction now opens its comparison automatically inside the chat code block, with Copy and Replace.

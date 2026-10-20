@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.4.3
+Version: 0.5.0
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -28,5 +28,6 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: A single Source correction now opens its comparison automatically inside the chat code block, with Copy and Replace.
-    Show exact old/new line numbers and highlight changed characters. Request precise file, line, cause and correction in error explanations.
+Config/RAssistant/Changes: Apply or skip individual changes, with fresh comparisons after each approval.
+    Click a file-and-line link or Source line number to select that line in RStudio.
+    Selected code in More actions offers Explain, Fix and Improve. Fixes stay within the selected range.

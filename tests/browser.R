@@ -13,9 +13,11 @@ main <- function() {
   on.exit(unlink(c(reopen_marker,reopen_url)),add=TRUE)
   edit_marker <- tempfile()
   on.exit(unlink(edit_marker),add=TRUE)
+  navigation_marker <- tempfile()
+  on.exit(unlink(navigation_marker),add=TRUE)
   history_root <- tempfile("ra-browser-history-");dir.create(history_root)
   on.exit(unlink(history_root,recursive=TRUE),add=TRUE)
-  run_app <- function(root,port,update_marker,history_root,available_marker,reopen_marker,reopen_url,edit_marker,standalone=FALSE) {
+  run_app <- function(root,port,update_marker,history_root,available_marker,reopen_marker,reopen_url,edit_marker,navigation_marker,standalone=FALSE) {
     setwd(root)
     source("tests/helpers.R")
     store_env <- new.env(parent=globalenv())
@@ -60,6 +62,7 @@ main <- function() {
       edits[[length(edits)+1L]] <<- list(operation="new",text=text,kind=kind)
       saveRDS(edits,edit_marker)
     }
+    app$focus_source <- function(id,row,column,end_column)saveRDS(list(id=id,row=row,column=column,end_column=end_column),navigation_marker)
     app$capture_current_plot <- function(directory){
       Sys.sleep(.15)
       path<-tempfile("browser-current-plot-",tmpdir=directory,fileext=".png")
@@ -70,6 +73,8 @@ main <- function() {
     source_unavailable <- FALSE
     app$active_doc <- function(id=NULL) {
       if(source_unavailable)stop("Simulated RStudio Source lookup failure")
+      if(standalone)app$initial$selection <- list(list(text=app$initial$contents[[14L]],
+        range=list(start=c(14,1),end=c(14,nchar(app$initial$contents[[14L]])+1L))))
       app$initial
     }
     count <- 0L
@@ -78,8 +83,17 @@ main <- function() {
       Sys.sleep(.2)
       if(grepl("SIMULATED_FAILURE",prompt,fixed=TRUE))stop("Simulated API failure")
       if(grepl("SIMULATE_SOURCE_LOSS",prompt,fixed=TRUE))source_unavailable <<- TRUE
-      if(standalone)return(paste0("v2.R, line 14: rtrtryydim is a misspelled function name. Use dim(X). Static review; not run.\n\n```r\n",
-        sub("rtrtryydim(X)","dim(X)",paste(app$initial$contents,collapse="\n"),fixed=TRUE),"```"))
+      if(standalone) {
+        if(grepl("; action=explain",prompt,fixed=TRUE))return("Selected function call explained. No code changes proposed.")
+        if(grepl("; action=fix",prompt,fixed=TRUE))return("```r\ndim(X)\n```")
+        if(grepl("; action=improve",prompt,fixed=TRUE))return("```r\nprint(dim(X))\n```")
+        code <- sub("rtrtryydim(X)","dim(X)",paste(app$initial$contents,collapse="\n"),fixed=TRUE)
+        if(grepl("GRANULAR_TEST",prompt,fixed=TRUE)) {
+          code <- sub("library(tidyverse)","suppressPackageStartupMessages(library(tidyverse))",code,fixed=TRUE)
+          code <- sub("dim(X)","print(dim(X))",code,fixed=TRUE)
+        }
+        return(paste0("v2.R, line 14: rtrtryydim is a misspelled function name. Use dim(X). Static review; not run.\n\n```r\n",code,"```"))
+      }
       paste0("Response ",count,if(grepl("CONSOLE_BROWSER_VALUE_42",prompt,fixed=TRUE))" Console evidence received."else"",
              "\n\n```r\nx <- c(\"<tag>\", \"&lt;\", \"\\\\(x\\\\)\", \"$$\")\nkeep <- x > \"a\" & x < \"z\"\n```\n\n",
              "Math: \\(\\alpha < 1\\).\n\n[[ACADEMIC_COMMENT]]Verified result.[[/ACADEMIC_COMMENT]]")
@@ -105,7 +119,7 @@ main <- function() {
     stopifnot(identical(getOption("shiny.maxRequestSize"),previous_limit))
     stopifnot(!console_enabled)
   }
-  start_worker <- function(port,standalone=FALSE)callr::r_bg(run_app,args=list(root,port,update_marker,history_root,available_marker,reopen_marker,reopen_url,edit_marker,standalone),
+  start_worker <- function(port,standalone=FALSE)callr::r_bg(run_app,args=list(root,port,update_marker,history_root,available_marker,reopen_marker,reopen_url,edit_marker,navigation_marker,standalone),
     stdout="|",stderr="|",supervise=TRUE)
   worker <- start_worker(port)
   on.exit(worker$kill(),add=TRUE)
@@ -275,7 +289,7 @@ main <- function() {
   wait_js('document.querySelector(".source-diff")!==null && document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
   check(isTRUE(js('document.getElementById("shiny-modal")===null && document.querySelector("#chat_stream .code-wrap .source-edit-card")!==null && getComputedStyle(document.querySelector(".review-open > pre")).display==="none" && document.querySelector(".source-apply").textContent==="Replace"')),
     "the answer automatically shows its comparison, Replace and Copy inside the code block without Review or a modal")
-  check(isTRUE(js('document.querySelector(".diff-remove").getAttribute("data-old-line")==="1" && document.querySelector(".diff-add").getAttribute("data-new-line")==="1" && document.querySelector(".diff-word")!==null && document.querySelector(".diff-location").textContent.includes("Source lines 1")')),
+  check(isTRUE(js('document.querySelector(".diff-remove").getAttribute("data-old-line")==="1" && document.querySelector(".diff-add").getAttribute("data-new-line")==="1" && document.querySelector(".diff-word")!==null && document.querySelector(".diff-location").textContent.includes("example.R:1")')),
     "the comparison numbers the actual Source and proposed lines and highlights the changed characters")
   js('window.copied=null;document.querySelector(".source-proposal-copy").click();')
   wait_js('window.copied!==null')
@@ -491,6 +505,7 @@ main <- function() {
   js('openAction("close");')
   worker$wait(timeout=10000)
   check(identical(worker$get_exit_status(),0L),"Close restores the upload option after a relaunched session")
+  unlink(edit_marker)
   port <- httpuv::randomPort();worker <- start_worker(port,standalone=TRUE)
   url <- paste0("http://127.0.0.1:",port)
   for(i in 1:100) {
@@ -511,13 +526,51 @@ main <- function() {
   wait_js('document.getElementById("shiny-modal")===null')
   js('document.getElementById("prompt").value="Кодонд ямар алдаа байна?";document.getElementById("send").click();')
   wait_js('document.querySelector(".source-proposal-copy")!==null && !document.getElementById("send").disabled')
-  check(isTRUE(js('document.querySelector(".source-read").textContent.includes("15 lines") && document.querySelector(".diff-location").textContent.includes("Source lines 14 / Proposed lines 14") && document.querySelector(".diff-remove").textContent.includes("rtrtryydim(X)") && document.querySelector(".diff-add").textContent.includes("+dim(X)") && document.querySelector(".diff-remove .diff-word").textContent==="rtrtryy" && document.getElementById("shiny-modal")===null')),
+  check(isTRUE(js('document.querySelector(".source-read").textContent.includes("15 lines") && document.querySelector(".diff-location").textContent.includes("v2.R:14") && document.querySelector(".diff-remove").textContent.includes("rtrtryydim(X)") && document.querySelector(".diff-add").textContent.includes("+dim(X)") && document.querySelector(".diff-remove .diff-word").textContent==="rtrtryy" && document.getElementById("shiny-modal")===null')),
     "the reported v2.R example automatically marks the actual faulty line 14 in a 15-line file and its exact correction")
   js('window.copied=null;document.querySelector(".source-proposal-copy").click();')
   wait_js('window.copied!==null')
   check(isTRUE(js('window.copied.startsWith("library(tidyverse)") && window.copied.includes("BIRTH_reduced.csv") && window.copied.includes("dim(X)") && !window.copied.includes("rtrtryydim")')),
     "the reported example copies the complete corrected file beside Replace")
   if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),sub("\\.png$","-v2.png",screenshot))
+  js('document.querySelector(".source-jump.diff-location").click();')
+  for(i in 1:100){if(file.exists(navigation_marker))break;Sys.sleep(.05)}
+  check(file.exists(navigation_marker) && readRDS(navigation_marker)$row==14L && readRDS(navigation_marker)$id=="fixture",
+    "the filename and line link focuses the exact verified Source document without a write")
+  js('window.openSelection=function(action){var menu=document.getElementById("app_menu");if(!menu.open)menu.querySelector("summary").click();var detail=menu.querySelector(".selection-menu");if(!detail.open)detail.querySelector("summary").click();document.getElementById("selection_"+action).click();};openSelection("explain");')
+  wait_js('!document.getElementById("send").disabled && document.querySelector("#messages").textContent.includes("Selected function call explained")')
+  check(isTRUE(js('document.getElementById("source-review-card")===null && document.querySelector("#messages").textContent.includes("selected 14-14")')),
+    "Selected code Explain stays read-only and labels the selected Source lines")
+  js('openSelection("fix");')
+  wait_js('document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
+  check(isTRUE(js('document.querySelector(".source-apply").textContent==="Replace selection" && document.querySelector(".source-diff").textContent.includes("rtrtryydim")')),
+    "Selected code Fix previews a bounded replacement instead of replacing the whole file")
+  js('window.copied=null;document.querySelector(".source-proposal-copy").click();')
+  wait_js('window.copied!==null')
+  check(identical(js('window.copied'),"dim(X)"),"Copy for a selected-code correction copies only its replacement fragment")
+  before_edits <- if(file.exists(edit_marker))length(readRDS(edit_marker))else 0L
+  js('document.querySelector(".source-apply").click();')
+  wait_js('document.getElementById("source-review-card")===null && !document.getElementById("send").disabled')
+  check(length(readRDS(edit_marker))==before_edits+1L && startsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"library(tidyverse)") &&
+    endsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"dim(X)\n"),"selected-code approval keeps the surrounding file intact")
+  js('openSelection("improve");')
+  wait_js('document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
+  check(isTRUE(js('document.querySelector(".source-apply").textContent==="Replace selection" && document.querySelector(".source-diff").textContent.includes("+print(dim(X))")')),
+    "Selected code Improve uses the fresh current selection and the same bounded approval")
+  js('document.querySelector(".source-skip").click();')
+  wait_js('document.getElementById("source-review-card")===null && !document.getElementById("send").disabled')
+  js('document.getElementById("prompt").value="GRANULAR_TEST";document.getElementById("send").click();')
+  wait_js('document.querySelectorAll(".source-hunk").length===2 && !document.getElementById("send").disabled')
+  check(isTRUE(js('document.querySelectorAll(".source-skip").length===2 && document.querySelectorAll(".source-apply").length===3')),
+    "independent changes each have Apply and Skip plus an explicit Apply all")
+  js('document.querySelector(".source-hunk .source-apply").click();')
+  wait_js('document.querySelectorAll(".source-hunk").length===1 && !document.getElementById("send").disabled')
+  check(startsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"suppressPackageStartupMessages") &&
+    endsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"dim(X)\n"),"Apply changes one part and refreshes the remaining comparison against the new Source")
+  before_edits <- length(readRDS(edit_marker))
+  js('document.querySelector(".source-skip").click();')
+  wait_js('document.getElementById("source-review-card")===null && !document.getElementById("send").disabled')
+  check(length(readRDS(edit_marker))==before_edits,"Skip dismisses the remaining proposal without modifying Source")
   js('openAction("close");')
   worker$wait(timeout=10000)
   check(identical(worker$get_exit_status(),0L),"standalone Close restores the upload option")

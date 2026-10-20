@@ -40,6 +40,9 @@ Each Send reads the current Source buffer, including unsaved changes, up to
 A single Source correction automatically shows a numbered inline comparison
 with syntax checking and highlighted changes. Review opens other edit operations.
 Copy keeps Source unchanged; Replace, Append or Create requires an explicit click.
+Separate changes support Apply and Skip; Source links focus the matching editor
+line. More actions offers Explain, Fix and Improve for one selected Source range.
+Selected-code edits preserve surrounding text and require explicit approval.
 Users can replace or append to the captured file, or create an unsaved R/Rmd
 document. R snippets appended to Rmd are wrapped in an R chunk. Static checks
 parse R, R Markdown/Quarto R chunks and inline R; YAML, other languages and
