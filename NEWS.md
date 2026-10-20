@@ -1,3 +1,14 @@
+# RAssistant 0.3.12
+
+- Keep Check updates and New chat in the header; move History, Knowledge,
+  Help, Close and the version into a keyboard-accessible More actions menu.
+- Show Source as a compact context line and give the conversation more space.
+- Start the composer at two lines and grow it with the draft. Keep Image,
+  Plot, Console Off/On and Send in one compact action row.
+- Show small attachment previews above the draft with individual remove
+  controls, retaining the other images and their order. Keep bulk Clear for
+  multiple attachments and move detailed Console status into its tooltip.
+
 # RAssistant 0.3.11
 
 - Move **Check for updates** from Help to the main toolbar before Help.

@@ -108,12 +108,23 @@ main <- function() {
     Sys.sleep(.05)
   }
   browser$Page$enable()
-  browser$Page$addScriptToEvaluateOnNewDocument(source='window.aisourceErrors=[];window.addEventListener("error",function(e){aisourceErrors.push(String(e.message));});window.addEventListener("unhandledrejection",function(e){aisourceErrors.push(String(e.reason));});')
+  browser$Page$addScriptToEvaluateOnNewDocument(source='window.openAction=function(id){var menu=document.getElementById("app_menu");if(menu&&!menu.open)menu.querySelector("summary").click();document.getElementById(id).click();};window.aisourceErrors=[];window.addEventListener("error",function(e){aisourceErrors.push(String(e.message));});window.addEventListener("unhandledrejection",function(e){aisourceErrors.push(String(e.reason));});')
   browser$Page$navigate(url)
   wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled')
   wait_js('document.querySelector(".empty")!==null')
   js('window.alerts=[];window.alert=function(x){alerts.push(x);};window.receivedMessages=[];$(document).on("shiny:message",function(e){if(e.message.custom)receivedMessages.push(e.message.custom);});')
   check(isTRUE(js('document.querySelector(".empty")!==null')), "existing Shiny UI connects and renders")
+  check(isTRUE(js('!document.getElementById("app_menu").open && document.querySelector("#app_menu #history")!==null && document.querySelector("#app_menu #knowledge")!==null && document.querySelector("#app_menu #help")!==null && document.querySelector("#app_menu #close")!==null && document.getElementById("check_updates").closest("#app_menu")===null')),
+    "secondary actions live in More actions while update checks remain directly available")
+  js('document.querySelector("#app_menu>summary").click();document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));')
+  check(isTRUE(js('!document.getElementById("app_menu").open && document.activeElement===document.querySelector("#app_menu>summary")')),
+    "Escape closes the actions menu and restores keyboard focus")
+  js('window.initialComposerHeight=document.getElementById("prompt").getBoundingClientRect().height;var p=document.getElementById("prompt");p.value=Array(15).fill("A longer draft line").join("\\n");p.dispatchEvent(new Event("input",{bubbles:true}));')
+  check(isTRUE(js('document.getElementById("prompt").getBoundingClientRect().height>initialComposerHeight && document.getElementById("prompt").getBoundingClientRect().height<=141')),
+    "the compact composer grows with the draft up to a bounded height")
+  js('var p=document.getElementById("prompt");p.value="";p.dispatchEvent(new Event("input",{bubbles:true}));')
+  check(isTRUE(js('document.getElementById("prompt").getBoundingClientRect().height<=56 && document.getElementById("chat_stream").getBoundingClientRect().height>innerHeight*.6')),
+    "clearing a draft restores the small composer and gives most space to chat")
   check(isTRUE(js('document.getElementById("update_now")===null')),
     "no banner appears when the installed version is current")
   js('document.getElementById("prompt").value="Keep this draft";')
@@ -121,7 +132,7 @@ main <- function() {
   wait_js('document.getElementById("update_now")!==null')
   check(isTRUE(js('document.querySelector(".app-version").textContent==="v0.1.1" && document.querySelector(".update-notice").textContent.includes("0.1.2") && document.getElementById("prompt").value==="Keep this draft"')) && !file.exists(update_marker),
     "a newly published version automatically displays its banner without a manual check, lost draft or installation")
-  js('document.getElementById("prompt").value="Keep this draft";document.getElementById("help").click();')
+  js('document.getElementById("prompt").value="Keep this draft";openAction("help");')
   wait_js('document.querySelector("#shiny-modal .code-copy")!==null')
   check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && document.getElementById("shiny-modal").textContent.includes("RAssistant::set_api_key()") && document.getElementById("shiny-modal").textContent.includes("hidden password prompt") && !document.getElementById("shiny-modal").textContent.includes("Restart R") && document.querySelector(".toolbar-actions #check_updates")!==null && document.querySelector("#shiny-modal #check_updates")===null')),
     "Help explains launching, hidden key replacement and updates")
@@ -150,7 +161,7 @@ main <- function() {
   wait_js('document.getElementById("update_now")!==null')
   check(isTRUE(js('document.getElementById("prompt").value==="Keep this draft"')),
     "opening Help and checking updates preserves the chat draft")
-  js('document.getElementById("knowledge").click();')
+  js('openAction("knowledge");')
   wait_js('document.getElementById("knowledge_files")!==null')
   js('var dt=new DataTransfer();dt.items.add(new File(["Lecture material about reproducible statistical analysis and interpreting model output.\\n"," ".repeat(6*1024*1024)],"large-notes.txt",{type:"text/plain"}));var input=document.getElementById("knowledge_files");input.files=dt.files;input.dispatchEvent(new Event("change",{bubbles:true}));')
   wait_js('document.getElementById("knowledge_selected")!==null && document.getElementById("knowledge_selected").textContent.includes("large-notes.txt")',timeout=30)
@@ -174,10 +185,12 @@ main <- function() {
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
   check(isTRUE(js('document.getElementById("attach_current_plot").getBoundingClientRect().right<=innerWidth && document.getElementById("send").getBoundingClientRect().right<=innerWidth')),
     "the plot attachment control fits a narrow RStudio Viewer")
+  screenshot<-Sys.getenv("RA_BROWSER_LAYOUT_SCREENSHOT")
+  if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
   screenshot<-Sys.getenv("RA_BROWSER_PLOT_SCREENSHOT")
   if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
   browser$Emulation$clearDeviceMetricsOverride()
-  js('document.getElementById("clear_images").click();')
+  js('document.querySelector(".remove-attachment").click();')
   wait_js('document.querySelectorAll(".attachment-item").length===0')
   check(isTRUE(js('!document.getElementById("console_context").checked')),
     "Console context is an opt-in control")
@@ -204,7 +217,7 @@ main <- function() {
   wait_js('window.copied!=="Verified result."')
   check(identical(js('window.copied'),expected), "clipboard denial uses the Viewer fallback")
   check(isTRUE(js('document.activeElement.id==="prompt" && document.activeElement.selectionStart===1 && document.activeElement.selectionEnd===3')), "fallback Copy restores composer focus and selection")
-  js('document.getElementById("history").click();')
+  js('openAction("history");')
   wait_js('document.getElementById("history_selected")!==null')
   check(isTRUE(js('document.getElementById("history_selected").options.length===1 && document.querySelectorAll("#shiny-modal .modal-footer .ai-btn").length===4')),
     "History lists the current auto-saved chat with consistent controls")
@@ -219,19 +232,19 @@ main <- function() {
   wait_js('document.querySelector(".empty")!==null')
   js('document.getElementById("prompt").value="A separate history conversation";document.getElementById("send").click();')
   wait_js('!document.getElementById("send").disabled && document.querySelectorAll(".msg.user").length===1')
-  js('document.getElementById("history").click();')
+  js('openAction("history");')
   wait_js('document.getElementById("history_selected")!==null && document.getElementById("history_selected").options.length===2')
   js('window.secondChatId=document.getElementById("history_selected").value;$("#history_selected").val(firstChatId).trigger("change");document.getElementById("history_restore").click();')
   wait_js('document.getElementById("shiny-modal")===null && document.querySelectorAll(".msg.user").length===1 && document.querySelector(".msg.user").textContent.includes("Explain this")')
   check(isTRUE(js('!document.getElementById("chat_stream").textContent.includes("A separate history conversation")')),
     "Restore switches conversations without mixing their visible history")
-  js('document.getElementById("history").click();')
+  js('openAction("history");')
   wait_js('document.getElementById("history_selected")!==null')
   js('$("#history_selected").val(secondChatId).trigger("change");document.getElementById("history_delete").click();')
   wait_js('document.getElementById("history_confirm_delete")!==null')
   js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
   wait_js('document.getElementById("shiny-modal")===null')
-  js('document.getElementById("history").click();')
+  js('openAction("history");')
   wait_js('document.getElementById("history_selected")!==null')
   check(isTRUE(js('document.getElementById("history_selected").options.length===2')),
     "cancelling Delete preserves the saved conversation")
@@ -261,7 +274,11 @@ main <- function() {
   js('window.encodedFile=function(mime,name){var data=canvas.toDataURL(mime).split(",")[1];return new File([Uint8Array.from(atob(data),function(c){return c.charCodeAt(0);})],name,{type:mime});};stage([encodedFile("image/jpeg","photo.jpg"),encodedFile("image/webp","plot.webp")]);')
   wait_js('document.querySelectorAll(".attachment-item").length===2 && !document.getElementById("send").disabled')
   check(isTRUE(js('Array.from(document.querySelectorAll(".attachment-item img")).every(function(i){return i.complete && i.naturalWidth>0;})')), "JPEG and WebP uploads both preview correctly")
-  js('document.getElementById("clear_images").click();')
+  js('window.remainingPreview=document.querySelectorAll(".attachment-item img")[1].src;document.querySelector(".remove-attachment").click();')
+  wait_js('document.querySelectorAll(".attachment-item").length===1')
+  check(isTRUE(js('document.querySelector(".attachment-item img").src===remainingPreview')),
+    "removing one preview retains the other image")
+  js('document.querySelector(".remove-attachment").click();')
   wait_js('document.querySelectorAll(".attachment-item").length===0')
   js('stage([new File([imageBytes],"one.png",{type:"image/png"}),new File([imageBytes],"two.png",{type:"image/png"}),new File([imageBytes],"three.png",{type:"image/png"}),new File([imageBytes],"four.png",{type:"image/png"})]);')
   wait_js('document.querySelectorAll(".attachment-item").length===3 && !document.getElementById("send").disabled')
@@ -337,7 +354,7 @@ main <- function() {
   wait_js('window.copied!==null')
   check(identical(js('window.copied'),expected),"restored code Copy buttons preserve the exact code")
   check(isTRUE(js('window.aisourceErrors.length===0')),"restoring history has no JavaScript errors")
-  js('document.getElementById("close").click();')
+  js('openAction("close");')
   worker$wait(timeout=10000)
   check(identical(worker$get_exit_status(),0L),"Close restores the upload option after a relaunched session")
   port <- httpuv::randomPort();worker <- start_worker(port,standalone=TRUE)
@@ -349,7 +366,7 @@ main <- function() {
   }
   browser$Page$navigate(url)
   wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled')
-  js('document.getElementById("help").click();')
+  js('openAction("help");')
   wait_js('document.querySelector("#shiny-modal .code-copy")!==null')
   check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("OPENAI_API_KEY") && document.getElementById("shiny-modal").textContent.includes("replace AISource.R") && !document.getElementById("shiny-modal").textContent.includes("RAssistant::")')),
     "standalone Help shows environment and script-update instructions without package commands")
@@ -358,7 +375,7 @@ main <- function() {
   check(identical(js('window.copied'),'source("AISource.R")\n'),"standalone Help copies the exact script launch command")
   js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
   wait_js('document.getElementById("shiny-modal")===null')
-  js('document.getElementById("close").click();')
+  js('openAction("close");')
   worker$wait(timeout=10000)
   check(identical(worker$get_exit_status(),0L),"standalone Close restores the upload option")
   cat(checks,"browser checks passed\n")

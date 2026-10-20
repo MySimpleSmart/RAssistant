@@ -29,8 +29,12 @@ project, R history or a startup file. No prompt occurs merely by loading the pac
 \code{forget_api_key()} removes only RAssistant's saved credential; it does not
 unset or edit an existing environment variable.
 
-The toolbar displays the installed version and Help with copyable Console
-commands. On launch and every 30 minutes while the assistant is open, a background
+The toolbar keeps Check updates and New chat visible. More actions contains
+History, Knowledge, Help, Close and the installed version. Help has copyable
+Console commands. Source appears in a compact context line. The composer starts
+at two lines and grows with the draft. Attachment thumbnails above it have
+individual remove controls; Clear removes all when multiple images are attached.
+On launch and every 30 minutes while the assistant is open, a background
 process checks the public GitHub package version. A newer version automatically
 displays Update now. Confirming closes the current chat
 and performs the update, with progress in the Console. After a successful update,
@@ -81,13 +85,13 @@ Credentials are stored separately and
 remain available after updates. A new R major/minor version can use a new library,
 requiring package reinstallation; the OS-stored key remains separate.
 
-Attach current plot, beside Upload, exports the plot selected in RStudio's Plots
+Plot, beside Image, exports the plot selected in RStudio's Plots
 pane as a PNG using \code{rstudioapi::savePlotAsImage()}. It stages a preview;
 Send submits the actual image through the normal attachment flow. Source is not
 rerun. Plots history selection is respected. The button is in chat, not in
 RStudio's Plots toolbar. Up to three images of 4 MB each can be attached.
 
-The package app offers an opt-in Console context control. Enable it, wait for
+The package app offers an opt-in Console control beside Image and Plot. Enable it, wait for
 the On status, then run code normally. Send includes up to 200 recent lines and
 12,000 characters of new R output and associated commands, including ordinary
 uncaught errors, warnings and messages. Completed commands follow their output

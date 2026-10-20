@@ -25,9 +25,11 @@ ellmer, to the versions RAssistant requires; `"never"` leaves them too old and
 installation fails. Use your personal R library if R offers to create one. RAssistant is installed in
 an R package library, separately from the RStudio application. The RStudio Addins
 menu also has an **RAssistant** entry after installation.
-The toolbar shows the installed version. **Help** contains launch, API-key and
-update instructions with Copy buttons, so you do not need the old local script
-to find the commands.
+The header keeps **Check updates** and **New chat** visible. The **More actions
+(...)** menu contains History, Knowledge, Help, Close and the installed version.
+Help contains launch, API-key and update instructions with Copy buttons.
+Source appears in a small context line below the header. The two-line composer
+grows with your draft; Image, Plot, Console Off/On and Send share one action row.
 
 ### Windows troubleshooting
 
@@ -97,12 +99,12 @@ review the notice, then confirm. This saves and closes the current chat, install
 into the same R library and prints progress in the RStudio Console.
 From 0.3.4, after successful installation the assistant reopens automatically
 and restores the saved chat and draft (when local history is enabled).
-The Console reports the old and new versions; the toolbar confirms the installed
+The Console reports the old and new versions; More actions shows the installed
 version when reopened.
 
 Between automatic checks, results are cached for 30 minutes. A new launch checks
 immediately. Offline/failed checks do not prevent chat or hide an update already
-found. **Check for updates** in the main toolbar checks immediately,
+found. **Check updates** in the main toolbar checks immediately,
 bypassing the cache.
 The check does not call OpenAI or transmit the key, Source text or chat history.
 To disable automatic discovery, set `options(RAssistant.check_updates = FALSE)`;
@@ -237,8 +239,8 @@ install.packages("pdftools")
 
 ## Attach the current RStudio plot
 
-Select a graph in RStudio's **Plots** pane, then click **Attach current plot**
-beside Upload in RAssistant. The selected plot is exported as a PNG and appears
+Select a graph in RStudio's **Plots** pane, then click **Plot**
+beside Image in RAssistant. The selected plot is exported as a PNG and appears
 in the attachment previews. Type your question and press **Send** to submit it.
 There is no manual Export or clipboard step, and Source is not rerun.
 
@@ -246,11 +248,12 @@ Each click captures the plot currently selected, including an older graph
 selected with the Plots history arrows. This uses RStudio's `savePlotAsImage()`
 API, not `ggplot2::last_plot()`. The button is in the chat; RStudio's own Plots
 toolbar is not modified. The existing three-image and 4 MB per-image limits apply.
-Attaching alone makes no AI request; Remove all discards staged plots.
+Attaching alone makes no AI request. Each thumbnail has a remove control;
+Clear discards all staged images when multiple images are attached.
 
 ## Console context
 
-In the package app, enable **Console context** below the message box, wait for
+In the package app, enable **Console** beside Image and Plot, wait for
 the status to say **On**, then run R code normally in RStudio. Ask about the result
 or error and press **Send**: the request includes up to 200 recent lines and
 12,000 characters of captured R output and associated commands. Copy/Paste is not required.
@@ -258,7 +261,7 @@ or error and press **Send**: the request includes up to 200 recent lines and
 Capture starts off each time. To prepare error and warning logging, the app runs
 its own fixed helper in the RStudio Console without switching focus. Finish or
 clear a command already being typed there before enabling capture. The status
-shows when logging is ready; activation does not call OpenAI.
+shows On when logging is ready; hover for detailed status. Activation does not call OpenAI.
 
 Normal output remains visible, and ordinary uncaught errors, warnings and messages
 are recorded without suppressing them. The temporary capture is cleared when you
@@ -284,9 +287,9 @@ a long-running command can temporarily grow the spool before control returns.
 
 ## Use and limits
 
-- **Upload** accepts up to 3 PNG/JPEG/WebP images, 4 MB each. Screenshots use
+- **Image** accepts up to 3 PNG/JPEG/WebP images, 4 MB each. Screenshots use
   content-neutral reading guidance; include a message to request a specific task.
-- Enable **Console context** to include new R output automatically, or paste
+- Enable **Console** to include new R output automatically, or paste
   Console output into chat manually. Source remains read-only.
 - Recent dialogue, retrieved earlier excerpts, a remembered assignment and retained
   images support multipart work. Use History to return to another conversation.

@@ -769,10 +769,25 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   body{font:12px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text)}
   .container-fluid{height:100vh;max-width:none!important;display:flex;flex-direction:column;
      padding:0!important;overflow:hidden}
-  .toolbar{flex:0 0 auto;min-height:33px;border-bottom:1px solid var(--border);background:var(--panel);
-     display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:3px 8px;gap:6px}
-  .filename{font:600 11px var(--mono);flex:1 1 60px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .toolbar-actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+  .toolbar{flex:0 0 auto;min-height:36px;background:var(--panel);position:relative;z-index:5;
+     display:flex;align-items:center;justify-content:space-between;padding:4px 8px;gap:6px}
+  .app-brand{font-weight:650;font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .source-context{flex:0 0 auto;padding:0 9px 5px;border-bottom:1px solid var(--border);
+    background:var(--panel);font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .toolbar-actions{display:flex;gap:4px;align-items:center;flex:0 0 auto}
+  .toolbar .btn.ai-btn{background:transparent;border-color:transparent;padding:4px 7px}
+  .toolbar .btn.ai-btn:hover{background:#e9edf1}
+  .app-menu{position:relative}
+  .app-menu>summary{list-style:none;cursor:pointer;border-radius:5px;padding:0 7px;font-size:20px;line-height:25px}
+  .app-menu>summary::-webkit-details-marker{display:none}
+  .app-menu>summary:hover,.app-menu[open]>summary{background:#e9edf1}
+  .menu-panel{position:absolute;right:0;top:calc(100% + 6px);width:178px;max-width:calc(100vw - 16px);
+    max-height:65vh;overflow:auto;padding:5px;background:white;border:1px solid var(--border);
+    border-radius:7px;box-shadow:0 5px 18px #26354422}
+  .menu-actions{display:flex;flex-direction:column;gap:2px}
+  .menu-actions>.btn.ai-btn{text-align:left;width:100%;padding:7px 9px}
+  .menu-version{border-top:1px solid var(--border);margin-top:4px;padding:7px 9px 3px;color:var(--muted);font-size:10px}
+  button:focus-visible,summary:focus-visible,.attach-plot:focus-visible{outline:2px solid #5a8db7;outline-offset:2px}
   .history-actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
   .modal-footer .history-actions>.btn{margin:0}
   .chat-history select.form-control,.chat-history input.form-control{font-size:12px;border-radius:3px}
@@ -788,7 +803,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .btn.ai-btn{margin:0;border:1px solid #ccd2d9;border-radius:3px;box-shadow:none;
     color:#29323c;background:white;font-size:11px;line-height:1.3;padding:4px 9px}
   .btn.ai-btn:hover{background:#edf0f3}
-  .btn.ai-send{background:#e8f0f9;border-color:#a9bfd5;color:#1d486d;font-weight:600}
+  .btn.ai-send{background:#2b648c;border-color:#2b648c;color:white;font-weight:600;border-radius:5px}
   .btn.ai-yes{background:#e8f6ea;border-color:#a6d1af;color:#24583a}
   .btn.ai-no{background:#fff;color:#545b64}
   .history{flex:1 1 auto;min-height:0;overflow:auto;padding:10px 10px 0}
@@ -838,24 +853,26 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .knowledge .input-group-btn{display:block;width:auto;margin:0}
   .knowledge .input-group-btn>.btn.ai-btn{border-radius:3px!important;margin:0}
   .knowledge-hint{font:10px var(--mono);color:var(--muted);min-width:0;overflow-wrap:anywhere}
-  .upload-row{display:flex;align-items:center;gap:8px;margin-top:4px}
+  .upload-row{display:flex;align-items:center;gap:5px;margin-top:5px}
   .upload-row>.attach-plot,.upload-row>#send{flex:0 0 auto}
+  .upload-row>#send{margin-left:auto;padding:5px 12px}
   .attach-plot{display:inline-flex;align-items:center;justify-content:center;
-    border:1px solid #ccd2d9;background:white;color:#29323c;cursor:pointer;
+    border:1px solid transparent;background:transparent;color:#465666;cursor:pointer;
     font:11px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     border-radius:3px;padding:4px 9px;margin:0}
   .attach-plot:hover{background:#edf0f3}
   .attach-plot input{display:none}
   .pending-images{font:10px var(--mono);color:#516a7a;min-width:0;overflow-wrap:anywhere}
-  .attachment-preview{display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin:5px 0 3px}
-  .attachment-item{position:relative;width:100px;min-width:0}
-  .attachment-item img{display:block;width:100px;height:72px;object-fit:contain;
-    background:white;border:1px solid var(--border);border-radius:3px}
-  .attachment-name{font:10px var(--mono);color:#526575;max-width:100px;white-space:nowrap;
-    overflow:hidden;text-overflow:ellipsis;margin-top:3px}
-  .attachment-summary{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font:10px var(--mono);color:#516a7a}
+  .attachment-preview-area{display:flex;align-items:center;gap:8px;padding:4px 2px 7px;overflow-x:auto}
+  .attachment-preview{display:flex;align-items:center;gap:8px;padding-right:4px}
+  .attachment-item{position:relative;width:56px;flex:0 0 56px}
+  .attachment-item img{display:block;width:56px;height:42px;object-fit:contain;
+    background:white;border:1px solid var(--border);border-radius:5px}
+  .remove-attachment{position:absolute;right:-4px;top:-4px;width:17px;height:17px;padding:0;
+    line-height:13px;border:1px solid #c5cdd5;border-radius:50%;background:white;color:#47586a;cursor:pointer}
+  .btn.clear-attachments{padding:3px 4px;border:0;background:transparent;color:var(--muted);font-size:10px}
   .btn.ai-send:disabled{background:#e5e7eb;border-color:#ced3d8;color:#858d95;cursor:not-allowed;opacity:1}
-  .uploading-indicator{color:#7b5e17;font:10px var(--mono);min-height:14px;
+  .uploading-indicator{color:#7b5e17;font:10px var(--mono);
     min-width:0;overflow-wrap:anywhere}
   .request-indicator{font:10px var(--mono);color:var(--muted);margin-left:auto;
     min-width:0;overflow-wrap:anywhere}
@@ -867,13 +884,17 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:3px}
   .attachment-caption{margin-top:5px;font:10px var(--mono);color:#657480}
   .compose{flex:0 0 auto;border-top:1px solid var(--border);padding:7px;background:var(--panel)}
-  .compose .form-group{margin:0 0 5px}
-  .console-context{margin-top:7px;color:var(--muted);font:10px/1.4 var(--mono);overflow-wrap:anywhere}
-  .console-context .form-group{margin-bottom:2px}
+  .compose .form-group{margin:0}
+  .compose-status{font-size:10px;margin-top:3px}
+  .console-context{color:var(--muted);flex:0 0 auto}
+  .console-context .form-group{margin:0;width:auto!important}
   .console-context .checkbox{margin:0}
-  .console-context label{font:11px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#314455}
-  textarea#prompt{resize:vertical!important;width:100%;height:104px;min-height:65px;
-    max-height:50vh;background:white;border:1px solid #c6ccd2;border-radius:3px;
+  .console-context .checkbox label{display:inline-flex;align-items:center;gap:4px;padding:4px 6px;
+    border-radius:12px;background:#edf1f5;font:10px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#41586a}
+  .console-context input[type=checkbox]{position:static;margin:0;width:11px;height:11px;accent-color:#2b648c}
+  .console-hint{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+  textarea#prompt{resize:none!important;width:100%;height:54px;min-height:54px;
+    max-height:25vh;background:white;border:1px solid #c6ccd2;border-radius:6px;
     padding:7px;font:12px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     box-shadow:none;overflow:auto}
   .empty{font-size:11px;color:#7d858e}
@@ -887,8 +908,16 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     var submitId=null, validationInFlight=false, serverBusy=false, pending=false;
     var readyCount=0, uploadEpoch=0, connected=false;
     var openDetails=Object.create(null);
+    function resizePrompt(){
+      var field=document.getElementById("prompt");if(!field)return;
+      var cap=Math.max(54,Math.min(140,window.innerHeight*.25));
+      field.style.height="auto";
+      var height=Math.max(54,Math.min(field.scrollHeight,cap));
+      field.style.height=height+"px";
+      field.style.overflowY=field.scrollHeight>cap?"auto":"hidden";
+    }
     function submit(){
-      if(!connected || submitId!==null || validationInFlight || serverBusy || pending || uploading || uploadQueue.length>0)return;
+      if(!connected || submitId!==null || validationInFlight || serverBusy || pending || uploading || uploadQueue.length>0 || plotCaptureId!==null)return;
       var field=document.getElementById("prompt");
       if(!field || (!field.value.trim() && !readyCount) || !window.Shiny || !Shiny.setInputValue) return;
       submitId=++nonce;updateSendState();
@@ -943,6 +972,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       var history=document.getElementById("history");if(history)history.disabled=busy;
       var knowledge=document.getElementById("knowledge");if(knowledge)knowledge.disabled=busy;
       var clear=document.getElementById("clear_images");if(clear)clear.disabled=working;
+      document.querySelectorAll(".remove-attachment").forEach(function(btn){btn.disabled=busy;});
+      var imageLabel=document.getElementById("image_picker");if(imageLabel)imageLabel.setAttribute("aria-disabled",busy?"true":"false");
       ["check_updates","update_now","confirm_update"].forEach(function(id){
         var control=document.getElementById(id);if(control)control.disabled=busy;
       });
@@ -950,6 +981,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(note)note.textContent=transfer?"Adding image\\u2026":"";
       var status=document.getElementById("request_indicator");
       if(status)status.textContent=!connected?"Disconnected":plotCaptureId!==null?"Attaching plot\\u2026":working?"Working\\u2026":pending?"Awaiting run approval":"";
+      var hints=document.getElementById("compose_status");if(hints)hints.hidden=!(transfer || working || pending || !connected);
     }
     function resetTransfers(){
       uploadQueue=[];
@@ -1047,7 +1079,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         window.setTimeout(function(){btn.textContent="Copy";},1400);
       }).catch(function(){btn.textContent="Copy failed";});
     });
-    // Paste uses exactly the same queue and server acknowledgement as Upload.
+    // Paste uses the same queue and server acknowledgement as the Image picker.
     document.addEventListener("paste",function(e){
       var field=document.getElementById("prompt");
       if(!field || document.activeElement!==field || !e.clipboardData || !e.clipboardData.items)return;
@@ -1070,11 +1102,22 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       }).catch(function(){btn.textContent="Copy failed";});
     });
     document.addEventListener("keydown",function(e){
+      var menu=document.getElementById("app_menu");
+      if(e.key==="Escape" && menu && menu.open){menu.open=false;menu.querySelector("summary").focus();return;}
+      if(e.target && e.target.id==="image_picker" && (e.key==="Enter" || e.key===" ")){
+        e.preventDefault();var picker=document.getElementById("plot_upload_native");if(picker && !picker.disabled)picker.click();return;
+      }
       if(!e.target || e.target.id!=="prompt")return;
       if(e.key!=="Enter" || e.shiftKey || e.isComposing || e.keyCode===229)return;
       e.preventDefault();submit();
     });
     document.addEventListener("click",function(e){
+      var menu=document.getElementById("app_menu");
+      if(menu && (!menu.contains(e.target) || (e.target.closest && e.target.closest(".menu-actions button"))))menu.open=false;
+      var remove=e.target.closest && e.target.closest(".remove-attachment");
+      if(remove && !remove.disabled){
+        Shiny.setInputValue("remove_attachment",{id:remove.getAttribute("data-attachment-id"),epoch:uploadEpoch,nonce:++nonce},{priority:"event"});
+      }
       if(e.target && e.target.closest && e.target.closest("#send") && !uploading && !uploadQueue.length)submit();
       if(e.target && e.target.closest && e.target.closest("#yes") && pending && !validationInFlight){
         validationInFlight=true;updateSendState();
@@ -1114,13 +1157,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           uploadEpoch=msg.epoch;connected=true;updateSendState();
         });
         Shiny.addCustomMessageHandler("ai_submit_complete",function(msg){
-          if(msg && msg.id===submitId){submitId=null;updateSendState();}
+          if(msg && msg.id===submitId){submitId=null;updateSendState();window.requestAnimationFrame(resizePrompt);}
         });
         Shiny.addCustomMessageHandler("ai_validation_complete",function(msg){
           validationInFlight=false;updateSendState();
         });
         Shiny.addCustomMessageHandler("ai_chat_reset",function(msg){
-          openDetails=Object.create(null);followTail=true;savedTop=0;
+          openDetails=Object.create(null);followTail=true;savedTop=0;window.requestAnimationFrame(resizePrompt);
         });
       }
       registerHandlers();
@@ -1130,6 +1173,17 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           connected=false;submitId=null;plotCaptureId=null;validationInFlight=false;resetTransfers();
         });}
       document.addEventListener("shiny:connected",onConnected);
+      window.addEventListener("resize",resizePrompt);
+      if(window.jQuery){
+        window.jQuery(document).on("input change","#prompt",resizePrompt);
+        window.jQuery(document).on("shiny:value",function(e){
+          if(e.name==="console_context_status")window.requestAnimationFrame(function(){
+            var hint=document.getElementById("console_context_status"),control=document.querySelector(".console-context");
+            if(hint && control)control.title=hint.textContent;
+          });
+        });
+      }
+      window.requestAnimationFrame(resizePrompt);
       updateSendState();
       // Outputs are built by Shiny; headers/buttons are rendered server-side.
       var root=document.getElementById("chat_stream");if(!root)return;
@@ -1166,39 +1220,47 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   ui <- shiny::fluidPage(
     shiny::tags$head(shiny::tags$style(shiny::HTML(styles))),
     shiny::div(class="toolbar",
-      shiny::div(class="filename",shiny::textOutput("filename",inline=TRUE)),
+      shiny::span(class="app-brand","RAssistant"),
       shiny::div(class="toolbar-actions",
-        if (!is.null(package_info)) shiny::span(class="app-version",paste0("v",package_info$version)),
-        if(!is.null(package_info)) shiny::actionButton("check_updates","Check for updates",class="ai-btn"),
-        shiny::actionButton("help","Help",class="ai-btn"),
-        if(!is.null(package_info$history))shiny::actionButton("history","History",class="ai-btn"),
-        if(!is.null(package_info$knowledge))shiny::actionButton("knowledge","Knowledge",class="ai-btn"),
+        if(!is.null(package_info)) shiny::actionButton("check_updates","Check updates",class="ai-btn",title="Check for updates now"),
         shiny::actionButton("new_chat","New chat",class="ai-btn"),
-        shiny::actionButton("close","Close",class="ai-btn")
+        shiny::tags$details(id="app_menu",class="app-menu",
+          shiny::tags$summary("\u22ef",title="More actions","aria-label"="More actions"),
+          shiny::div(class="menu-panel",
+            shiny::div(class="menu-actions",
+              if(!is.null(package_info$history))shiny::actionButton("history","History",class="ai-btn"),
+              if(!is.null(package_info$knowledge))shiny::actionButton("knowledge","Knowledge",class="ai-btn"),
+              shiny::actionButton("help","Help",class="ai-btn"),
+              shiny::actionButton("close","Close",class="ai-btn")),
+            if(!is.null(package_info))shiny::div(class="menu-version","RAssistant ",
+              shiny::span(class="app-version",paste0("v",package_info$version)))))
       )
     ),
+    shiny::div(class="source-context","Source: ",shiny::textOutput("filename",inline=TRUE)),
     if(!is.null(package_info))shiny::textOutput("update_check_status"),
     shiny::uiOutput("update_notice"),
     shiny::div(id="chat_stream",class="history",shiny::uiOutput("messages")),
     shiny::div(class="compose",
-      shiny::textAreaInput("prompt",label=NULL,rows=4,width="100%",
-        placeholder="Paste text, R code, or ask about an uploaded image\u2026"),
+      shiny::uiOutput("attachment_status"),
+      shiny::textAreaInput("prompt",label=NULL,rows=2,width="100%",
+        placeholder="Ask about your code or plot\u2026"),
       shiny::div(class="upload-row",
-        shiny::tags$label(class="attach-plot", "Upload",
+        shiny::tags$label(id="image_picker",class="attach-plot", "Image",tabindex="0",role="button",
           title="PNG, JPEG, WebP \u00B7 up to 3 images \u00B7 4 MB each",
           shiny::tags$input(id="plot_upload_native",type="file",multiple="multiple",
             "data-shiny-no-bind-input"="",
             accept="image/png,image/jpeg,image/webp")),
         shiny::tags$button(id="attach_current_plot",type="button",class="attach-plot",
-          title="Attach the plot selected in RStudio's Plots pane as a PNG", "Attach current plot"),
-        shiny::span(id="uploading_indicator",class="uploading-indicator",role="status"),
-        shiny::span(id="request_indicator",class="request-indicator",role="status"),
+          title="Attach the plot selected in RStudio's Plots pane as a PNG", "Plot"),
+        if(!is.null(console_capture))shiny::div(class="console-context",title="Include recent Console commands and output",
+          shiny::checkboxInput("console_context",shiny::tagList("Console ",
+            shiny::textOutput("console_context_state",inline=TRUE)),value=FALSE),
+          shiny::div(class="console-hint",shiny::textOutput("console_context_status"))),
         shiny::actionButton("send","Send",class="ai-btn ai-send")
       ),
-      shiny::uiOutput("attachment_status"),
-      if(!is.null(console_capture))shiny::div(class="console-context",
-        shiny::checkboxInput("console_context","Console context",value=FALSE),
-        shiny::textOutput("console_context_status"))
+      shiny::div(id="compose_status",class="compose-status",hidden="hidden",
+        shiny::span(id="uploading_indicator",class="uploading-indicator",role="status"),
+        shiny::span(id="request_indicator",class="request-indicator",role="status"))
     ),
     shiny::tags$script(shiny::HTML(js))
   )
@@ -1249,6 +1311,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         if(!status$ready)return("Starting Console context. Waiting for the RStudio Console prompt...")
         paste0("On: ",status$lines,if(status$lines==1L)" line ready."else" lines ready.",
           " The latest output is included when you press Send.")
+      })
+      shiny::outputOptions(output,"console_context_status",suspendWhenHidden=FALSE)
+      output$console_context_state <- shiny::renderText({
+        status <- console_status()
+        if(!status$enabled)"Off"else if(!status$ready)"Starting"else"On"
       })
     }
     stop_console_context <- function() {
@@ -1559,8 +1626,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             shiny::textOutput("update_help_status")),
           if(!is.null(console_capture))shiny::tagList(
             shiny::tags$strong("Console context"),
-            shiny::p("Enable Console context below the message box, then run code normally in RStudio. Your next Send includes up to 200 recent lines (12,000 characters). Completed commands are included even if they print no text; plot images are not captured. Errors and warnings are captured after launch returns to the Console prompt."),
-            shiny::p("Only new R output is recorded. Capture is temporary and stops when you turn it off, switch chats, Close, or update. Use Attach current plot to add the plot selected in RStudio's Plots pane as an image, then press Send."))
+            shiny::p("Enable Console beside Image and Plot, wait for On, then run code normally in RStudio. Hover over the control for detailed status. Your next Send includes up to 200 recent lines (12,000 characters). Completed commands are included even if they print no text; plot images are not captured. Errors and warnings are captured after launch returns to the Console prompt."),
+            shiny::p("Only new R output is recorded. Capture is temporary and stops when you turn it off, switch chats, Close, or update. Use Plot to add the plot selected in RStudio's Plots pane as an image, then press Send."))
         ),
         footer=shiny::tagList(
           htmltools::tagAppendAttributes(shiny::modalButton("Close"),class="ai-btn")
@@ -1687,21 +1754,31 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     output$attachment_status <- shiny::renderUI({
       images <- state$attachments
       if (!length(images)) return(NULL)
-      shiny::div(class="attachment-preview-area",
-        shiny::div(class="attachment-summary",
-          shiny::span(class="pending-images",paste0(length(images)," image(s) ready to send")),
-          shiny::actionButton("clear_images","Remove all",class="ai-btn")
-        ),
+      shiny::div(class="attachment-preview-area","aria-label"="Attached images",
         shiny::div(class="attachment-preview",
           lapply(images,function(a){
             shiny::div(class="attachment-item",
               shiny::tags$img(src=a$preview,alt=a$label,title=a$label),
-              shiny::div(class="attachment-name",title=a$label,a$label)
+              shiny::tags$button(type="button",class="remove-attachment",
+                "data-attachment-id"=basename(a$path),title=paste("Remove",a$label),
+                "aria-label"=paste("Remove",a$label),"\u00d7")
             )
           })
-        )
+        ),
+        if(length(images)>1L)shiny::actionButton("clear_images","Clear",class="ai-btn clear-attachments",title="Remove all attached images")
       )
     })
+    shiny::observeEvent(input$remove_attachment,{
+      obj <- input$remove_attachment
+      if(state$busy || !is.null(state$pending) || !is.list(obj) ||
+          !isTRUE(obj$epoch==state$upload_epoch))return()
+      id <- chat_text(obj$id)
+      keep <- vapply(state$attachments,function(a)!identical(basename(a$path),id),logical(1))
+      if(all(keep))return()
+      for(a in state$attachments[!keep])unlink(a$path)
+      state$attachments <- state$attachments[keep]
+      persist_chat();sync_client()
+    },ignoreInit=TRUE)
     shiny::observeEvent(input$paste_image, {
       on.exit(persist_chat(),add=TRUE)
       obj <- input$paste_image

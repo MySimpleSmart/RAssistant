@@ -94,8 +94,17 @@ shiny::testServer(app$server,{
     "Console context and actual attached plot images can be interpreted together")
   check(!length(state$attachments) && all(!file.exists(staged)),"successful Send releases plot staging files")
   request(13L);staged<-state$attachments[[1L]]$path
+  selected<<-2L;request(15L);other<-state$attachments[[2L]]$path
+  session$setInputs(remove_attachment=list(id=basename(staged),epoch=state$upload_epoch,nonce=1L))
+  check(!file.exists(staged) && length(state$attachments)==1L && identical(state$attachments[[1L]]$path,other),
+    "removing one staged image preserves the other image and its file")
+  session$setInputs(remove_attachment=list(id=basename(staged),epoch=state$upload_epoch,nonce=2L))
+  session$setInputs(remove_attachment=list(id=basename(other),epoch=state$upload_epoch-1L,nonce=3L))
+  session$setInputs(remove_attachment=list(id=fixtures[[1L]],epoch=state$upload_epoch,nonce=4L))
+  check(length(state$attachments)==1L && file.exists(other) && file.exists(fixtures[[1L]]),
+    "duplicate removals, stale chats and arbitrary file paths cannot remove other files")
   session$setInputs(clear_images=1L)
-  check(!length(state$attachments) && !file.exists(staged),"Remove all clears captured plots without sending")
+  check(!length(state$attachments) && !file.exists(staged) && !file.exists(other),"Clear removes captured plots without sending")
   request(14L);staged<-state$attachments[[1L]]$path
   session$close()
   check(!file.exists(staged) && !dir.exists(attachment_dir),"disconnecting removes staged plot images and their temporary directory")
