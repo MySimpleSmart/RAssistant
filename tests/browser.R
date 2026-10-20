@@ -202,13 +202,15 @@ main <- function() {
     "Console context is an opt-in control")
   js('document.getElementById("console_context").click();')
   wait_js('document.getElementById("console_context_status").textContent.includes("On: 1 line")')
-  js('document.getElementById("prompt").value="Explain this";document.getElementById("send").click();document.getElementById("send").click();')
-  check(isTRUE(js('document.getElementById("send").disabled')), "Send disables immediately and blocks double clicks")
+  js('window.thinkingShown=false;window.notificationObserver=new MutationObserver(function(){document.querySelectorAll(".shiny-notification").forEach(function(n){if(n.textContent.includes("Thinking"))window.thinkingShown=true;});});notificationObserver.observe(document.body,{childList:true,subtree:true});document.getElementById("prompt").value="Explain this";document.getElementById("send").click();document.getElementById("send").click();')
+  check(isTRUE(js('var s=document.getElementById("send");s.disabled && s.classList.contains("is-loading") && s.getAttribute("aria-busy")==="true" && getComputedStyle(s,"::before").animationName==="send-spin" && document.getElementById("compose_status").hidden')),
+    "Send shows loading immediately without a separate status row and blocks double clicks")
   wait_js('document.querySelector(".code-copy")!==null && !document.getElementById("send").disabled')
   check(isTRUE(js('document.querySelectorAll(".msg.user").length===1')), "double clicking produces one user turn")
   check(isTRUE(js('document.querySelector(".msg.assistant").textContent.includes("Console evidence received.")')),
     "Send automatically supplies Console context without clipboard interaction")
-  check(isTRUE(js('document.getElementById("prompt").value==="" && document.getElementById("request_indicator").textContent===""')), "success clears composer and loading state")
+  check(isTRUE(js('notificationObserver.disconnect();var s=document.getElementById("send");document.getElementById("prompt").value==="" && !s.classList.contains("is-loading") && s.getAttribute("aria-busy")==="false" && !window.thinkingShown && document.getElementById("request_indicator").textContent===""')),
+    "success clears composer and button loading without a Thinking notification")
   expected <- 'x <- c("<tag>", "&lt;", "\\(x\\)", "$$")\nkeep <- x > "a" & x < "z"\n'
   # The response uses escaped backslashes in a literal R string.
   expected <- sub('"\\(x\\)"','"\\\\(x\\\\)"',expected,fixed=TRUE)
@@ -270,7 +272,8 @@ main <- function() {
   check(TRUE, "pasted screenshots use the same upload queue")
   js('document.getElementById("prompt").value="SIMULATED_FAILURE";document.getElementById("send").click();')
   wait_js('!document.getElementById("send").disabled && document.querySelector(".content").parentElement.parentElement.textContent.includes("Simulated API failure")')
-  check(isTRUE(js('document.getElementById("prompt").value==="SIMULATED_FAILURE" && document.querySelectorAll(".attachment-item").length===2')), "API failure keeps the prompt and image previews ready to retry")
+  check(isTRUE(js('document.getElementById("prompt").value==="SIMULATED_FAILURE" && document.querySelectorAll(".attachment-item").length===2 && !document.getElementById("send").classList.contains("is-loading") && document.getElementById("send").getAttribute("aria-busy")==="false"')),
+    "API failure clears button loading and keeps the prompt and image previews ready to retry")
   js('document.getElementById("prompt").value="Interpret images";document.getElementById("send").click();')
   wait_js('!document.getElementById("send").disabled && document.querySelectorAll(".attachment-item").length===0')
   check(isTRUE(js('document.querySelectorAll(".sent-attachment img").length===4 && Array.from(document.querySelectorAll(".sent-attachment img")).every(function(i){return i.complete && i.naturalWidth>0;})')), "sent images stay visible after temporary files are removed")

@@ -31,6 +31,8 @@ Help contains launch, API-key and update instructions with Copy buttons.
 Source shares the header row with the visible actions; long names have a tooltip.
 The controls retain their original bordered appearance. The two-line composer
 grows with your draft; Image, Plot, Console Off/On and Send share one action row.
+While a request runs, Send shows a loading indicator without a separate Thinking
+notification or Working status row.
 
 ### Windows troubleshooting
 

@@ -869,6 +869,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .remove-attachment{position:absolute;right:-4px;top:-4px;width:17px;height:17px;padding:0;
     line-height:13px;border:1px solid #c5cdd5;border-radius:50%;background:white;color:#47586a;cursor:pointer}
   .btn.ai-send:disabled{background:#e5e7eb;border-color:#ced3d8;color:#858d95;cursor:not-allowed;opacity:1}
+  .btn.ai-send.is-loading::before{content:"";display:inline-block;width:10px;height:10px;
+    margin-right:5px;border:1.5px solid currentColor;border-right-color:transparent;
+    border-radius:50%;vertical-align:-1px;animation:send-spin .7s linear infinite}
+  @keyframes send-spin{to{transform:rotate(360deg)}}
+  @media(prefers-reduced-motion:reduce){.btn.ai-send.is-loading::before{animation:none}}
   .uploading-indicator{color:#7b5e17;font:10px var(--mono);
     min-width:0;overflow-wrap:anywhere}
   .request-indicator{font:10px var(--mono);color:var(--muted);margin-left:auto;
@@ -960,8 +965,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       var transfer=uploading || uploadQueue.length>0;
       var working=submitId!==null || validationInFlight || serverBusy || plotCaptureId!==null;
       var busy=transfer || working || pending || !connected;
+      var loading=transfer || working;
       var btn=document.getElementById("send");
-      if(btn){btn.disabled=busy;btn.setAttribute("aria-busy",busy?"true":"false");}
+      if(btn){btn.disabled=busy;btn.classList.toggle("is-loading",loading);
+        btn.setAttribute("aria-busy",loading?"true":"false");
+        btn.setAttribute("aria-label",loading?"Working":"Send");}
       var picker=document.getElementById("plot_upload_native");
       if(picker)picker.disabled=busy;
       var plot=document.getElementById("attach_current_plot");if(plot)plot.disabled=busy || readyCount>=3;
@@ -978,8 +986,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       var note=document.getElementById("uploading_indicator");
       if(note)note.textContent=transfer?"Adding image\\u2026":"";
       var status=document.getElementById("request_indicator");
-      if(status)status.textContent=!connected?"Disconnected":plotCaptureId!==null?"Attaching plot\\u2026":working?"Working\\u2026":pending?"Awaiting run approval":"";
-      var hints=document.getElementById("compose_status");if(hints)hints.hidden=!(transfer || working || pending || !connected);
+      if(status)status.textContent=!connected?"Disconnected":plotCaptureId!==null?"Attaching plot\\u2026":pending?"Awaiting run approval":"";
+      var hints=document.getElementById("compose_status");if(hints)hints.hidden=!(transfer || plotCaptureId!==null || pending || !connected);
     }
     function resetTransfers(){
       uploadQueue=[];
@@ -2178,10 +2186,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         if(length(context_images))"\nThe original image pixels are attached again for this follow-up. These are not new uploads."else "",
         if(length(context_images))paste0("\nImage order: ",image_order)else "",
         "\n\nLATEST USER REQUEST:\n",request_text)
-      response<-tryCatch(shiny::withProgress(message="Thinking...",value=0.5,{
-        ask_ai(system,prompt,
-          images=vapply(request_images,function(att)att$path,character(1)))
-      }),error=function(e)e)
+      response<-tryCatch(ask_ai(system,prompt,
+        images=vapply(request_images,function(att)att$path,character(1))),error=function(e)e)
       if(inherits(response,"error")){
         messages <- state$messages
         messages[[user_index]]$context <- FALSE

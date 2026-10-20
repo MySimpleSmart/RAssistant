@@ -1,3 +1,8 @@
+# RAssistant 0.3.15
+
+- Show request loading on the Send button instead of a Thinking notification
+  or a separate Working status row. Restore the button after success or failure.
+
 # RAssistant 0.3.14
 
 - Dismiss the manual up-to-date message after five seconds, without hiding
