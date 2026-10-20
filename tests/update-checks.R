@@ -25,11 +25,12 @@ main <- function() {
   }
   env$.installed_info <- function()list(version="0.1.1",sha="original-sha")
   starts <- 0L; alive <- TRUE; killed <- 0L; latest <- "0.1.2"; failure <- FALSE
+  changes <- c("Recover a disconnected Viewer.","Keep drafts and images.")
   env$.new_update_worker <- function(){
     starts<<-starts+1L
     list(is_alive=function()alive,get_result=function(){
       if(failure)stop("Synthetic offline failure")
-      latest
+      list(version=latest,notes=changes)
     },kill=function(){killed<<-killed+1L;alive<<-FALSE})
   }
   env$.start_update_check()
@@ -39,8 +40,8 @@ main <- function() {
   check(starts==1L,"an in-flight check is reused")
   alive<-FALSE
   result<-env$.poll_update_check()
-  check(identical(result$status,"available") && identical(result$version,"0.1.2"),
-    "a newer package version produces an update notice")
+  check(identical(result$status,"available") && identical(result$version,"0.1.2") && identical(result$notes,changes),
+    "a newer package version carries its release changes into the update notice")
   env$.start_update_check()
   check(starts==1L,"a completed check is cached between automatic checks")
   latest<-"0.1.1";env$.start_update_check(force=TRUE)
@@ -196,6 +197,13 @@ main <- function() {
   metadata <- c("Package: RAssistant","Version: 0.1.2")
   env$.download_version_file <- function(path){writeLines(metadata,path);0L}
   check(identical(env$.fetch_latest_version(),"0.1.2"),"discovery reads only the package identity and version")
+  check(identical(env$.fetch_update_info()$notes,character()),"older releases without changes still support version discovery")
+  metadata<-c(metadata,"Config/RAssistant/Changes: Recover the Viewer.","    Keep <draft> text & images.")
+  info<-env$.fetch_update_info()
+  check(identical(info,list(version="0.1.2",notes=c("Recover the Viewer.","Keep <draft> text & images."))),
+    "release changes come from the same immutable metadata as their target version")
+  metadata<-c("Package: RAssistant","Version: 0.1.2",paste0("Config/RAssistant/Changes: ",strrep("x",700L)))
+  check(identical(nchar(env$.fetch_update_info()$notes),600L),"remote release text is bounded without rejecting its valid version")
   metadata<-c("Package: another-package","Version: 99.0")
   check(inherits(tryCatch(env$.fetch_latest_version(),error=identity),"error"),
     "metadata from another package is rejected")
@@ -290,16 +298,16 @@ main <- function() {
   environment(fixture_env$fixture_version)<-baseenv()
   fixture_env$fetch <- function(){
     if(nzchar(Sys.getenv("OPENAI_API_KEY")))stop("Unexpected API credential in metadata worker.")
-    fixture_version()
+    list(version=fixture_version(),notes="Keep drafts.")
   }
   environment(fixture_env$fetch)<-fixture_env
-  env$.fetch_latest_version<-fixture_env$fetch
+  env$.fetch_update_info<-fixture_env$fetch
   env$.new_update_worker<-get(".new_update_worker",ns)
   environment(env$.new_update_worker)<-env
   worker<-env$.new_update_worker()
   on.exit(try(worker$kill(),silent=TRUE),add=TRUE)
   worker$wait(timeout=10000)
-  check(identical(worker$get_result(),"0.1.2"),
+  check(identical(worker$get_result(),list(version="0.1.2",notes="Keep drafts.")),
     "a real metadata subprocess retains its helper environment without inheriting the API key")
   cat(checks,"update checks passed\n")
 }

@@ -28,6 +28,7 @@ menu also has an **RAssistant** entry after installation.
 The header keeps **Check updates** and **New chat** visible. The **More actions
 (...)** menu contains History, Knowledge, Help, Close and the installed version.
 Help contains launch, API-key and update instructions with Copy buttons.
+Advanced commands are expandable; update results appear only in the toolbar.
 Source shares the header row with the visible actions; long names have a tooltip.
 The controls retain their original bordered appearance. The two-line composer
 grows with your draft; Image, Plot, Console Off/On and Send share one action row.
@@ -114,6 +115,7 @@ found. **Check updates** in the main toolbar checks immediately,
 bypassing the cache.
 An up-to-date result closes after five seconds. An available update keeps its
 Update now banner until you act on it.
+The update dialog lists the target version's release changes before installation.
 The check does not call OpenAI or transmit the key, Source text or chat history.
 To disable automatic discovery, set `options(RAssistant.check_updates = FALSE)`;
 manual checking and Console updates still work.

@@ -34,7 +34,7 @@ jobs:
             if (status != 0L) stop("Failed: ", suite)
           }
       - name: Check snapshot has no uncommitted changes
-        run: git diff --exit-code -- inst/app/AISource.R
+        run: git diff --exit-code -- inst/app/AISource.R DESCRIPTION
       - uses: r-lib/actions/check-r-package@v2
         with:
           args: 'c("--no-manual")'

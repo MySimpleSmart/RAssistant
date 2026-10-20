@@ -798,6 +798,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .assistant-help pre{background:#f5f6f7;border:1px solid var(--border);
     padding:8px;margin:0;overflow:auto;white-space:pre;font:11px var(--mono)}
   .assistant-help p{margin:0 0 9px}
+  .assistant-help details>summary{display:list-item;cursor:pointer;margin-left:14px}
   .btn.ai-btn{margin:0;border:1px solid #ccd2d9;border-radius:3px;box-shadow:none;
     color:#29323c;background:white;font-size:11px;line-height:1.3;padding:4px 9px}
   .btn.ai-btn:hover{background:#edf0f3}
@@ -1540,26 +1541,23 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         accept=c(".pdf",".txt",".md",".markdown",".R",".r",".Rmd",".qmd"))
       htmltools::tagQuery(picker)$find(".btn-file")$removeClass("btn btn-default")$addClass("btn ai-btn")$
         resetSelected()$find("input.form-control")$replaceWith(shiny::span(class="knowledge-hint",
-          "Lecture PDFs, notes (.txt, .md) or R code (.R, .Rmd, .qmd)"))$allTags()
+          "PDF, TXT, Markdown or R code"))$allTags()
     }
     show_knowledge <- function(profile=NULL) {
       if(is.null(profile))profile <- tryCatch(knowledge$profile(),error=function(e)list())
       docs <- tryCatch(knowledge$list(),error=function(e)list())
       choices <- stats::setNames(vapply(docs,function(x)x$id,character(1)),
-        vapply(docs,function(x)paste0(x$name,"  \u00B7  ",x$kind,"  \u00B7  ",x$chunks,
-          if(identical(x$chunks,1L))" section" else " sections"),character(1)))
+        vapply(docs,function(x)x$name,character(1)))
       shiny::showModal(shiny::modalDialog(title="Course knowledge",
         shiny::div(class="assistant-help chat-history knowledge",
-          shiny::p("Saved locally for this project, separately from chat history. Each request is matched",
-            "against these files on this computer, and only the most relevant excerpts are sent."),
+          shiny::p("Saved for this project. Relevant excerpts are included with your questions."),
           shiny::tags$strong("Documents"),
           if(length(docs))shiny::selectInput("knowledge_selected",NULL,choices=choices,selectize=FALSE,
             size=min(6L,max(2L,length(docs))),width="100%")else shiny::p(class="empty","No documents yet."),
           knowledge_picker(),
-          shiny::tags$strong("Custom instructions"),
+          shiny::tags$strong("Instructions"),
           shiny::textAreaInput("knowledge_instructions",NULL,value=chat_text(profile$instructions),
-            rows=4,width="100%",placeholder=paste("Optional. e.g. Follow the lecture approach, prefer ggplot2",
-              "and base R, use <- for assignment and comment each step."))),
+            rows=4,width="100%",placeholder="Optional: use ggplot2 and explain each step.")),
         footer=shiny::div(class="history-actions",
           if(length(docs))shiny::actionButton("knowledge_remove","Remove selected",class="ai-btn"),
           shiny::actionButton("knowledge_save","Save instructions",class="ai-btn"),
@@ -1583,10 +1581,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         result <- results[[i]]
         if(inherits(result,"error"))shiny::showNotification(paste0(files$name[[i]],": ",conditionMessage(result)),
           type="error",duration=NULL)
-        else shiny::showNotification(paste0(result$name,switch(result$status,
-          duplicate=" is already in course knowledge.",
-          replaced=paste0(" replaced the earlier version (",result$chunks," sections)."),
-          paste0(" added (",result$chunks," sections)."))),type="message")
+        else shiny::showNotification(paste0(switch(result$status,
+          duplicate="Already added: ",replaced="Updated: ","Added: "),result$name),type="message")
       }
       show_knowledge(draft)
     })
@@ -1594,7 +1590,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(is.null(knowledge) || state$busy)return()
       tryCatch({
         knowledge$save_profile(knowledge_inputs())
-        shiny::showNotification("Custom instructions saved for this project.",type="message")
+        shiny::showNotification("Instructions saved.",type="message")
       },error=function(e)shiny::showNotification(conditionMessage(e),type="error"))
     })
     shiny::observeEvent(input$knowledge_remove,{
@@ -1605,7 +1601,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       knowledge_target <<- doc[[1L]]$id
       knowledge_draft <<- knowledge_inputs()
       shiny::showModal(shiny::modalDialog(title="Remove document?",
-        shiny::p(paste0("Remove ",doc[[1L]]$name," from course knowledge for this project? Chats are not affected.")),
+        shiny::p(doc[[1L]]$name),
         footer=shiny::div(class="history-actions",
           shiny::actionButton("knowledge_cancel_remove","Cancel",class="ai-btn"),
           shiny::actionButton("knowledge_confirm_remove","Remove",class="ai-btn"))))
@@ -1662,45 +1658,31 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         })
       },delay=5)
     },ignoreInit=TRUE)
-    output$update_help_status <- shiny::renderText(update_status_text(update_status()))
     shiny::observeEvent(input$help,{
       shiny::showModal(shiny::modalDialog(title="RAssistant Help",
         shiny::div(class="assistant-help",
-          shiny::p(if(is.null(package_info))"Standalone script" else paste("Installed version:",package_info$version)),
-          shiny::p("Run these commands in the RStudio Console."),
-          shiny::tags$strong("Open the assistant"),
+          shiny::p(if(is.null(package_info))"Standalone script" else paste0("v",package_info$version)),
+          shiny::tags$strong("Open from the Console"),
           render_markdown(if(is.null(package_info))"~~~r\nsource(\"AISource.R\")\n~~~"
             else "~~~r\nRAssistant::launch()\n~~~"),
-          shiny::tags$strong("Set or replace an API key"),
-          if(is.null(package_info)) shiny::p(paste(
-            "Configure OPENAI_API_KEY in the environment used to start RStudio, then restart RStudio",
-            "and source AISource.R again. The standalone script reads this variable and does not save keys."))
+          shiny::tags$strong("API key"),
+          if(is.null(package_info)) shiny::p("Set OPENAI_API_KEY in RStudio's environment, restart RStudio, then reopen the script.")
           else shiny::tagList(
-            shiny::p("Click Close first. Enter the key only in the hidden password prompt, then reopen the assistant."),
+            shiny::p("Close the chat, then run. Enter your key in the hidden password prompt."),
             render_markdown("~~~r\nRAssistant::set_api_key()\nRAssistant::launch()\n~~~"),
-            shiny::p("An existing OPENAI_API_KEY environment variable takes precedence. Remove that setting to use the saved replacement.")),
-          if(!is.null(history))shiny::tagList(
-            shiny::tags$strong("Conversations"),
-            shiny::p("Chats and images are auto-saved locally for this project. History offers Rename, Delete and Restore. New chat keeps the previous chat in History."),
-            shiny::p("The most recently used chat reopens after RStudio restarts or package updates. API keys are stored separately. Only bounded conversation context and recent images are sent when you submit a message.")),
-          if(!is.null(knowledge))shiny::tagList(
-            shiny::tags$strong("Course knowledge"),
-            shiny::p("Knowledge stores lecture PDFs, notes, R code examples and optional custom instructions for this project, separately from chats. Each request is matched locally, and only the few most relevant excerpts are sent, so the answer can follow the methods taught and name its sources."),
-            shiny::p("Adding PDFs needs the pdftools package:"),
-            render_markdown("~~~r\ninstall.packages(\"pdftools\")\n~~~")),
-          shiny::tags$strong("Update"),
-          if(is.null(package_info)) shiny::p(
-            "Click Close, replace AISource.R with the updated script, then source it again.")
+            shiny::tags$details(shiny::tags$summary("Environment key"),
+              shiny::p("OPENAI_API_KEY overrides the saved key. Remove that environment setting to use the saved replacement."))),
+          shiny::tags$ul(
+            if(!is.null(history))shiny::tags$li("History manages saved chats. New chat keeps the previous conversation."),
+            if(!is.null(knowledge))shiny::tags$li("Knowledge adds course files and instructions for this project."),
+            if(!is.null(console_capture))shiny::tags$li("Console includes new output while On. Plot attaches the selected RStudio plot.")),
+          shiny::tags$strong("Updates"),
+          if(is.null(package_info)) shiny::p("Close, replace AISource.R, then source it again.")
           else shiny::tagList(
-            shiny::p("New versions are checked automatically on launch and every 30 minutes while the assistant is open. Check for updates in the main toolbar checks immediately."),
-            shiny::p("Use Update now when offered, or Close and run:"),
-            render_markdown("~~~r\nRAssistant::update_assistant()\n~~~"),
-            shiny::p("After a successful update, the assistant reopens automatically and restores your saved chat. Your saved key is kept."),
-            shiny::textOutput("update_help_status")),
-          if(!is.null(console_capture))shiny::tagList(
-            shiny::tags$strong("Console context"),
-            shiny::p("Enable Console beside Image and Plot, wait for On, then run code normally in RStudio. Hover over the control for detailed status. Your next Send includes up to 200 recent lines (12,000 characters). Completed commands are included even if they print no text; plot images are not captured. Errors and warnings are captured after launch returns to the Console prompt."),
-            shiny::p("Only new R output is recorded. Capture is temporary and stops when you turn it off, switch chats, Close, or update. Use Plot to add the plot selected in RStudio's Plots pane as an image, then press Send."))
+            shiny::p("Use Check updates in the toolbar. The chat reopens after updating."),
+            shiny::tags$details(shiny::tags$summary("Update from the Console"),
+              shiny::p("Close the chat, then run:"),
+              render_markdown("~~~r\nRAssistant::update_assistant()\n~~~")))
         ),
         footer=shiny::tagList(
           htmltools::tagAppendAttributes(shiny::modalButton("Close"),class="ai-btn")
@@ -1715,12 +1697,19 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     shiny::observeEvent(input$update_now,{
       if(is.null(package_info) || state$busy || !is.null(state$pending) || update_requested)return()
       if(!identical(update_status()$status,"available"))return()
+      status <- update_status()
+      notes <- status$notes
+      if(!is.character(notes))notes <- character()
+      notes <- head(substr(trimws(notes[!is.na(notes) & nzchar(trimws(notes))]),1L,600L),8L)
       shiny::showModal(shiny::modalDialog(title="Update RAssistant",
         shiny::div(class="assistant-help",
-          shiny::p(update_status_text(update_status())),
-          shiny::p(if(is.null(history))"Update now closes this chat and installs the update in the same R library. This conversation will end."
-            else "Update now closes this window and installs the update in the same R library. This chat is saved locally and will reopen on launch."),
-          shiny::p("Follow progress in the RStudio Console. After a successful update, the assistant reopens automatically. Your saved API key is kept.")),
+          shiny::p(paste0("v",status$current," \u2192 v",status$version)),
+          if(length(notes))shiny::tagList(shiny::tags$strong("What's new"),
+            shiny::tags$ul(class="release-notes",lapply(notes,shiny::tags$li)))
+          else shiny::tags$a(href="https://github.com/MySimpleSmart/RAssistant/blob/main/NEWS.md",
+            target="_blank",rel="noopener noreferrer","View release notes"),
+          shiny::p(if(is.null(history))"Updating ends this unsaved chat."
+            else "Chat saved. Reopens after updating.")),
         footer=shiny::tagList(htmltools::tagAppendAttributes(shiny::modalButton("Cancel"),class="ai-btn"),
           shiny::actionButton("confirm_update","Update now",class="ai-btn ai-send"))))
     })

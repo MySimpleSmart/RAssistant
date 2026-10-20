@@ -20,7 +20,8 @@ main <- function() {
     for(file in c("R/history.R","R/knowledge.R"))sys.source(file,store_env)
     history <- store_env$.conversation_store(project=root,directory=history_root)
     knowledge <- store_env$.knowledge_store(project=root,directory=history_root)
-    available <- list(status="available",version="0.1.2",current="0.1.1")
+    available <- list(status="available",version="0.1.2",current="0.1.1",
+      notes=c("Recover a disconnected Viewer.","Keep <draft> text & images."))
     update_result <- list(status="current",version="0.1.1",current="0.1.1")
     published <- FALSE
     console_enabled <- FALSE
@@ -172,6 +173,12 @@ main <- function() {
   js('document.getElementById("check_updates").click();')
   wait_js('document.getElementById("update_now")===null && document.getElementById("update_check_status").textContent.includes("up to date")')
   check(TRUE,"toolbar update checks show results without opening Help and remove an obsolete banner")
+  js('openAction("help");')
+  wait_js('document.querySelector("#shiny-modal .code-copy")!==null')
+  check(isTRUE(js('document.querySelector("#shiny-modal #update_help_status")===null && !document.getElementById("shiny-modal").textContent.includes("up to date")')),
+    "Help omits the up-to-date result while a manual toolbar result is active")
+  js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click();')
+  wait_js('document.getElementById("shiny-modal")===null')
   wait_js('document.getElementById("update_check_status").textContent===""',timeout=8)
   check(isTRUE(js('getComputedStyle(document.getElementById("update_check_status")).display==="none"')),
     "an up-to-date result expires and releases its banner space")
@@ -189,8 +196,8 @@ main <- function() {
   wait_js('document.getElementById("shiny-modal")===null')
   js('document.getElementById("update_now").click();')
   wait_js('document.getElementById("confirm_update")!==null')
-  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("This chat is saved locally") && document.getElementById("shiny-modal").textContent.includes("reopens automatically") && !document.getElementById("shiny-modal").textContent.includes("Restart R")')),
-    "Update now explains chat preservation and relaunching after installation")
+  check(isTRUE(js('var notes=document.querySelectorAll("#shiny-modal .release-notes li"),text=document.getElementById("shiny-modal").textContent;notes.length===2 && notes[0].textContent==="Recover a disconnected Viewer." && notes[1].textContent==="Keep <draft> text & images." && notes[1].querySelector("draft")===null && text.includes("v0.1.1") && text.includes("v0.1.2") && text.includes("Chat saved. Reopens after updating.") && !text.includes("same R library")')),
+    "Update now lists the target release changes as escaped text with a short restart note")
   js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click();')
   wait_js('document.getElementById("shiny-modal")===null')
   check(!file.exists(update_marker),"cancelling an update leaves the app running without installing")

@@ -164,7 +164,7 @@ update_assistant <- function(ref = "main", relaunch = TRUE) {
     headers = c("Cache-Control" = "no-cache, max-age=0", Pragma = "no-cache")))
 }
 
-.fetch_latest_version <- function() {
+.fetch_update_info <- function() {
   path <- tempfile(fileext = ".dcf")
   on.exit(unlink(path), add = TRUE)
   if (.download_version_file(path) != 0L) stop("Update check unavailable.", call. = FALSE)
@@ -175,8 +175,13 @@ update_assistant <- function(ref = "main", relaunch = TRUE) {
       !.valid_version(unname(info[1L, "Version"]))) {
     stop("Invalid update metadata.", call. = FALSE)
   }
-  unname(info[1L, "Version"])
+  notes <- if("Config/RAssistant/Changes" %in% colnames(info))
+    strsplit(unname(info[1L,"Config/RAssistant/Changes"]),"\n",fixed=TRUE)[[1L]] else character()
+  notes <- trimws(notes[!is.na(notes)])
+  list(version=unname(info[1L,"Version"]),notes=utils::head(substr(notes[nzchar(notes)],1L,600L),8L))
 }
+
+.fetch_latest_version <- function() .fetch_update_info()$version
 
 .new_update_worker <- function() {
   # Passing the reader as an argument retains its helper environment. Startup
@@ -184,7 +189,7 @@ update_assistant <- function(ref = "main", relaunch = TRUE) {
   callr::r_bg(function(fetch) {
     Sys.unsetenv("OPENAI_API_KEY")
     fetch()
-  }, args = list(fetch = .fetch_latest_version), libpath = .libPaths(),
+  }, args = list(fetch = .fetch_update_info), libpath = .libPaths(),
     user_profile = FALSE, system_profile = FALSE,
     env = c(callr::rcmd_safe_env(), OPENAI_API_KEY = ""),
     stdout = "|", stderr = "|", supervise = TRUE)
@@ -227,13 +232,14 @@ update_assistant <- function(ref = "main", relaunch = TRUE) {
     return(.update_state$result)
   }
   if (alive) try(worker$kill(), silent = TRUE)
-  version <- if (alive) NULL else tryCatch(worker$get_result(), error = function(e) NULL)
+  metadata <- if (alive) NULL else tryCatch(worker$get_result(), error = function(e) NULL)
+  version <- if(is.list(metadata))metadata$version else metadata
   .update_state$worker <- NULL
   .update_state$checked_at <- Sys.time()
   .update_state$result <- if (.valid_version(version)) {
     current <- .installed_info()$version
     list(status = if (package_version(version) > package_version(current)) "available" else "current",
-      version = version, current = current)
+      version = version, current = current, notes=if(is.list(metadata))metadata$notes else character())
   } else if (identical(.update_state$result$status, "available")) {
     .update_state$result
   } else list(status = "unavailable")

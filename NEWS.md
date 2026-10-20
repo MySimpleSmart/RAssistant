@@ -1,3 +1,9 @@
+# RAssistant 0.3.17
+
+- See release changes before updating.
+- Shorter Help, with advanced commands in expandable sections and no update-status text.
+- Simpler Course knowledge labels, file list and instructions.
+
 # RAssistant 0.3.16
 
 - Reopen the running app in RStudio's Viewer when launch or the Addin is used
