@@ -9,9 +9,11 @@ main <- function() {
   on.exit(unlink(update_marker),add=TRUE)
   available_marker <- tempfile()
   on.exit(unlink(available_marker),add=TRUE)
+  reopen_marker <- tempfile();reopen_url <- tempfile()
+  on.exit(unlink(c(reopen_marker,reopen_url)),add=TRUE)
   history_root <- tempfile("ra-browser-history-");dir.create(history_root)
   on.exit(unlink(history_root,recursive=TRUE),add=TRUE)
-  run_app <- function(root,port,update_marker,history_root,available_marker,standalone=FALSE) {
+  run_app <- function(root,port,update_marker,history_root,available_marker,reopen_marker,reopen_url,standalone=FALSE) {
     setwd(root)
     source("tests/helpers.R")
     store_env <- new.env(parent=globalenv())
@@ -66,12 +68,24 @@ main <- function() {
     handle <- shiny::startApp(shiny::shinyApp(app$ui,app$server,onStart=app$on_start),
       host="127.0.0.1",port=port,launch.browser=FALSE,quiet=TRUE)
     on.exit(handle$stop(),add=TRUE)
+    launch_env <- new.env(parent=globalenv())
+    sys.source("R/launch.R",launch_env)
+    launch_env$.in_rstudio <- function()TRUE
+    launch_env$.show_viewer <- function(url)writeLines(url,reopen_url)
+    launch_env$.resolve_api_key <- function()stop("Reopening must not read credentials")
+    launch_env$.app_state$handle <- handle
     stopifnot(identical(getOption("shiny.maxRequestSize"),52*1024^2))
-    while(identical(handle$status(),"running"))later::run_now(.05)
+    while(identical(handle$status(),"running")){
+      later::run_now(.05)
+      if(file.exists(reopen_marker)){
+        unlink(reopen_marker)
+        stopifnot(identical(launch_env$launch(),handle))
+      }
+    }
     stopifnot(identical(getOption("shiny.maxRequestSize"),previous_limit))
     stopifnot(!console_enabled)
   }
-  start_worker <- function(port,standalone=FALSE)callr::r_bg(run_app,args=list(root,port,update_marker,history_root,available_marker,standalone),
+  start_worker <- function(port,standalone=FALSE)callr::r_bg(run_app,args=list(root,port,update_marker,history_root,available_marker,reopen_marker,reopen_url,standalone),
     stdout="|",stderr="|",supervise=TRUE)
   worker <- start_worker(port)
   on.exit(worker$kill(),add=TRUE)
@@ -108,7 +122,8 @@ main <- function() {
     Sys.sleep(.05)
   }
   browser$Page$enable()
-  browser$Page$addScriptToEvaluateOnNewDocument(source='window.openAction=function(id){var menu=document.getElementById("app_menu");if(menu&&!menu.open)menu.querySelector("summary").click();document.getElementById(id).click();};window.aisourceErrors=[];window.addEventListener("error",function(e){aisourceErrors.push(String(e.message));});window.addEventListener("unhandledrejection",function(e){aisourceErrors.push(String(e.reason));});')
+  page_setup <- 'window.openAction=function(id){var menu=document.getElementById("app_menu");if(menu&&!menu.open)menu.querySelector("summary").click();document.getElementById(id).click();};window.aisourceErrors=[];window.addEventListener("error",function(e){aisourceErrors.push(String(e.message));});window.addEventListener("unhandledrejection",function(e){aisourceErrors.push(String(e.reason));});'
+  browser$Page$addScriptToEvaluateOnNewDocument(source=page_setup)
   browser$Page$navigate(url)
   wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled')
   wait_js('document.querySelector(".empty")!==null')
@@ -376,6 +391,37 @@ main <- function() {
   wait_js('window.copied!==null')
   check(identical(js('window.copied'),expected),"restored code Copy buttons preserve the exact code")
   check(isTRUE(js('window.aisourceErrors.length===0')),"restoring history has no JavaScript errors")
+  js('$("#prompt").val("Draft before Viewer disappears").trigger("change");')
+  js('new Promise(function(resolve){setTimeout(resolve,200);})')
+  browser$Page$navigate("about:blank")
+  unlink(reopen_url);file.create(reopen_marker)
+  for(i in 1:100){if(file.exists(reopen_url))break;Sys.sleep(.05)}
+  check(worker$is_alive() && file.exists(reopen_url) && identical(readLines(reopen_url),paste0(url,"?ra_reopen=1")),
+    "launch reopens the same running server after the Viewer page disappears")
+  browser$Page$navigate(readLines(reopen_url))
+  wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled && document.querySelectorAll(".msg.user").length===2 && document.getElementById("prompt").value==="Draft before Viewer disappears"')
+  check(isTRUE(js('document.querySelector(".sent-attachment img").naturalWidth>0')),
+    "reopening a disconnected Viewer restores chat, draft and image pixels without restarting R")
+  js('$("#prompt").val("Draft from the still-connected Viewer").trigger("change");')
+  js('new Promise(function(resolve){setTimeout(resolve,200);})')
+  old_browser <- browser
+  browser <- chromote::ChromoteSession$new(parent=old_browser$parent)
+  browser$Page$enable();browser$Page$addScriptToEvaluateOnNewDocument(source=page_setup)
+  browser$Page$navigate(url)
+  wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled && document.getElementById("prompt").value==="Draft from the still-connected Viewer"')
+  check(TRUE,"a replacement Viewer saves the still-connected session before restoring its draft")
+  old_state <- old_browser$Runtime$evaluate('document.getElementById("send").disabled',returnByValue=TRUE)
+  check(isTRUE(old_state$result$value),"the superseded Viewer disconnects and cannot send a duplicate request")
+  js('document.getElementById("console_context").click();$("#prompt").val("Newest Viewer draft").trigger("change");')
+  wait_js('document.getElementById("console_context_status").textContent.includes("On: 1 line")')
+  js('new Promise(function(resolve){setTimeout(resolve,1200);})')
+  check(isTRUE(js('document.getElementById("console_context").checked && document.getElementById("console_context_status").textContent.includes("On: 1 line")')),
+    "late disconnect cleanup does not stop the replacement Viewer's Console capture")
+  old_browser$close()
+  browser$Page$navigate(url)
+  wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled && document.getElementById("prompt").value==="Newest Viewer draft"')
+  check(isTRUE(js('document.querySelectorAll(".msg.user").length===2 && !document.getElementById("console_context").checked')),
+    "late old-session saves cannot overwrite the replacement chat or newest draft")
   js('openAction("close");')
   worker$wait(timeout=10000)
   check(identical(worker$get_exit_status(),0L),"Close restores the upload option after a relaunched session")

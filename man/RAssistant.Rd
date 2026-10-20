@@ -118,6 +118,9 @@ The assistant sends the current Source, detected CSV headers, bounded conversati
 opted-in Console context and attached or retained images only when Send is clicked. Approved validation can execute the entire
 current R/Rmd file in a child process and send its output and captured plots.
 Validation is not a sandbox. Console output may also be pasted manually.
+Calling \code{launch()} again reopens the running app in RStudio's Viewer,
+including after its page disappears or disconnects. The existing server is
+reused and the previous session is saved before restoring the chat and draft.
 }
 \value{\code{launch()} invisibly returns a Shiny app handle.
 \code{set_api_key()} and \code{forget_api_key()} invisibly return \code{NULL}.

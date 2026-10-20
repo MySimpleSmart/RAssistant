@@ -1316,7 +1316,12 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     shiny::tags$script(shiny::HTML(js))
   )
 
+  retire_session <- NULL
   server <- function(input,output,session) {
+    # A new Viewer page can connect before the old socket reports its close.
+    # Save and retire that page before restoring history into its replacement.
+    if(!is.null(retire_session))retire_session()
+    session_active <- TRUE
     attachment_dir <- tempfile(pattern="rstudio-ai-attached-")
     dir.create(attachment_dir, recursive=TRUE)
     history <- package_info$history
@@ -1377,7 +1382,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     }
     save_notice <- NULL
     persist_chat <- function()shiny::isolate({
-      if(is.null(history))return(invisible(FALSE))
+      if(!session_active || is.null(history))return(invisible(FALSE))
       snapshot <- c(state$chat,list(messages=snapshot_messages(state$messages),
         assignment=state$assignment,draft=state$draft,attachments=chat_images(state$attachments)))
       tryCatch({
@@ -1410,11 +1415,17 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(isTRUE(saved$recovered))shiny::showNotification(
         "Recovered the previous auto-save because the latest save was damaged.",type="warning",duration=NULL)
     }
-    session$onSessionEnded(function() {
-      on.exit(unlink(attachment_dir,recursive=TRUE,force=TRUE),add=TRUE)
+    end_session <- function() {
+      if(!session_active)return(invisible(NULL))
+      on.exit({session_active <<- FALSE;unlink(attachment_dir,recursive=TRUE,force=TRUE)},add=TRUE)
       if(!is.null(console_capture))console_capture$stop()
       persist_chat()
-    })
+    }
+    retire_session <<- function() {
+      end_session()
+      if(!session$isClosed())session$close()
+    }
+    session$onSessionEnded(end_session)
     # Cache input immediately; disk writes remain debounced. End-of-session
     # callbacks must not depend on inputs that may already be disconnected.
     shiny::observeEvent(input$prompt,{

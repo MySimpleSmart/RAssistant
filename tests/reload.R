@@ -43,6 +43,7 @@ main <- function() {
       setHook(packageEvent("RAssistant", "onLoad"), function(...) {
         fresh <- asNamespace("RAssistant")
         patch(fresh, ".in_rstudio", function() TRUE)
+        patch(fresh, ".show_viewer", function(url)invisible(NULL))
         patch(fresh, ".resolve_api_key", function() {
           stopifnot(!old_state$update_queued)
           key_reads <<- key_reads + 1L
@@ -50,7 +51,7 @@ main <- function() {
         })
       }, action = "append")
       writeLines(c("function(api_key, package_info) {",
-        "  list(status = function() 'running', generation = 'updated',",
+        "  list(status = function() 'running', url = function() 'http://127.0.0.1:4321', generation = 'updated',",
         "    version = package_info$version, key = api_key, restored = package_info$history$load())", "}"),
         file.path(lib, "RAssistant", "app", "AISource.R"))
       killed <- 0L

@@ -1,3 +1,11 @@
+# RAssistant 0.3.16
+
+- Reopen the running app in RStudio's Viewer when launch or the Addin is used
+  again, including after the Viewer disappears or loses its connection.
+- Save and retire the previous Viewer session before restoring its replacement.
+  Delayed disconnect callbacks cannot overwrite the new session's chat or draft
+  or stop its Console capture. Reopening reuses the same Shiny server.
+
 # RAssistant 0.3.15
 
 - Show request loading on the Send button instead of a Thinking notification

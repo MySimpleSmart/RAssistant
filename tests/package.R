@@ -117,12 +117,23 @@ main <- function() {
   env$.package_ui_info <- function() list(version="0.1.2")
   passed_key <- NULL
   running <- TRUE
-  handle <- list(status = function() if (running) "running" else "success")
+  viewed <- character()
+  env$.show_viewer <- function(url) { viewed <<- c(viewed,url);invisible(NULL) }
+  handle <- list(status = function() if (running) "running" else "success",
+    url = function() "http://127.0.0.1:4321")
   env$.load_launcher <- function(path) function(api_key, package_info) { passed_key <<- api_key; handle }
   check(identical(env$launch(), handle) && identical(passed_key, "launch-key") &&
     identical(Sys.getenv("OPENAI_API_KEY"), ""), "launch supplies the key directly without setting a global environment variable")
   env$launch()
-  check(key_reads == 1L, "repeated launch does not start a second app or read another key")
+  check(key_reads == 1L && identical(viewed,"http://127.0.0.1:4321?ra_reopen=1"),
+    "repeated launch reopens the running server in Viewer without reading another key")
+  env$launch()
+  check(identical(tail(viewed,1L),"http://127.0.0.1:4321?ra_reopen=2"),
+    "each reopen uses a fresh page URL instead of a cached disconnected Viewer")
+  env$.show_viewer <- function(url)stop("Synthetic Viewer failure")
+  check(failed(env$launch(),"Synthetic Viewer failure") && identical(env$.app_state$handle,handle) && running,
+    "a Viewer opening error preserves the running app so opening can be retried")
+  env$.show_viewer <- function(url) { viewed <<- c(viewed,url);invisible(NULL) }
   check(failed(env$update_assistant(), "Close RAssistant"), "updating a running app is blocked")
   running <- FALSE
 

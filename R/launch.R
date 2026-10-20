@@ -3,9 +3,11 @@
 .app_state$updated <- FALSE
 .app_state$update_queued <- FALSE
 .app_state$console <- NULL
+.app_state$viewer_generation <- 0L
 
 .package_path <- function() getNamespaceInfo(asNamespace("RAssistant"), "path")
 .in_rstudio <- function() rstudioapi::isAvailable()
+.show_viewer <- function(url) rstudioapi::viewer(url)
 .app_running <- function() {
   !is.null(.app_state$handle) && identical(.app_state$handle$status(), "running")
 }
@@ -50,7 +52,12 @@ launch <- function() {
     stop("An update is in progress. The assistant will reopen when it finishes.", call. = FALSE)
   }
   if (.app_running()) {
-    message("RAssistant is already running. Use its Viewer tab, or Close it before reopening.")
+    # Force a fresh page even if RStudio still holds this URL in its Viewer.
+    generation <- .app_state$viewer_generation
+    .app_state$viewer_generation <- if(is.null(generation))1L else generation+1L
+    url <- .app_state$handle$url()
+    .show_viewer(paste0(url,if(grepl("?",url,fixed=TRUE))"&"else"?",
+      "ra_reopen=",.app_state$viewer_generation))
     return(invisible(.app_state$handle))
   }
   if (isTRUE(.app_state$updated)) {

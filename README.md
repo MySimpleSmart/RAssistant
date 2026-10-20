@@ -33,6 +33,9 @@ The controls retain their original bordered appearance. The two-line composer
 grows with your draft; Image, Plot, Console Off/On and Send share one action row.
 While a request runs, Send shows a loading indicator without a separate Thinking
 notification or Working status row.
+If the Viewer disappears or disconnects after sleep or locking the Mac, use the
+Addin or `RAssistant::launch()` again. It reopens the existing server in the Viewer
+and restores the saved chat and draft; RStudio does not need to be restarted.
 
 ### Windows troubleshooting
 
