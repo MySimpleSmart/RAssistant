@@ -11,9 +11,11 @@ main <- function() {
   on.exit(unlink(available_marker),add=TRUE)
   reopen_marker <- tempfile();reopen_url <- tempfile()
   on.exit(unlink(c(reopen_marker,reopen_url)),add=TRUE)
+  edit_marker <- tempfile()
+  on.exit(unlink(edit_marker),add=TRUE)
   history_root <- tempfile("ra-browser-history-");dir.create(history_root)
   on.exit(unlink(history_root,recursive=TRUE),add=TRUE)
-  run_app <- function(root,port,update_marker,history_root,available_marker,reopen_marker,reopen_url,standalone=FALSE) {
+  run_app <- function(root,port,update_marker,history_root,available_marker,reopen_marker,reopen_url,edit_marker,standalone=FALSE) {
     setwd(root)
     source("tests/helpers.R")
     store_env <- new.env(parent=globalenv())
@@ -43,6 +45,17 @@ main <- function() {
       },
       request_update=function(){cat("requested\n",file=update_marker,append=TRUE);invisible(TRUE)}))
     app$initial <- list(id="fixture",path=file.path(tempdir(),"example.R"),contents="plot(1:3)")
+    edits <- list()
+    app$write_source <- function(id,text){
+      stopifnot(identical(id,app$initial$id))
+      app$initial$contents <- strsplit(paste0(text,"\n"),"\n",fixed=TRUE)[[1L]]
+      edits[[length(edits)+1L]] <<- list(operation="replace",text=text,id=id)
+      saveRDS(edits,edit_marker)
+    }
+    app$new_source <- function(text,kind){
+      edits[[length(edits)+1L]] <<- list(operation="new",text=text,kind=kind)
+      saveRDS(edits,edit_marker)
+    }
     app$capture_current_plot <- function(directory){
       Sys.sleep(.15)
       path<-tempfile("browser-current-plot-",tmpdir=directory,fileext=".png")
@@ -86,7 +99,7 @@ main <- function() {
     stopifnot(identical(getOption("shiny.maxRequestSize"),previous_limit))
     stopifnot(!console_enabled)
   }
-  start_worker <- function(port,standalone=FALSE)callr::r_bg(run_app,args=list(root,port,update_marker,history_root,available_marker,reopen_marker,reopen_url,standalone),
+  start_worker <- function(port,standalone=FALSE)callr::r_bg(run_app,args=list(root,port,update_marker,history_root,available_marker,reopen_marker,reopen_url,edit_marker,standalone),
     stdout="|",stderr="|",supervise=TRUE)
   worker <- start_worker(port)
   on.exit(worker$kill(),add=TRUE)
@@ -251,6 +264,35 @@ main <- function() {
   wait_js('window.copied!=="Verified result."')
   check(identical(js('window.copied'),expected), "clipboard denial uses the Viewer fallback")
   check(isTRUE(js('document.activeElement.id==="prompt" && document.activeElement.selectionStart===1 && document.activeElement.selectionEnd===3')), "fallback Copy restores composer focus and selection")
+  check(isTRUE(js('document.querySelector(".source-read").textContent.includes("example.R") && document.getElementById("source_context").title.includes("sent to AI")')),
+    "chat and file tooltip identify the Source snapshot actually sent")
+  js('document.querySelector(".source-review").click();')
+  wait_js('document.querySelector(".source-diff")!==null && document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
+  check(!file.exists(edit_marker) && isTRUE(js('document.querySelector(".source-diff").textContent.includes("-plot(1:3)") && document.querySelector(".source-diff").textContent.includes("+x <-") && document.querySelector(".edit-check").textContent.includes("Not run")')),
+    "Review shows syntax checking and a real comparison before any editor write")
+  browser$Emulation$setDeviceMetricsOverride(width=380L,height=480L,deviceScaleFactor=1,mobile=FALSE)
+  check(isTRUE(js('document.getElementById("cancel_source_edit").getBoundingClientRect().bottom<=innerHeight && document.querySelector("#shiny-modal .modal-dialog").getBoundingClientRect().right<=innerWidth')),
+    "the review dialog keeps Cancel accessible in a small Viewer")
+  browser$Emulation$clearDeviceMetricsOverride()
+  screenshot<-Sys.getenv("RA_BROWSER_EDIT_SCREENSHOT")
+  if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+  js('document.getElementById("cancel_source_edit").click();')
+  wait_js('document.getElementById("shiny-modal")===null')
+  check(!file.exists(edit_marker),"Cancel leaves Source untouched")
+  js('document.querySelector(".source-review").click();')
+  wait_js('document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
+  js('document.querySelector(".source-apply").click();document.querySelector(".source-apply").click();')
+  wait_js('document.getElementById("shiny-modal")===null && !document.getElementById("send").disabled')
+  check(file.exists(edit_marker) && length(readRDS(edit_marker))==1L && identical(readRDS(edit_marker)[[1L]]$text,expected),
+    "Apply writes the exact reviewed bytes once after explicit approval")
+  js('document.querySelector(".source-review").click();')
+  wait_js('document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
+  check(isTRUE(js('document.querySelector(".source-edit-mode select").value==="new_r"')),
+    "a stale code answer cannot replace a changed Source snapshot")
+  js('document.querySelector(".source-apply").click();')
+  wait_js('document.getElementById("shiny-modal")===null && !document.getElementById("send").disabled')
+  check(length(readRDS(edit_marker))==2L && readRDS(edit_marker)[[2L]]$operation=="new",
+    "a reviewed new-document proposal needs its own explicit approval")
   js('openAction("history");')
   wait_js('document.getElementById("history_selected")!==null')
   check(isTRUE(js('document.getElementById("history_selected").options.length===1 && document.querySelectorAll("#shiny-modal .modal-footer .ai-btn").length===4')),

@@ -305,8 +305,8 @@ a long-running command can temporarily grow the spool before control returns.
 
 - **Image** accepts up to 3 PNG/JPEG/WebP images, 4 MB each. Screenshots use
   content-neutral reading guidance; include a message to request a specific task.
-- Enable **Console** to include new R output automatically, or paste
-  Console output into chat manually. Source remains read-only.
+- **Console** starts On to include new R output automatically; you can switch it off.
+- AI code stays a proposal until you review its comparison and approve Apply.
 - Recent dialogue, retrieved earlier excerpts, a remembered assignment and retained
   images support multipart work. Use History to return to another conversation.
 - Script validation requires **Yes**, executes the entire current R/Rmd file in
@@ -314,6 +314,28 @@ a long-running command can temporarily grow the spool before control returns.
 - Current Source text, detected CSV headers, enabled Console context and uploaded images are sent to
   OpenAI when you click **Send**. An API account/key and internet access are needed.
 - Standalone `source("AISource.R")` remains supported with `OPENAI_API_KEY` set.
+
+## Review and apply Source changes
+
+Each Send rereads the current Source buffer, including unsaved changes. Chat shows
+the file name and line count actually sent; hovering over the header name shows
+the character count. The current limit is 50,000 characters in one active file.
+
+Click **Review** beside Copy on an AI R/Rmd code block. Choose **Replace entire
+file**, **Append to file**, or **New document**, then inspect the syntax result and
+the removed/added lines. **Apply to Source** or **Create document** is the approval.
+Cancel leaves the editor unchanged. An R snippet appended to Rmd becomes a new R chunk.
+
+Checks parse R syntax, R Markdown/Quarto R chunks and inline R without executing
+them. They do not validate YAML, other languages, package availability or runtime
+results. Use the separate approved script-validation flow to run code.
+
+Apply targets the exact document and contents captured for that answer. A changed,
+renamed or closed document invalidates replacement/append; send a fresh message.
+Approvals are single use and expire on Cancel, New chat, history restore or disconnect.
+Editor changes are unsaved. New R/Rmd documents are also unsaved and never run automatically.
+Source baselines and pending edit approvals are not stored in History; restored answers
+can create new documents, but editing an existing file requires another Source read.
 
 ## Development
 
@@ -325,6 +347,7 @@ Rscript tools/sync-app.R
 Rscript tools/sync-app.R --check
 Rscript tests/regression.R
 Rscript tests/source-context.R
+Rscript tests/source-edits.R
 Rscript tests/assignment-context.R
 Rscript tests/image-reading.R
 Rscript tests/conversation-context.R

@@ -35,6 +35,16 @@ Console commands. Source shares the header row with the visible actions; long
 names are truncated with a tooltip. Controls retain their original appearance. The composer starts
 at two lines and grows with the draft. Attachment thumbnails above it have
 individual remove controls; Clear removes all when multiple images are attached.
+Each Send reads the current Source buffer, including unsaved changes, up to
+50,000 characters. Chat labels the file and line count sent.
+Review on an AI code block checks syntax and shows a comparison before Apply.
+Users can replace or append to the captured file, or create an unsaved R/Rmd
+document. R snippets appended to Rmd are wrapped in an R chunk. Static checks
+parse R, R Markdown/Quarto R chunks and inline R; YAML, other languages and
+runtime correctness are not checked. Save and execution remain separate.
+Apply requires an unchanged document ID, path and contents. Approval is single
+use and expires on Cancel, chat switches or disconnect. Source baselines and
+pending edit approvals are not restored from History.
 New replies and restored conversations show the latest response. Image loads,
 composer resizing and status dismissal preserve that position. Intentional
 reading of older messages is preserved between replies.

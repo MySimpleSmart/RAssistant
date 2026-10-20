@@ -1,12 +1,12 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.3.19
+Version: 0.4.0
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
     Viewer. Supports image uploads, optional live console context, contextual R help,
     project course knowledge (lecture PDFs, notes, R examples and custom instructions),
-    and explicitly approved script validation. Stores optional credentials
+    reviewed Source edits and explicitly approved script validation. Stores optional credentials
     in the operating system credential store, separately from package updates.
 License: file LICENSE
 Encoding: UTF-8
@@ -28,5 +28,6 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Move Check updates into More actions (...).
-    Put Console On/Off in the header beside New chat.
+Config/RAssistant/Changes: Review code changes with a syntax check and comparison before approving Apply to Source.
+    Replace or append to the current file, or create a new unsaved R/Rmd document. Save and Run stay separate.
+    See which file and how many lines were sent. Changed files, Cancel and stale approvals cannot overwrite Source.

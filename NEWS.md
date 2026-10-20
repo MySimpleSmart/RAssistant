@@ -1,3 +1,9 @@
+# RAssistant 0.4.0
+
+- Review code changes with a syntax check and comparison before approving Apply to Source.
+- Replace or append to the current file, or create a new unsaved R/Rmd document. Save and Run stay separate.
+- See which file and how many lines were sent. Changed files, Cancel and stale approvals cannot overwrite Source.
+
 # RAssistant 0.3.19
 
 - Move Check updates into More actions (...).
