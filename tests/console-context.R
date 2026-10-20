@@ -106,7 +106,7 @@ shiny::testServer(app$server,{
   check(latest$image_count==1L && grepl("Retained images are historical uploads",latest$system,fixed=TRUE) &&
     grepl("does not mean no Console activity occurred",latest$system,fixed=TRUE) &&
     grepl("do not ask for pasted Console text already supplied",latest$system,fixed=TRUE) &&
-    grepl("Never claim to have seen the current plot",latest$system,fixed=TRUE),
+    grepl("Only describe the current plot's appearance when its image is attached",latest$system,fixed=TRUE),
     "an earlier retained image cannot substitute for current Console evidence or imply new plot pixels")
   text<<-""
   session$setInputs(chat_submit=list(text="What is in the Console now?",nonce=9L))

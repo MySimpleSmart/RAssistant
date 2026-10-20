@@ -14,7 +14,12 @@ fixtures <- vapply(c("First selected plot","Second selected plot"),function(labe
 },character(1))
 bytes <- lapply(fixtures,function(p)readBin(p,"raw",file.info(p)$size))
 available<-TRUE;supported<-TRUE;mode<-"ok";selected<-1L;exports<-list();calls<-list();reads<-0L
-app<-load_assistant()
+console_enabled<-FALSE
+console<-list(start=function(){console_enabled<<-TRUE},stop=function(){console_enabled<<-FALSE;TRUE},
+  status=function()list(enabled=console_enabled,ready=TRUE,pending=FALSE,notice="",lines=1L),
+  snapshot=function(redact)"[Completed Console command; no text output captured]\n> plot(1:40)\n[End Console task]")
+app<-load_assistant(package_info=list(version="test",poll_update=function()list(status="disabled"),
+  console=console,prepare_console=function()invisible(NULL)))
 app$initial<-app$empty_source_context()
 app$active_doc<-function(id=NULL){reads<<-reads+1L;NULL}
 app$`::`<-function(pkg,name){
@@ -36,7 +41,7 @@ app$`::`<-function(pkg,name){
   base::getExportedValue(p,n)
 }
 app$ask_ai<-function(system_prompt,prompt,images=character()){
-  calls[[length(calls)+1L]]<<-list(prompt=prompt,bytes=lapply(images,function(p)readBin(p,"raw",file.info(p)$size)))
+  calls[[length(calls)+1L]]<<-list(system=system_prompt,prompt=prompt,bytes=lapply(images,function(p)readBin(p,"raw",file.info(p)$size)))
   "Received the actual plot image."
 }
 shiny::testServer(app$server,{
@@ -80,9 +85,13 @@ shiny::testServer(app$server,{
   before<-length(exports);request(12L)
   check(length(exports)==before && length(state$attachments)==3L,"the three-image limit is checked before exporting")
   staged<-vapply(state$attachments,function(a)a$path,character(1))
+  session$setInputs(console_context=TRUE)
   session$setInputs(chat_submit=list(text="Interpret these plots",nonce=1L))
   check(length(calls)==1L && identical(calls[[1L]]$bytes,list(bytes[[1L]],bytes[[2L]],bytes[[1L]])),
     "Send delivers the actual staged plot pixels in order")
+  check(grepl("plot(1:40)",calls[[1L]]$prompt,fixed=TRUE) &&
+    grepl("Only describe the current plot's appearance when its image is attached",calls[[1L]]$system,fixed=TRUE),
+    "Console context and actual attached plot images can be interpreted together")
   check(!length(state$attachments) && all(!file.exists(staged)),"successful Send releases plot staging files")
   request(13L);staged<-state$attachments[[1L]]$path
   session$setInputs(clear_images=1L)

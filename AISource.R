@@ -2012,7 +2012,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         "A Completed Console command label identifies the command for the preceding output up to the previous task boundary.",
         "A no text output captured label still records a completed command; it does not mean no Console activity occurred.",
         "A plot command can finish without printing text. Explain the captured command and report that no text output was captured; do not ask for pasted Console text already supplied.",
-        "Console capture does not include plot pixels. Never claim to have seen the current plot or infer its shape from the command alone.",
+        "Console capture does not include plot pixels. Only describe the current plot's appearance when its image is attached to this request; never infer its shape from a command alone.",
         "Retained images are historical uploads, not the current Console or latest plot. Do not substitute an earlier image for the captured Console evidence.",
         "Error condition calls and error stack entries are captured execution evidence, but may be enclosing calls rather than full commands.",
         "For Console questions, use these captured commands and output. Never infer the originating command from CURRENT EDITOR or filenames.",
