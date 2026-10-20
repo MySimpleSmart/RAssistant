@@ -1,3 +1,17 @@
+# RAssistant 0.3.7
+
+- Add an opt-in **Console context** control below the composer. New R output,
+  uncaught errors, warnings and messages can accompany Send automatically,
+  with a limit of 200 lines and 12,000 characters per request.
+- Keep Console output visible, redact the active API key from captured context,
+  and keep the raw capture in temporary storage outside saved chats.
+- Stop and clear capture on disable, chat changes, disconnect, Close and update.
+  Preserve other output sinks and condition handlers during cleanup.
+- Start condition logging through a fixed RStudio Console helper after returning
+  to the prompt; refuse activation over an unfinished Console command.
+- Existing output, plots, external-process output and messages intercepted by
+  other handlers are not guaranteed to be captured.
+
 # RAssistant 0.3.6
 
 - Check for new versions automatically on launch and every 30 minutes while

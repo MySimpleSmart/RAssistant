@@ -52,6 +52,7 @@ update_assistant <- function(ref = "main", relaunch = TRUE) {
   ns <- asNamespace("RAssistant")
   for (name in ls(ns, all.names = TRUE)) get(name, envir = ns, inherits = FALSE)
   .stop_update_worker()
+  .stop_console_capture()
   result <- .install_from_github(lib, ref)
   if (!is.list(result) || !identical(result$path, package_path) ||
       !.valid_version(result$version)) {
@@ -286,5 +287,6 @@ update_assistant <- function(ref = "main", relaunch = TRUE) {
     update_poll_delay = .update_poll_delay,
     refresh_update = function() .start_update_check(force = TRUE),
     request_update = .schedule_update, history = .conversation_store(),
-    knowledge = .knowledge_store())
+    knowledge = .knowledge_store(), console = .new_console_capture(),
+    prepare_console = .prepare_console_capture)
 }

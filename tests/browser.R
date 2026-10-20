@@ -21,7 +21,12 @@ main <- function() {
     available <- list(status="available",version="0.1.2",current="0.1.1")
     update_result <- list(status="current",version="0.1.1",current="0.1.1")
     published <- FALSE
+    console_enabled <- FALSE
+    console <- list(start=function(){console_enabled<<-TRUE},stop=function(){console_enabled<<-FALSE;TRUE},
+      dispose=function(){console_enabled<<-FALSE;TRUE},snapshot=function(redact)"CONSOLE_BROWSER_VALUE_42",
+      status=function()list(enabled=console_enabled,ready=TRUE,pending=FALSE,notice="",lines=if(console_enabled)1L else 0L))
     app <- load_assistant(package_info=if(standalone)NULL else list(version="0.1.1",history=history,knowledge=knowledge,
+      console=console,prepare_console=function()invisible(NULL),
       poll_update=function(){
         if(!published && file.exists(available_marker)){
           published <<- TRUE;update_result <<- available
@@ -46,7 +51,8 @@ main <- function() {
       Sys.sleep(.2)
       if(grepl("SIMULATED_FAILURE",prompt,fixed=TRUE))stop("Simulated API failure")
       if(grepl("SIMULATE_SOURCE_LOSS",prompt,fixed=TRUE))source_unavailable <<- TRUE
-      paste0("Response ",count,"\n\n```r\nx <- c(\"<tag>\", \"&lt;\", \"\\\\(x\\\\)\", \"$$\")\nkeep <- x > \"a\" & x < \"z\"\n```\n\n",
+      paste0("Response ",count,if(grepl("CONSOLE_BROWSER_VALUE_42",prompt,fixed=TRUE))" Console evidence received."else"",
+             "\n\n```r\nx <- c(\"<tag>\", \"&lt;\", \"\\\\(x\\\\)\", \"$$\")\nkeep <- x > \"a\" & x < \"z\"\n```\n\n",
              "Math: \\(\\alpha < 1\\).\n\n[[ACADEMIC_COMMENT]]Verified result.[[/ACADEMIC_COMMENT]]")
     }
     previous_limit <- getOption("shiny.maxRequestSize")
@@ -56,6 +62,7 @@ main <- function() {
     stopifnot(identical(getOption("shiny.maxRequestSize"),52*1024^2))
     while(identical(handle$status(),"running"))later::run_now(.05)
     stopifnot(identical(getOption("shiny.maxRequestSize"),previous_limit))
+    stopifnot(!console_enabled)
   }
   start_worker <- function(port,standalone=FALSE)callr::r_bg(run_app,args=list(root,port,update_marker,history_root,available_marker,standalone),
     stdout="|",stderr="|",supervise=TRUE)
@@ -151,10 +158,16 @@ main <- function() {
   js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click();')
   wait_js('document.getElementById("shiny-modal")===null')
   check(!file.exists(update_marker),"cancelling an update leaves the app running without installing")
+  check(isTRUE(js('!document.getElementById("console_context").checked')),
+    "Console context is an opt-in control")
+  js('document.getElementById("console_context").click();')
+  wait_js('document.getElementById("console_context_status").textContent.includes("On: 1 line")')
   js('document.getElementById("prompt").value="Explain this";document.getElementById("send").click();document.getElementById("send").click();')
   check(isTRUE(js('document.getElementById("send").disabled')), "Send disables immediately and blocks double clicks")
   wait_js('document.querySelector(".code-copy")!==null && !document.getElementById("send").disabled')
   check(isTRUE(js('document.querySelectorAll(".msg.user").length===1')), "double clicking produces one user turn")
+  check(isTRUE(js('document.querySelector(".msg.assistant").textContent.includes("Console evidence received.")')),
+    "Send automatically supplies Console context without clipboard interaction")
   check(isTRUE(js('document.getElementById("prompt").value==="" && document.getElementById("request_indicator").textContent===""')), "success clears composer and loading state")
   expected <- 'x <- c("<tag>", "&lt;", "\\(x\\)", "$$")\nkeep <- x > "a" & x < "z"\n'
   # The response uses escaped backslashes in a literal R string.

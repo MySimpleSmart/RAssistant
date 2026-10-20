@@ -235,17 +235,43 @@ OCR first.
 install.packages("pdftools")
 ```
 
+## Console context
+
+In the package app, enable **Console context** below the message box, wait for
+the status to say **On**, then run R code normally in RStudio. Ask about the result
+or error and press **Send**: the request includes up to 200 recent lines and
+12,000 characters of captured R output. Copy/Paste is not required.
+
+Capture starts off each time. To prepare error and warning logging, the app runs
+its own fixed helper in the RStudio Console without switching focus. Finish or
+clear a command already being typed there before enabling capture. The status
+shows when logging is ready; activation does not call OpenAI.
+
+Normal output remains visible, and ordinary uncaught errors, warnings and messages
+are recorded without suppressing them. The temporary capture is cleared when you
+turn the option off, change chats, disconnect, Close or update. Raw captured output
+is not added to saved chat snapshots, though answers based on it remain in chat.
+The active API key is redacted from captured context before it is sent.
+
+Only output produced after enabling is available. This is a bounded excerpt,
+not proof the current Source was executed. Plots, external-process output,
+messages intercepted by other handlers and output hidden by other sinks may be
+absent. If another package has temporarily put its own output sink on top of
+ours, cleanup waits for that sink to close; updating waits for cleanup.
+Large output is trimmed between commands and while the app polls capture status;
+a long-running command can temporarily grow the spool before control returns.
+
 ## Use and limits
 
 - **Upload** accepts up to 3 PNG/JPEG/WebP images, 4 MB each. Screenshots use
   content-neutral reading guidance; include a message to request a specific task.
-- Paste Console output into chat manually. The assistant does not read live
-  Console output or edit the Source document.
+- Enable **Console context** to include new R output automatically, or paste
+  Console output into chat manually. Source remains read-only.
 - Recent dialogue, retrieved earlier excerpts, a remembered assignment and retained
   images support multipart work. Use History to return to another conversation.
 - Script validation requires **Yes**, executes the entire current R/Rmd file in
   a child process, and may affect files. Only approved output/plots are shared.
-- Current Source text, detected CSV headers and uploaded images are sent to
+- Current Source text, detected CSV headers, opted-in Console context and uploaded images are sent to
   OpenAI when you click **Send**. An API account/key and internet access are needed.
 - Standalone `source("AISource.R")` remains supported with `OPENAI_API_KEY` set.
 

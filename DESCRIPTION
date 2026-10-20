@@ -1,10 +1,10 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.3.6
+Version: 0.3.7
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
-    Viewer. Supports image uploads, copied console output, contextual R help,
+    Viewer. Supports image uploads, optional live console context, contextual R help,
     project course knowledge (lecture PDFs, notes, R examples and custom instructions),
     and explicitly approved script validation. Stores optional credentials
     in the operating system credential store, separately from package updates.

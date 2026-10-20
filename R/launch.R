@@ -2,6 +2,7 @@
 .app_state$handle <- NULL
 .app_state$updated <- FALSE
 .app_state$update_queued <- FALSE
+.app_state$console <- NULL
 
 .package_path <- function() getNamespaceInfo(asNamespace("RAssistant"), "path")
 .in_rstudio <- function() rstudioapi::isAvailable()
@@ -31,6 +32,7 @@
   lib <- dirname(.package_path())
   position <- match("package:RAssistant", search())
   .stop_update_worker()
+  .stop_console_capture()
   tryCatch({
     unloadNamespace(current)
     fresh <- loadNamespace("RAssistant", lib.loc = lib)
@@ -57,6 +59,11 @@ launch <- function() {
   }
   launcher <- .load_launcher(file.path(.package_path(), "app", "AISource.R"))
   key <- .resolve_api_key()
-  .app_state$handle <- launcher(api_key = key, package_info = .package_ui_info())
+  info <- .package_ui_info()
+  .app_state$console <- info$console
+  .app_state$handle <- tryCatch(launcher(api_key = key, package_info = info), error = function(e) {
+    .stop_console_capture()
+    stop(e)
+  })
   invisible(.app_state$handle)
 }

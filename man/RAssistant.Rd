@@ -81,10 +81,23 @@ Credentials are stored separately and
 remain available after updates. A new R major/minor version can use a new library,
 requiring package reinstallation; the OS-stored key remains separate.
 
-The assistant sends the current Source, detected CSV headers, bounded conversation
-context and attached or retained images only when Send is clicked. Approved validation can execute the entire
+The package app offers an opt-in Console context control. Enable it, wait for
+the On status, then run code normally. Send includes up to 200 recent lines and
+12,000 characters of new R output, including ordinary uncaught errors, warnings
+and messages. A fixed registration helper runs in the RStudio Console without
+changing focus. Activation refuses to overwrite an unfinished Console command.
+Capture starts off, keeps normal output visible, and clears on disable, chat
+changes, disconnect, Close or update. The raw temporary capture is not saved in
+chat snapshots; answers based on it remain in chat. The active API key is redacted.
+Old output, plots, external-process output and conditions caught by other handlers
+may be absent. Cleanup waits for any output sink placed above ours; updates wait
+for that cleanup. Large output is trimmed when control returns between commands
+or to app polling, so a running command can temporarily grow the spool.
+
+The assistant sends the current Source, detected CSV headers, bounded conversation,
+opted-in Console context and attached or retained images only when Send is clicked. Approved validation can execute the entire
 current R/Rmd file in a child process and send its output and captured plots.
-Validation is not a sandbox. Console output must be pasted manually.
+Validation is not a sandbox. Console output may also be pasted manually.
 }
 \value{\code{launch()} invisibly returns a Shiny app handle.
 \code{set_api_key()} and \code{forget_api_key()} invisibly return \code{NULL}.

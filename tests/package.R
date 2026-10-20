@@ -181,6 +181,42 @@ main <- function() {
     "an installation error does not report successful update")
   env$.install_from_github <- function(lib, ref) list(path = "wrong-place", version = "0.1.1")
   check(failed(env$update_assistant(), "verify the updated package location"), "an unexpected install location is rejected")
+
+  # Activation queues only our fixed helper and refuses to overwrite typed code.
+  control <- new.env(parent=ns)
+  for(name in c(".prepare_console_capture",".activate_console_capture",".stop_console_capture")) {
+    value<-get(name,ns);environment(value)<-control;assign(name,value,control)
+  }
+  control$.app_state<-new.env(parent=emptyenv())
+  prepared<-0L;complete<-TRUE;commands<-list();context<-list(contents="unfinished <- ")
+  controller<-list(id="fixture-token",status=function()list(ready=FALSE),
+    prepare=function(){prepared<<-prepared+1L;TRUE},dispose=function()complete)
+  control$.app_state$console<-controller
+  control$`::`<-function(pkg,name){
+    p<-as.character(substitute(pkg));n<-as.character(substitute(name))
+    if(p=="rstudioapi" && n=="getConsoleEditorContext")return(function()context)
+    if(p=="rstudioapi" && n=="sendToConsole")return(function(...){commands[[length(commands)+1L]]<<-list(...)})
+    base::getExportedValue(p,n)
+  }
+  check(failed(control$.prepare_console_capture(),"Finish or clear the command") && !length(commands),
+    "Console context activation never overwrites an unfinished Console command")
+  context<-list(contents="")
+  control$.prepare_console_capture()
+  check(length(commands)==1L && identical(commands[[1L]][[1L]],
+    'RAssistant:::.activate_console_capture("fixture-token")') &&
+    isTRUE(commands[[1L]]$execute) && identical(commands[[1L]]$echo,FALSE) &&
+    identical(commands[[1L]]$focus,FALSE),
+    "activation runs only the token-bound helper without echoing code or changing focus")
+  control$.activate_console_capture("old-token")
+  check(prepared==0L,"stale activation requests cannot enable another app generation")
+  control$.activate_console_capture("fixture-token")
+  check(prepared==1L,"the current activation request prepares the capture controller")
+  complete<-FALSE
+  check(failed(control$.stop_console_capture(),"Finish the other output capture") &&
+    identical(control$.app_state$console,controller),
+    "pending sink cleanup blocks updates rather than popping another package's sink")
+  complete<-TRUE;control$.stop_console_capture()
+  check(is.null(control$.app_state$console),"completed capture cleanup releases the old app controller")
   cat(checks, "package checks passed\n")
 }
 main()
