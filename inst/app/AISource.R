@@ -1792,7 +1792,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       window.addEventListener("focus",function(){sourceFocusPending=true;watchSource();});
       window.addEventListener("blur",function(){var menu=document.getElementById("app_menu");if(menu)menu.open=false;});
       document.addEventListener("visibilitychange",function(){if(document.visibilityState!=="hidden"){sourceFocusPending=true;watchSource();}});
-      window.setInterval(watchSource,650);
+      window.setInterval(watchSource,300);
       if(window.jQuery){
         window.jQuery(document).on("input change","#prompt",resizePrompt);
         window.jQuery(document).on("shiny:value",function(e){
@@ -2010,6 +2010,16 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     watch_source_selection <- function() {
       if(!session_active || state$busy || !is.null(state$pending) || state$edit_panel)return()
       live <- read_source_context(state$file_id)
+      # The document label follows Source independently of a selection/chunk.
+      # Selection-only movement must not clear the last Send's read status.
+      current <- if(is_source_context(live))live else empty_source_context()
+      fields <- c("id","path","contents")
+      if(!identical(current[fields],state$current[fields])) {
+        state$current <- current
+        if(is_source_context(live))state$file_id <- live$id
+        state$source_read <- NULL
+        sync_client()
+      }
       if(!is_source_context(live)){source_watch_seen<<-NULL;if(isTRUE(code_target()$automatic))code_target(NULL);return()}
       if(nchar(full_text(live))>50000L){source_watch_seen<<-NULL;if(isTRUE(code_target()$automatic))code_target(NULL);return()}
       key <- list(id=live$id,path=chat_text(live$path),contents=live$contents,selection=live$selection)
@@ -2025,7 +2035,6 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(identical(identity,source_target_dismissed))return()
       previous <- code_target()
       if(!is.null(previous) && identical(target$snapshot,previous$snapshot) && identical(target$scope,previous$scope))return()
-      state$current <- live;state$file_id <- live$id;state$source_read <- NULL
       token <- if(isTRUE(previous$automatic) && identical(previous$chat,state$chat$id))previous$token else basename(tempfile("auto-code-"))
       code_target(c(target,list(token=token,chat=state$chat$id,automatic=TRUE)))
     }

@@ -27,16 +27,27 @@ main <- function() {
   first <- NULL;second <- NULL
   shiny::testServer(app$server,{
     session$flushReact()
+    check(!length(history$list()),"opening a blank chat does not create a History entry")
+    session$setInputs(new_chat=1L);session$setInputs(new_chat=2L)
+    check(!length(history$list()) && is.null(history$load()),"repeated New chat clicks do not accumulate empty conversations")
+    session$setInputs(prompt=" \n\t ");persist_chat()
+    check(!length(history$list()),"whitespace-only drafts are not saved")
+    session$setInputs(prompt="Unsent draft");persist_chat()
+    check(identical(history$load(state$chat$id)$draft,"Unsent draft"),"unsent draft text is saved before its first message")
+    session$setInputs(prompt="");persist_chat()
+    check(!length(history$list()),"clearing an unsent draft removes its now-empty history entry")
     session$setInputs(paste_image=list(image=image,filename="Screenshot.png",nonce=1L,epoch=state$upload_epoch))
+    check(length(history$load(state$chat$id)$attachments)==1L,"an image-only draft is saved before its first message")
     session$setInputs(chat_submit=list(text="Remember the value 42",nonce=1L))
     first <<- state$chat$id
     check(identical(history$load(first)$messages[[1L]]$text,"Remember the value 42"),
       "successful turns auto-save the current chat")
-    session$setInputs(new_chat=1L)
+    session$setInputs(new_chat=3L)
     second <<- state$chat$id
-    check(!identical(first,second) && length(history$list())==2L && !length(state$messages),
-      "New chat saves the previous conversation and opens a separate chat")
+    check(!identical(first,second) && length(history$list())==1L && !length(state$messages) && is.null(history$load(second)),
+      "New chat preserves the previous conversation without saving the new empty chat")
     session$setInputs(chat_submit=list(text="A separate topic",nonce=2L))
+    check(length(history$list())==2L,"sending the first message adds the new conversation to History")
     session$setInputs(history_selected=first,history_rename=1L)
     session$setInputs(history_name="Important assignment",history_save_name=1L)
     check(identical(history$load(first)$title,"Important assignment"),"History can rename a saved conversation")
@@ -68,7 +79,7 @@ main <- function() {
     check(length(last$bytes)==1L && identical(last$bytes[[1L]],bytes),
       "a screenshot follow-up after relaunch reuses the original locally saved pixels")
     session$setInputs(history_selected=first,history_delete=2L,history_confirm_delete=2L)
-    check(!identical(state$chat$id,first) && !length(state$messages) && is.null(history$load(first)),
+    check(!identical(state$chat$id,first) && !length(state$messages) && is.null(history$load(first)) && !length(history$list()),
       "deleting the active chat opens a new empty conversation")
   })
   unavailable <- history

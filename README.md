@@ -192,7 +192,10 @@ scroll back to read older messages between replies; sending a new question
 returns to the newest response.
 
 Text, code, copied output, assignment context, images and unsent drafts are saved.
+Empty new chats are not saved. Unsent text or images count as a draft; clearing
+both before sending removes that empty entry from History.
 Run approvals are never restored; any execution needs a fresh request and Yes.
+The header follows Source tabs and file renames even without a code selection.
 Switching Source tabs preserves the conversation and labels earlier Source
 context. Only a fresh editor read is treated as the current script.
 
@@ -354,7 +357,7 @@ It shows the file and exact target. The cross hides it until the selection chang
 Nothing appears for an ordinary R file without a selection. For whole-file
 questions, ask in chat as usual or select all code in Source.
 
-While Source has focus, a local check runs about every 650 ms, with only one
+While Source has focus, a local check runs about every 300 ms, with only one
 request outstanding. Checks pause while the assistant is busy, on the history
 page and when hidden; returning to the Viewer triggers a fresh check. They use
 RStudio's read-only Source API without moving focus, running code or sending AI

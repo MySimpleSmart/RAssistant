@@ -173,6 +173,13 @@
   }
   save_chat <- function(chat) {
     if (!is.list(chat) || !valid_id(chat$id)) stop("Invalid conversation.", call. = FALSE)
+    # Opening/New chat alone is not a conversation. Retain unsent work, but
+    # remove an earlier draft save if its text and attachments were cleared.
+    if (!length(chat$messages) && !length(chat$attachments) &&
+        !isTRUE(nzchar(trimws(chat$draft)))) {
+      if (dir.exists(file.path(root, chat$id))) delete_chat(chat$id)
+      return(invisible(NULL))
+    }
     chat$updated_at <- format(Sys.time(), "%Y-%m-%dT%H:%M:%OS6Z", tz = "UTC")
     saved <- map_images(chat, store_image)
     refs <- unique(unlist(lapply(saved$messages, function(m) c(

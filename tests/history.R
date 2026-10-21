@@ -21,12 +21,25 @@ main <- function() {
   check(identical(.Random.seed,rng),"chat identifiers do not change the user's R random-number state")
   check(is.null(store$load()) && !length(store$list()) && !dir.exists(store$path),
     "opening an unused history store does not create files")
+  empty <- list(id=store$new_id(),title="New chat",messages=list(),draft=" \n\t ",attachments=list())
+  store$save(empty)
+  check(!length(store$list()) && !dir.exists(store$path),"saving an empty chat creates no directory or snapshots")
+  draft <- empty;draft$draft <- "Keep this unsent question"
+  store$save(draft)
+  check(identical(store$load(draft$id)$draft,draft$draft),"unsent text alone is meaningful history")
+  store$save(empty)
+  check(!length(store$list()) && is.null(store$load(draft$id)),"clearing a previously saved draft removes its empty record")
   fixture <- file.path(root,"synthetic.png")
   grDevices::png(fixture,width=80,height=80);par(mar=rep(0,4));plot.new();points(.5,.5)
   invisible(grDevices::dev.off())
   bytes <- readBin(fixture,"raw",file.info(fixture)$size)
   preview <- paste0("data:image/png;base64,",jsonlite::base64_enc(bytes))
   image <- list(label="Screenshot.png",preview=preview)
+  upload <- empty;upload$attachments <- list(image)
+  store$save(upload)
+  check(identical(store$load(upload$id)$attachments[[1L]]$preview,preview),"an unsent image alone is meaningful history")
+  store$save(empty)
+  check(!length(store$list()) && !length(list.files(file.path(store$path,"images"))),"clearing the last unsent image removes the empty record and its unused asset")
   chat <- list(id=store$new_id(),title="First chat",title_custom=FALSE,created_at="now",
     messages=list(list(role="You",type="text",text="Explain the screenshot",sequence=1L,attachments=list(image)),
       list(role="AI",type="text",text="The value is 42.",academic="Verified result.",sequence=2L)),

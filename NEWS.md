@@ -1,3 +1,8 @@
+# RAssistant 0.9.1
+
+- Follow Source tab changes and file renames promptly, including files with no selected code. Refresh the label independently of the code actions toolbar.
+- Keep empty new chats out of History. Preserve unsent text and attachments; clearing an unsent draft removes its empty history entry.
+
 # RAssistant 0.9.0
 
 - Selecting code in Source automatically shows Explain, Fix and Improve. Rmd/Quarto chunks use the same toolbar, without a dropdown activation step.

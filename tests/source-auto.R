@@ -17,6 +17,15 @@ shiny::testServer(app$server,{
   tick<-function(){nonce<<-nonce+1L;session$setInputs(source_watch_tick=nonce);session$flushReact();code_target()}
   action<-function(name,token=code_target()$token){nonce<<-nonce+1L;session$setInputs(chat_submit=list(text="",selection_action=name,scope="smart",target_token=token,nonce=nonce));session$flushReact();if(!is.null(review_context()))invisible(output$source_change_preview)}
   session$flushReact();tick();check(is.null(code_target()),"no toolbar appears before Source has a selection or R chunk")
+  original <- editor$ctx
+  editor$ctx <- list(id="other",path="/tmp/other.R",contents="z <- 1",selection=NULL)
+  tick();check(identical(output$filename,"other.R") && identical(state$file_id,"other") && is.null(code_target()) && !length(editor$calls),
+    "switching an unselected Source tab refreshes its name and document ID without an AI request")
+  editor$ctx$path <- "/tmp/renamed.R";tick()
+  check(identical(output$filename,"renamed.R"),"Save As refreshes the header even when the document ID is unchanged")
+  editor$ctx$path <- "";tick()
+  check(identical(output$filename,"Untitled"),"switching to an unsaved document clears the previous filename")
+  editor$ctx <- original;tick()
   select_row(1L);first<-tick()
   check(isTRUE(first$automatic) && first$mode=="selection" && first$scope$text=="x <- bad(X)" && length(editor$calls)==0L && length(editor$writes)==0L,
     "selecting Source text opens its toolbar without activation, AI requests or editor writes")
@@ -26,6 +35,8 @@ shiny::testServer(app$server,{
   select_row(1L);action("explain",second$token)
   check(length(editor$calls)==1L && grepl("auto.R:1-1",editor$calls[[1L]]$prompt,fixed=TRUE) && is.null(tail(state$messages,1L)[[1L]]$source_snapshot),
     "clicking Explain reads the latest selection immediately without requiring another click")
+  read_status <- state$source_read;select_row(2L);tick()
+  check(!is.null(read_status) && identical(state$source_read,read_status),"selection movement preserves the last message's Source read status")
   select_row(2L);editor$reply<-"```r\ny <- dim(Y)\n```";action("fix")
   job<-get("preview_job",envir=environment(clear_source_review),inherits=FALSE)
   check(job$mode=="selection" && job$after=="x <- bad(X)\ny <- dim(Y)" && length(editor$writes)==0L,
@@ -36,6 +47,8 @@ shiny::testServer(app$server,{
   check(is.null(code_target()) && length(editor$calls)==count,"losing the selection never silently broadens an automatic action to the whole file")
   select_row(1L);tick();session$setInputs(clear_code_target=1L);session$flushReact();tick()
   check(is.null(code_target()),"dismissed actions remain hidden for the same selection")
+  editor$ctx$path <- "/tmp/renamed-auto.R";tick();session$setInputs(clear_code_target=2L);session$flushReact();tick()
+  check(identical(output$filename,"renamed-auto.R") && is.null(code_target()),"dismissing code actions does not freeze the document name")
   editor$ctx$selection<-NULL;tick();select_row(1L);tick()
   check(!is.null(code_target()),"clearing and selecting again reopens the toolbar without a menu")
   reads<-editor$reads;state$busy<-TRUE;select_row(2L);tick()
@@ -43,15 +56,17 @@ shiny::testServer(app$server,{
   state$busy<-FALSE;state$edit_panel<-TRUE;tick()
   check(editor$reads==reads,"the watcher pauses on the separate history page")
   state$edit_panel<-FALSE;tick();check(code_target()$scope$start_row==2L,"returning to chat refreshes a changed Source selection")
-  editor$unavailable<-TRUE;tick();check(is.null(code_target()),"an unavailable Source quietly hides automatic actions")
+  editor$unavailable<-TRUE;tick();check(is.null(code_target()) && identical(output$filename,"No Source document"),"an unavailable Source quietly clears its label and hides automatic actions")
   editor$unavailable<-FALSE;tick();check(!is.null(code_target()),"Source recovery restores the toolbar without reopening the app")
-  editor$ctx$contents<-strrep("x",50001L);editor$ctx$selection<-NULL;tick()
-  check(is.null(code_target()) && is.null(source_watch_seen),"oversized Source contents are not retained by the automatic watcher")
+  editor$ctx$contents<-strrep("x",50001L);editor$ctx$path<-"/tmp/large.R";editor$ctx$selection<-NULL;tick()
+  check(is.null(code_target()) && is.null(source_watch_seen) && identical(output$filename,"large.R"),"oversized Source still updates its name without retaining a selection watch key")
   editor$ctx<-list(id="chunk",path="/tmp/auto.qmd",contents=c("Text.","```{r first}","x <- bad(X)","```"),
     selection=list(list(text="",range=list(start=c(3,1),end=c(3,1)))))
   tick();check(code_target()$mode=="chunk" && code_target()$scope$chunk=="first","placing the Source cursor in an R chunk shows the same automatic toolbar")
   editor$ctx$selection[[1L]]$range<-list(start=c(1,1),end=c(1,1));tick()
   check(is.null(code_target()),"moving from a chunk into prose hides its toolbar")
+  editor$ctx$path<-"/tmp/other.qmd";tick()
+  check(identical(output$filename,"other.qmd") && is.null(code_target()),"Quarto prose follows the current document without showing code actions")
   select_row(1L);tick();old<-code_target();session$setInputs(new_chat=1L);session$flushReact();count<-length(editor$calls);action("explain",old$token)
   check(is.null(code_target()) && length(editor$calls)==count,"New chat revokes automatic action tokens")
   tick();check(!is.null(code_target()) && !identical(code_target()$token,old$token),"the current selection can show fresh actions in the new chat without reactivation")

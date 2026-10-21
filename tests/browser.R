@@ -77,14 +77,16 @@ main <- function() {
     app$active_doc <- function(id=NULL) {
       if(source_unavailable)stop("Simulated RStudio Source lookup failure")
       app$initial$selection <- NULL
+      context <- app$initial
       if(file.exists(source_marker)) {
         selected <- readRDS(source_marker);row <- selected$row
+        if(!is.null(selected$path))context$path <- selected$path
         if(is.numeric(row) && row>=1L && row<=length(app$initial$contents)) {
           text <- if(selected$mode=="selection")app$initial$contents[[row]]else""
-          app$initial$selection <- list(list(text=text,range=list(start=c(row,1L),end=c(row,nchar(text)+1L))))
+          context$selection <- list(list(text=text,range=list(start=c(row,1L),end=c(row,nchar(text)+1L))))
         }
       }
-      app$initial
+      context
     }
     count <- 0L
     app$ask_ai <- function(system_prompt,prompt,images=character()) {
@@ -154,6 +156,8 @@ main <- function() {
       if(Sys.time()>deadline) {
         cat("Page tail:\n",tail(strsplit(js('document.body && document.body.innerText'),"\n")[[1]],40),sep="\n")
         cat("\nServer:\n",paste(worker$read_error_lines(),collapse="\n"),"\n")
+        cat("\nWorker:\n",worker$is_alive(),worker$get_exit_status(),"\n",
+          paste(worker$read_output_lines(),collapse="\n"),"\n")
         cat("\nMessages:\n",js('JSON.stringify(window.receivedMessages||[])'),"\n")
         cat("\nControls:\n",js('JSON.stringify({send:document.getElementById("send")&&document.getElementById("send").disabled,prompt:document.getElementById("prompt")&&document.getElementById("prompt").value,users:document.querySelectorAll(".msg.user").length,errors:window.aisourceErrors})'),"\n")
         stop("Timed out: ",expression)
@@ -192,6 +196,23 @@ main <- function() {
   js('document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));')
   check(isTRUE(js('!document.getElementById("app_menu").open && document.activeElement===document.querySelector("#app_menu>summary")')),
     "Escape closes the actions menu and restores keyboard focus")
+  saveRDS(list(mode="cursor",row=1L,path="/tmp/other-workspace.R"),source_marker)
+  wait_js('document.getElementById("filename").textContent==="other-workspace.R"',timeout=2)
+  check(isTRUE(js('document.querySelector(".code-target-toolbar")===null && document.querySelectorAll(".msg").length===0')),
+    "the header quickly follows an unselected Source tab without a toolbar or chat request")
+  saveRDS(list(mode="cursor",row=1L,path="/tmp/renamed-workspace.R"),source_marker)
+  wait_js('document.getElementById("filename").textContent==="renamed-workspace.R"',timeout=2)
+  unlink(source_marker)
+  wait_js('document.getElementById("filename").textContent==="example.R"',timeout=2)
+  check(TRUE,"Source renames and tab switches update the rendered label within two seconds")
+  js('document.getElementById("new_chat").click();')
+  wait_js('document.querySelector(".empty")!==null')
+  js('openAction("history");')
+  wait_js('document.getElementById("shiny-modal")!==null')
+  check(isTRUE(js('document.getElementById("history_selected")===null && document.getElementById("shiny-modal").textContent.includes("No saved chats yet.")')),
+    "opening History after New chat does not list an empty conversation")
+  js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
+  wait_js('document.getElementById("shiny-modal")===null')
   saveRDS(list(mode="selection",row=1L),source_marker)
   wait_js('document.querySelector(".code-target-toolbar")!==null')
   check(isTRUE(js('document.querySelector(".code-target-label").textContent.includes("example.R") && document.querySelector(".code-target-label").textContent.includes("Selected line 1") && document.getElementById("smart_explain").getClientRects().length>0 && document.getElementById("smart_fix").getClientRects().length>0 && document.getElementById("smart_improve").getClientRects().length>0 && document.querySelectorAll(".msg.user").length===0 && !document.getElementById("app_menu").open')),
@@ -510,7 +531,9 @@ main <- function() {
     Sys.sleep(.05)
   }
   browser$Page$navigate(url)
-  wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled && document.querySelectorAll(".msg.user").length===2 && document.getElementById("prompt").value==="Unsent draft that survives relaunch"')
+  # A fresh server must initialize its bindings and restore image history.
+  # Allow startup time separately from the short checks on an existing page.
+  wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled && document.querySelectorAll(".msg.user").length===2 && document.getElementById("prompt").value==="Unsent draft that survives relaunch"',timeout=30)
   check(isTRUE(js('document.querySelector(".sent-attachment img").complete && document.querySelector(".sent-attachment img").naturalWidth>0')),
     "a new R server process restores the latest chat, draft and image preview")
   js('window.copied=null;Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:function(t){window.copied=t;return Promise.resolve();}}});document.querySelector(".code-copy").click();')
