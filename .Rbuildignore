@@ -7,7 +7,7 @@
 ^\.DS_Store$
 ^\.Renviron.*$
 ^\.env.*$
-^tests/(helpers|regression|source-context|source-edits|source-workflow|source-advanced|source-restore|source-smart|assignment-context|image-reading|conversation-context|conversation-history|console-context|plot-attachment|knowledge-context|live-image-reading|browser)\.R$
+^tests/(helpers|regression|source-context|source-edits|source-workflow|source-advanced|source-restore|source-smart|source-auto|assignment-context|image-reading|conversation-context|conversation-history|console-context|plot-attachment|knowledge-context|live-image-reading|browser)\.R$
 ^.*\.Rcheck$
 ^.*\.(tar\.gz|tgz|zip)$
 ^R Assistant Local$

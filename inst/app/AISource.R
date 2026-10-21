@@ -157,11 +157,21 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     }
     syntax <- check_source_syntax(if(is.null(scope))snapshot$text else scope$text,
       if(mode=="chunk")"R"else snapshot$kind)
-    label <- switch(mode,file=paste0("Whole file · ",snapshot$lines," lines"),
-      selection=paste0("Selected lines ",scope$start_row,"–",scope$end_row),
-      chunk=paste0("R chunk ",scope$chunk," · lines ",scope$start_row,"–",scope$end_row))
+    range_label <- function(scope)if(scope$start_row==scope$end_row)paste0("line ",scope$start_row)else paste0("lines ",scope$start_row,"–",scope$end_row)
+    label <- switch(mode,file=paste0("Whole file · ",snapshot$lines,if(snapshot$lines==1L)" line"else" lines"),
+      selection=paste0("Selected ",range_label(scope)),chunk=paste0("R chunk ",scope$chunk," · ",range_label(scope)))
     list(snapshot=snapshot,scope=scope,mode=mode,label=label,recommended=if(syntax$ok)"explain"else"fix")
   }
+  automatic_source_target <- function(ctx) {
+    target <- smart_source_target(ctx)
+    if(target$mode=="file")return(NULL)
+    target
+  }
+  restore_icon <- function(redo=FALSE)shiny::tags$svg(viewBox="0 0 24 24",width="16",height="16",
+    "aria-hidden"="true",focusable="false",fill="none",stroke="currentColor","stroke-width"="1.8",
+    "stroke-linecap"="round","stroke-linejoin"="round",
+    shiny::tags$g(transform=if(redo)"translate(24 0) scale(-1 1)"else NULL,
+      shiny::tags$path(d="M9 5 4 10l5 5"),shiny::tags$path(d="M4 10h9a7 7 0 0 1 7 7v2")))
   workspace_summary <- function(env=.GlobalEnv) {
     names <- ls(env,all.names=FALSE)
     names <- names[!grepl("api.?key|token|secret|password|credential|auth",names,ignore.case=TRUE)]
@@ -1271,6 +1281,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .menu-button-row{display:flex;gap:4px}
   .menu-button-row>.btn{flex:1;min-width:0;white-space:normal}
   .menu-hint{font-size:10px;color:var(--muted);margin:5px 4px}
+  .menu-close{border-top:1px solid var(--border);margin-top:7px;padding-top:7px}
+  .menu-close>.btn.ai-close{display:block;width:100%;text-align:center}
   .menu-version{border-top:1px solid var(--border);margin-top:4px;padding:7px 9px 3px;color:var(--muted);font-size:10px}
   button:focus-visible,summary:focus-visible,.attach-plot:focus-visible{outline:2px solid #5a8db7;outline-offset:2px}
   .history-actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
@@ -1294,6 +1306,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .btn.ai-no{background:#fff;color:#545b64}
   .btn.ai-close{background:#b93434;border-color:#a52c2c;color:white}
   .btn.ai-close:hover{background:#a52c2c;color:white}
+  .btn.icon-button{display:inline-flex;align-items:center;justify-content:center;width:28px;height:26px;padding:4px;flex:0 0 auto}
   .history{flex:1 1 auto;min-height:0;overflow:auto;padding:10px 10px 0;overflow-anchor:none;scroll-behavior:auto}
   .msg{margin:0 0 15px;min-width:0}
   .role{font:600 10px/1.5 var(--mono);color:#607080;margin-bottom:4px}
@@ -1338,7 +1351,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .code-target-toolbar{border:1px solid var(--border);border-radius:3px;padding:6px;margin-bottom:6px;background:white}
   .code-target-label{font-size:11px;color:#314455;overflow-wrap:anywhere;margin-bottom:5px}
   .code-target-buttons{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
-  .code-target-buttons .code-target-refresh{margin-left:auto}
+  .code-target-buttons .code-target-close{margin-left:auto}
   .edit-history-panel{border:1px solid var(--border);padding:9px;margin:8px 0;font-size:11px}
   .edit-history-page{flex:1 1 auto;min-height:0;overflow:auto;padding:8px}
   .edit-page-header{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:8px}
@@ -1436,13 +1449,20 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     var readyCount=0, uploadEpoch=0, connected=false;
     var openDetails=Object.create(null);
     var scrollLatest=function(){},holdReviewPosition=function(){},resumeChatScroll=function(){},historyOpen=false,editApplying=false,targetRefreshing=false,sourceReadDetail="";
+    var sourceWatchPending=false,sourceFocusPending=true;
+    function watchSource(){
+      if(!connected || sourceWatchPending || document.visibilityState==="hidden" || serverBusy || pending ||
+        submitId!==null || editApplying || targetRefreshing || historyOpen || (document.hasFocus() && !sourceFocusPending))return;
+      sourceFocusPending=false;sourceWatchPending=true;
+      Shiny.setInputValue("source_watch_tick",++nonce,{priority:"event"});
+    }
     function showEditPage(open){
       if(open===historyOpen)return;historyOpen=open;
       var chat=document.getElementById("chat_stream"),compose=document.querySelector(".compose"),page=document.getElementById("edit_history_page");
       if(chat)chat.style.display=open?"none":"";
       if(compose)compose.style.display=open?"none":"";
       if(page){page.style.display=open?"block":"none";if(open)page.scrollTop=0;}
-      if(!open){resumeChatScroll();window.requestAnimationFrame(resizePrompt);}
+      if(!open){sourceFocusPending=true;resumeChatScroll();window.requestAnimationFrame(resizePrompt);}
     }
     function resizePrompt(){
       var field=document.getElementById("prompt");if(!field)return;
@@ -1657,7 +1677,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     });
     document.addEventListener("click",function(e){
       var menu=document.getElementById("app_menu");
-      if(menu && (!menu.contains(e.target) || (e.target.closest && e.target.closest(".menu-actions button"))))menu.open=false;
+      if(menu && (!menu.contains(e.target) || (e.target.closest && e.target.closest(".menu-panel button"))))menu.open=false;
       var activate=e.target.closest && e.target.closest("#code_actions");
       if(activate && !activate.disabled && connected){targetRefreshing=true;updateSendState();}
       var review=e.target.closest && e.target.closest(".source-review");
@@ -1747,13 +1767,14 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           showEditPage(!!msg.edit_page);
         });
         Shiny.addCustomMessageHandler("ai_submit_complete",function(msg){
-          if(msg && msg.id===submitId){submitId=null;scrollLatest();updateSendState();window.requestAnimationFrame(resizePrompt);}
+          if(msg && msg.id===submitId){submitId=null;sourceFocusPending=true;scrollLatest();updateSendState();window.requestAnimationFrame(resizePrompt);}
         });
         Shiny.addCustomMessageHandler("ai_validation_complete",function(msg){
-          validationInFlight=false;scrollLatest();updateSendState();
+          validationInFlight=false;sourceFocusPending=true;scrollLatest();updateSendState();
         });
-        Shiny.addCustomMessageHandler("ai_edit_complete",function(msg){editApplying=false;updateSendState();});
+        Shiny.addCustomMessageHandler("ai_edit_complete",function(msg){editApplying=false;sourceFocusPending=true;updateSendState();});
         Shiny.addCustomMessageHandler("ai_code_target_complete",function(msg){if(!msg.ready){targetRefreshing=false;updateSendState();}});
+        Shiny.addCustomMessageHandler("ai_source_watch_complete",function(msg){sourceWatchPending=false;});
         Shiny.addCustomMessageHandler("ai_scroll_latest",function(msg){scrollLatest();});
         Shiny.addCustomMessageHandler("ai_review_lock",function(msg){var field=msg && document.getElementById(msg.mode_id);if(field)field.disabled=true;});
         Shiny.addCustomMessageHandler("ai_chat_reset",function(msg){
@@ -1764,10 +1785,14 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       function onConnected(){registerHandlers();Shiny.setInputValue("ai_client_ready",++nonce,{priority:"event"});}
       if(window.jQuery){window.jQuery(document).on("shiny:connected",onConnected);
         window.jQuery(document).on("shiny:disconnected",function(){
-          connected=false;submitId=null;plotCaptureId=null;validationInFlight=false;editApplying=false;targetRefreshing=false;resetTransfers();
+          connected=false;submitId=null;plotCaptureId=null;validationInFlight=false;editApplying=false;targetRefreshing=false;sourceWatchPending=false;sourceFocusPending=true;resetTransfers();
         });}
       document.addEventListener("shiny:connected",onConnected);
       window.addEventListener("resize",resizePrompt);
+      window.addEventListener("focus",function(){sourceFocusPending=true;watchSource();});
+      window.addEventListener("blur",function(){var menu=document.getElementById("app_menu");if(menu)menu.open=false;});
+      document.addEventListener("visibilitychange",function(){if(document.visibilityState!=="hidden"){sourceFocusPending=true;watchSource();}});
+      window.setInterval(watchSource,650);
       if(window.jQuery){
         window.jQuery(document).on("input change","#prompt",resizePrompt);
         window.jQuery(document).on("shiny:value",function(e){
@@ -1888,7 +1913,6 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             shiny::div(class="menu-group","aria-label"="Code",
               shiny::p(class="menu-heading","Code"),
               shiny::div(class="menu-actions",
-                shiny::actionButton("code_actions","Code actions",class="ai-btn",title="Show a toolbar for selected code, the current R chunk or the whole file"),
                 shiny::actionButton("edit_history","Code edit history",class="ai-btn",title="Open code changes on a separate page"))),
             if(!is.null(package_info$history) || !is.null(package_info$knowledge))shiny::div(class="menu-group","aria-label"="Chat",
               shiny::p(class="menu-heading","Chat"),shiny::div(class="menu-actions",
@@ -1898,8 +1922,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
               shiny::p(class="menu-heading","App"),shiny::div(class="menu-actions",
                 shiny::div(class="menu-button-row",
                   if(!is.null(package_info))shiny::actionButton("check_updates","Check updates",class="ai-btn",title="Check for updates now"),
-                  shiny::actionButton("help","Help",class="ai-btn")),
-                shiny::actionButton("close","Close",class="ai-btn ai-close"))),
+                  shiny::actionButton("help","Help",class="ai-btn")))),
+            shiny::div(class="menu-close",shiny::actionButton("close","Close",class="ai-btn ai-close")),
             if(!is.null(package_info))shiny::div(class="menu-version","RAssistant ",
               shiny::span(class="app-version",paste0("v",package_info$version)))))
       )
@@ -1921,8 +1945,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             accept="image/png,image/jpeg,image/webp")),
         shiny::tags$button(id="attach_current_plot",type="button",class="attach-plot",
           title="Attach the plot selected in RStudio's Plots pane as a PNG", "Plot"),
-        shiny::actionButton("preview_undo","Undo",class="ai-btn",title="Preview undoing the last AI code edit"),
-        shiny::actionButton("preview_redo","Redo",class="ai-btn",title="Preview reapplying the last undone AI code edit"),
+        shiny::actionButton("preview_undo",restore_icon(),class="ai-btn icon-button",title="Undo last AI edit","aria-label"="Undo last AI edit"),
+        shiny::actionButton("preview_redo",restore_icon(TRUE),class="ai-btn icon-button",title="Redo last undone AI edit","aria-label"="Redo last undone AI edit"),
         shiny::actionButton("send","Send",class="ai-btn ai-send")
       ),
       shiny::div(id="compose_status",class="compose-status",hidden="hidden",
@@ -1952,6 +1976,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     review_context <- shiny::reactiveVal(NULL)
     undo_job <- shiny::reactiveVal(NULL)
     code_target <- shiny::reactiveVal(NULL)
+    source_watch_seen <- NULL
+    source_target_dismissed <- NULL
     preview_job <- NULL
     clear_source_review <- function(remove=TRUE) {
       open <- !is.null(shiny::isolate(review_context()))
@@ -1981,8 +2007,38 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     }
     shiny::observeEvent(input$code_actions,activate_code_target(),ignoreInit=TRUE)
     shiny::observeEvent(input$refresh_code_target,activate_code_target(),ignoreInit=TRUE)
+    watch_source_selection <- function() {
+      if(!session_active || state$busy || !is.null(state$pending) || state$edit_panel)return()
+      live <- read_source_context(state$file_id)
+      if(!is_source_context(live)){source_watch_seen<<-NULL;if(isTRUE(code_target()$automatic))code_target(NULL);return()}
+      if(nchar(full_text(live))>50000L){source_watch_seen<<-NULL;if(isTRUE(code_target()$automatic))code_target(NULL);return()}
+      key <- list(id=live$id,path=chat_text(live$path),contents=live$contents,selection=live$selection)
+      if(identical(key,source_watch_seen))return()
+      source_watch_seen <<- key
+      target <- tryCatch(automatic_source_target(live),error=function(e)NULL)
+      if(is.null(target)) {
+        source_target_dismissed <<- NULL
+        if(isTRUE(code_target()$automatic))code_target(NULL)
+        return()
+      }
+      identity <- list(snapshot=target$snapshot,scope=target$scope)
+      if(identical(identity,source_target_dismissed))return()
+      previous <- code_target()
+      if(!is.null(previous) && identical(target$snapshot,previous$snapshot) && identical(target$scope,previous$scope))return()
+      state$current <- live;state$file_id <- live$id;state$source_read <- NULL
+      token <- if(isTRUE(previous$automatic) && identical(previous$chat,state$chat$id))previous$token else basename(tempfile("auto-code-"))
+      code_target(c(target,list(token=token,chat=state$chat$id,automatic=TRUE)))
+    }
+    shiny::observeEvent(input$source_watch_tick,{
+      on.exit(session$sendCustomMessage("ai_source_watch_complete",list()),add=TRUE)
+      watch_source_selection()
+    },ignoreInit=TRUE)
     shiny::observeEvent(input$clear_code_target,{
-      if(!state$busy && session_active)code_target(NULL)
+      if(!state$busy && session_active) {
+        target <- code_target()
+        if(!is.null(target))source_target_dismissed <<- list(snapshot=target$snapshot,scope=target$scope)
+        code_target(NULL)
+      }
     },ignoreInit=TRUE)
     output$code_actions_toolbar <- shiny::renderUI({
       target <- code_target();if(is.null(target))return(NULL)
@@ -1996,7 +2052,6 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             "data-action"=tolower(action),"data-token"=target$token,
             title=switch(action,Explain="Explain this target without changing Source",Fix="Find errors and preview corrections in chat",
               Improve="Suggest improvements and preview changes in chat"),action)),
-          shiny::tags$button(type="button",class="btn ai-btn code-target-refresh",title="Read Source again and detect a fresh target","Refresh"),
           shiny::tags$button(type="button",class="btn ai-btn code-target-close",title="Hide code actions","aria-label"="Hide code actions","\u00d7")))
     })
     shiny::outputOptions(output,"code_actions_toolbar",suspendWhenHidden=FALSE)
@@ -2070,7 +2125,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     })
     adopt_chat <- function(saved) {
       clear_source_review()
-      code_target(NULL)
+      code_target(NULL);source_watch_seen <<- NULL
       state$edit_panel <- FALSE
       state$source_read <- NULL
       reset_console_context()
@@ -2094,7 +2149,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(!session_active)return(invisible(NULL))
       on.exit({session_active <<- FALSE;unlink(attachment_dir,recursive=TRUE,force=TRUE)},add=TRUE)
       clear_source_review(remove=FALSE)
-      code_target(NULL)
+      code_target(NULL);source_watch_seen <<- NULL
       if(!is.null(console_capture))console_capture$stop()
       persist_chat()
     }
@@ -2739,7 +2794,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       }
       # Consume approval before the API call, including ambiguous API failures.
       preview_job <<- NULL;state$busy <- TRUE;sync_client()
-      code_target(NULL)
+      code_target(NULL);source_watch_seen <<- NULL
       on.exit({state$busy<-FALSE;state$edit_version<-state$edit_version+1L;sync_client();persist_chat()},add=TRUE)
       record_id <- NULL;write_started <- FALSE
       result <- tryCatch({
@@ -2815,7 +2870,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         shiny::showNotification("Edit history changed. Open a fresh Undo or Redo preview.",type="warning");return()
       }
       state$busy <- TRUE;sync_client();record_id <- NULL
-      code_target(NULL)
+      code_target(NULL);source_watch_seen <<- NULL
       on.exit({state$busy<-FALSE;state$edit_version<-state$edit_version+1L;sync_client()},add=TRUE)
       result <- tryCatch({
         target <- if(direction=="undo")job$entry$before else job$entry$after
@@ -2845,8 +2900,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       shiny::div(class="edit-history-panel",
         shiny::div(class="edit-page-header",shiny::strong("Code edit history"),
           shiny::div(class="edit-page-actions",
-            shiny::tags$button(type="button",class="btn ai-btn undo-preview","Undo"),
-            shiny::tags$button(type="button",class="btn ai-btn redo-preview","Redo"),
+            shiny::tags$button(type="button",class="btn ai-btn icon-button undo-preview",title="Undo last AI edit","aria-label"="Undo last AI edit",restore_icon()),
+            shiny::tags$button(type="button",class="btn ai-btn icon-button redo-preview",title="Redo last undone AI edit","aria-label"="Redo last undone AI edit",restore_icon(TRUE)),
             shiny::tags$button(type="button",class="btn ai-btn edit-history-close","Back to chat"))),
         shiny::p("Last 100 changes, stored on this computer."),
         if(!is.null(job))shiny::div(class="undo-comparison",
@@ -2953,7 +3008,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         finish_pending("Not run")
         if(!is.null(history) && !isTRUE(persist_chat()))return(invisible(FALSE))
       }
-      clear_source_review();code_target(NULL);state$source_read <- NULL
+      clear_source_review();code_target(NULL);source_watch_seen <<- NULL;state$source_read <- NULL
       state$edit_panel <- FALSE
       reset_console_context()
       clear_attachments()
@@ -2997,7 +3052,14 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           smart_live <- read_source_context(state$file_id)
           fresh_target <- tryCatch(capture_code_target(smart_live),error=function(e)e)
           if(inherits(fresh_target,"error")){code_target(NULL);shiny::showNotification(conditionMessage(fresh_target),type="warning");return()}
-          if(!identical(fresh_target$snapshot,smart_target$snapshot) || !identical(fresh_target$scope,smart_target$scope)) {
+          if(isTRUE(smart_target$automatic)) {
+            if(fresh_target$mode=="file") {
+              code_target(NULL);shiny::showNotification("Select code in Source or place the cursor inside an R chunk.",type="warning");return()
+            }
+            fresh_target$automatic <- TRUE;fresh_target$token <- smart_target$token
+            if(!identical(fresh_target$snapshot,smart_target$snapshot) || !identical(fresh_target$scope,smart_target$scope))code_target(fresh_target)
+            smart_target <- fresh_target
+          } else if(!identical(fresh_target$snapshot,smart_target$snapshot) || !identical(fresh_target$scope,smart_target$scope)) {
             clear_source_review()
             state$current <- smart_live;state$file_id <- smart_live$id;state$source_read <- NULL
             code_target(fresh_target)
@@ -3021,7 +3083,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       }
       state$busy <- TRUE
       clear_source_review()
-      if(is.null(selection_action))code_target(NULL)
+      if(is.null(selection_action)){code_target(NULL);source_watch_seen <<- NULL}
       state$edit_panel <- FALSE
       state$draft <- text
       acquired <- TRUE

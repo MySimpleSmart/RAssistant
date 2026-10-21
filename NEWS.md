@@ -1,3 +1,9 @@
+# RAssistant 0.9.0
+
+- Selecting code in Source automatically shows Explain, Fix and Improve. Rmd/Quarto chunks use the same toolbar, without a dropdown activation step.
+- Detect Source changes locally without AI requests; actions reread the current selection on click, and never silently expand it to a whole file.
+- Separate the red Close button and center its label. Use accessible Undo/Redo arrow icons with tooltips.
+
 # RAssistant 0.8.0
 
 - One Code actions entry detects the selected code, current R chunk or whole file and opens a compact toolbar with its exact target.

@@ -27,17 +27,19 @@ an R package library, separately from the RStudio application. The RStudio Addin
 menu also has an **RAssistant** entry after installation.
 The header keeps **Console On/Off**, **Workspace On/Off** and **New chat** visible. The **More actions
 (...)** menu groups tools under **Code**, **Chat** and **App**.
-**Code actions** opens a toolbar that detects the selected code, current R chunk
-or whole file. Fix/Improve show proposed changes in chat; Replace still
+Selecting text in Source automatically shows Explain/Fix/Improve above the
+composer. Placing the cursor in an Rmd/Quarto R chunk shows the same toolbar;
+there is no dropdown activation step. Fix/Improve show changes in chat; Replace still
 requires approval. **Code edit history** records code changes; **Chat history**
 opens conversations. **Course knowledge** holds course files and instructions.
-Check updates and Help share one row; Close is a separate red full-width button.
+Check updates and Help share one row; Close is separated below them, red,
+full-width and centered.
 App also shows the installed version.
 Help contains launch, API-key and update instructions with Copy buttons.
 Advanced commands are expandable; manual update results appear below the header.
 The current file name shares the header row with the visible actions; long names have a tooltip.
 The controls retain their original bordered appearance. The two-line composer
-grows with your draft; Image, Plot, Undo, Redo and Send share one action row.
+grows with your draft; Image, Plot, Undo/Redo arrow icons and Send share one action row.
 While a request runs, Send shows a loading indicator without a separate Thinking
 notification or Working status row.
 If the Viewer disappears or disconnects after sleep or locking the Mac, use the
@@ -345,17 +347,25 @@ the comparison; Cancel does not undo changes you already approved.
 Click the `filename:line` link or an old line number in a comparison to select
 that line in the matching Source editor, including unsaved documents.
 
-Choose **... > Code actions** to activate a compact toolbar above the composer.
-It detects one verified selection first, otherwise the closed R chunk under the
-cursor in Rmd/Quarto, otherwise the whole file. The toolbar shows the file and
-exact target before **Explain**, **Fix** or **Improve** is clicked. **Refresh**
-rereads Source; the cross hides the toolbar. Activation alone sends no AI request.
+Select code in the RStudio Source editor: a compact **Explain / Fix / Improve**
+toolbar appears above the composer automatically. One verified selection takes
+priority; otherwise an Rmd/Quarto R chunk under the cursor uses the same toolbar.
+It shows the file and exact target. The cross hides it until the selection changes.
+Nothing appears for an ordinary R file without a selection. For whole-file
+questions, ask in chat as usual or select all code in Source.
+
+While Source has focus, a local check runs about every 650 ms, with only one
+request outstanding. Checks pause while the assistant is busy, on the history
+page and when hidden; returning to the Viewer triggers a fresh check. They use
+RStudio's read-only Source API without moving focus, running code or sending AI
+requests. Unchanged selections do not rebuild the toolbar.
 Syntax errors suggest Fix; valid syntax defaults to Explain without claiming
 the code is free from runtime errors. The current draft can add instructions.
 
 Explain stays read-only. Fix/Improve propose a replacement for the displayed
-target only. A changed file or selection refreshes the toolbar and requires
-choosing the action again. Once an answer arrives, its proposal remains bound
+target only. Actions reread the selection at click time, so a newly selected
+range works immediately even before the next check. Losing the selection never
+silently expands a request to the whole file. Once an answer arrives, its proposal remains bound
 to that captured Source snapshot and still needs approval. Selected edits
 preserve their surrounding text; chunk edits preserve YAML, fences, prose and
 other chunks. Only the targeted chunk's R syntax is checked, so unrelated broken
@@ -378,7 +388,8 @@ directory, with private permissions. The latest 100 records are retained.
 setting it to `NULL` keeps edits in memory only. Log failure prevents an
 unrecorded edit. Uncertain API failures are logged and cannot be retried blindly.
 
-**Undo** and **Redo** remain visible beside Image and Plot. Each opens a comparison
+The **Undo** and **Redo** arrow icons remain visible beside Image and Plot, with
+tooltips and accessible labels. Each opens a comparison
 on the history page, then waits for **Confirm Undo** or **Confirm Redo**.
 Undo reverses the last AI edit; Redo reapplies the last undone edit. Multiple
 steps follow their original order. A new AI edit ends the previous Redo branch.
@@ -427,6 +438,7 @@ Rscript tests/source-workflow.R
 Rscript tests/source-advanced.R
 Rscript tests/source-restore.R
 Rscript tests/source-smart.R
+Rscript tests/source-auto.R
 Rscript tests/assignment-context.R
 Rscript tests/image-reading.R
 Rscript tests/conversation-context.R

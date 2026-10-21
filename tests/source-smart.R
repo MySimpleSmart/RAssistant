@@ -36,7 +36,7 @@ shiny::testServer(app$server,{
   action <- function(name,token=code_target()$token){nonce<<-nonce+1L;session$setInputs(chat_submit=list(text="",selection_action=name,scope="smart",target_token=token,nonce=nonce));session$flushReact();if(!is.null(review_context()))invisible(output$source_change_preview)}
   approve <- function(){job<-get("preview_job",envir=environment(clear_source_review),inherits=FALSE);nonce<<-nonce+1L;session$setInputs(apply_source_change=list(token=job$token,nonce=nonce));session$flushReact()}
   session$flushReact();activate()
-  check(length(editor$calls)==0L && length(editor$writes)==0L && grepl("Selected lines 1",output$code_actions_toolbar$html,fixed=TRUE),"activation displays the exact target and makes no AI request or Source write")
+  check(length(editor$calls)==0L && length(editor$writes)==0L && grepl("Selected line 1",output$code_actions_toolbar$html,fixed=TRUE),"activation displays the exact target and makes no AI request or Source write")
   action("explain")
   check(length(editor$calls)==1L && is.null(tail(state$messages,1L)[[1L]]$source_snapshot) && length(editor$writes)==0L,
     "smart Explain stays read-only and carries no editable Source snapshot")
