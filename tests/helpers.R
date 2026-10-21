@@ -11,8 +11,9 @@ load_assistant <- function(path = "AISource.R", package_info = NULL) {
     if (is.call(statement) && identical(statement[[1L]], as.name("<-")) &&
         is.symbol(statement[[2L]])) {
       name <- as.character(statement[[2L]])
-      if (!name %in% c("packages", "initial", "app")) eval(statement, env)
+      if (!name %in% c("packages", "initial", "app", "edit_store")) eval(statement, env)
     }
   }
+  env$edit_store <- if(is.null(package_info$edits))env$source_edit_store()else package_info$edits
   env
 }

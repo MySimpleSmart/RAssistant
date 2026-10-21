@@ -63,6 +63,7 @@ main <- function() {
       saveRDS(edits,edit_marker)
     }
     app$focus_source <- function(id,row,column,end_column)saveRDS(list(id=id,row=row,column=column,end_column=end_column),navigation_marker)
+    app$workspace_summary <- function()"X: matrix; dimensions=3 x 4; columns=a, b, c, d"
     app$capture_current_plot <- function(directory){
       Sys.sleep(.15)
       path<-tempfile("browser-current-plot-",tmpdir=directory,fileext=".png")
@@ -73,8 +74,10 @@ main <- function() {
     source_unavailable <- FALSE
     app$active_doc <- function(id=NULL) {
       if(source_unavailable)stop("Simulated RStudio Source lookup failure")
-      if(standalone)app$initial$selection <- list(list(text=app$initial$contents[[14L]],
-        range=list(start=c(14,1),end=c(14,nchar(app$initial$contents[[14L]])+1L))))
+      if(standalone) {
+        row <- if(grepl("qmd$",app$initial$path))6L else 14L
+        app$initial$selection <- list(list(text=app$initial$contents[[row]],range=list(start=c(row,1),end=c(row,nchar(app$initial$contents[[row]])+1L))))
+      }
       app$initial
     }
     count <- 0L
@@ -84,6 +87,13 @@ main <- function() {
       if(grepl("SIMULATED_FAILURE",prompt,fixed=TRUE))stop("Simulated API failure")
       if(grepl("SIMULATE_SOURCE_LOSS",prompt,fixed=TRUE))source_unavailable <<- TRUE
       if(standalone) {
+        if(grepl("LATEST USER REQUEST:\nSWITCH_TO_RMD",prompt,fixed=TRUE)) {
+          app$initial <- list(id="chunk-fixture",path=file.path(tempdir(),"report.qmd"),contents=c("---","title: Keep","---","Keep this prose.",
+            "```{r first}","x <- bad(X)","```","More prose.","~~~{r other}","y <- 1","~~~"))
+          return("Rmd fixture opened for the next request.")
+        }
+        if(grepl("CURRENT R CHUNK: first",prompt,fixed=TRUE))return("```r\nx <- dim(X)\n```")
+        if(grepl("LATEST USER REQUEST:\nBLANK_TEST",prompt,fixed=TRUE))return(paste0("Only spacing proposed.\n\n```r\n",paste(app$initial$contents,collapse="\n"),"\n\n```"))
         if(grepl("; action=explain",prompt,fixed=TRUE))return("Selected function call explained. No code changes proposed.")
         if(grepl("; action=fix",prompt,fixed=TRUE))return("```r\ndim(X)\n```")
         if(grepl("; action=improve",prompt,fixed=TRUE))return("```r\nprint(dim(X))\n```")
@@ -92,7 +102,8 @@ main <- function() {
           code <- sub("library(tidyverse)","suppressPackageStartupMessages(library(tidyverse))",code,fixed=TRUE)
           code <- sub("dim(X)","print(dim(X))",code,fixed=TRUE)
         }
-        return(paste0("v2.R, line 14: rtrtryydim is a misspelled function name. Use dim(X). Static review; not run.\n\n```r\n",code,"```"))
+        return(paste0(if(grepl("WORKSPACE METADATA (enabled for this turn)",prompt,fixed=TRUE))"Workspace evidence received: 3 x 4.\n\n"else"",
+          "v2.R, line 14: rtrtryydim is a misspelled function name. Use dim(X). Static review; not run.\n\n```r\n",code,"```"))
       }
       paste0("Response ",count,if(grepl("CONSOLE_BROWSER_VALUE_42",prompt,fixed=TRUE))" Console evidence received."else"",
              "\n\n```r\nx <- c(\"<tag>\", \"&lt;\", \"\\\\(x\\\\)\", \"$$\")\nkeep <- x > \"a\" & x < \"z\"\n```\n\n",
@@ -571,6 +582,40 @@ main <- function() {
   js('document.querySelector(".source-skip").click();')
   wait_js('document.getElementById("source-review-card")===null && !document.getElementById("send").disabled')
   check(length(readRDS(edit_marker))==before_edits,"Skip dismisses the remaining proposal without modifying Source")
+  js('openAction("edit_history");')
+  wait_js('document.querySelector(".edit-history-panel")!==null')
+  check(isTRUE(js('document.querySelectorAll(".edit-log-view").length===2 && document.querySelector(".edit-history-panel").textContent.includes("applied")')),
+    "Edit history shows each applied replacement and its actual code comparison")
+  js('document.querySelector(".undo-preview").click();')
+  wait_js('document.querySelector(".source-undo")!==null')
+  before_edits <- length(readRDS(edit_marker))
+  check(isTRUE(js('document.querySelector(".undo-comparison").textContent.includes("Undo preview")')),
+    "Undo opens an inline comparison before any editor write")
+  js('document.querySelector(".source-undo").click();')
+  wait_js('document.querySelector(".source-undo")===null && !document.getElementById("send").disabled')
+  check(length(readRDS(edit_marker))==before_edits+1L && startsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"library(tidyverse)") &&
+    endsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"dim(X)\n"),"confirming Undo restores only the last AI change and logs the restoration")
+  js('document.querySelector(".edit-history-close").click();document.getElementById("app_menu").querySelector("summary").click();document.getElementById("workspace_context").click();document.getElementById("app_menu").open=false;document.getElementById("prompt").value="Workspace evidence please";document.getElementById("send").click();')
+  wait_js('!document.getElementById("send").disabled && document.querySelector("#messages").textContent.includes("Workspace evidence received: 3 x 4")')
+  check(isTRUE(js('document.getElementById("workspace_context").checked')),"the optional Workspace toggle supplies metadata on the next request")
+  js('document.getElementById("prompt").value="BLANK_TEST";document.getElementById("send").click();')
+  wait_js('!document.getElementById("send").disabled && document.querySelector("#messages").textContent.includes("Only spacing proposed")')
+  check(isTRUE(js('document.getElementById("source-review-card")===null')),"extra blank lines do not automatically appear as code errors")
+  js('var reviews=document.querySelectorAll(".source-review");reviews[reviews.length-1].click();')
+  wait_js('document.querySelector(".formatting-changes")!==null')
+  check(isTRUE(js('document.querySelector(".formatting-changes").textContent.includes("not code errors") && document.querySelector("#source-review-card .source-apply")===null')),
+    "manual Review separates spacing changes and requires explicit inclusion")
+  js('document.getElementById("cancel_source_edit").click();document.getElementById("prompt").value="SWITCH_TO_RMD";document.getElementById("send").click();')
+  wait_js('!document.getElementById("send").disabled && document.querySelector("#messages").textContent.includes("Rmd fixture opened")')
+  js('var menu=document.getElementById("app_menu");menu.open=true;var chunks=document.getElementById("chunk_fix").closest("details");chunks.open=true;document.getElementById("chunk_fix").click();')
+  wait_js('document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
+  check(isTRUE(js('Array.from(document.querySelectorAll(".source-read")).pop().textContent.includes("chunk first") && document.querySelector("#source-review-card .edit-check").textContent.includes("R chunk first syntax checked")')),
+    "Current R chunk Fix checks only the identified chunk and previews an inline correction")
+  js('document.querySelector(".source-apply").click();')
+  wait_js('document.getElementById("source-review-card")===null && !document.getElementById("send").disabled')
+  actual_chunk <- tail(readRDS(edit_marker),1L)[[1L]]$text
+  check(startsWith(actual_chunk,"---\ntitle: Keep\n---\nKeep this prose.\n```{r first}\nx <- dim(X)\n```") &&
+    endsWith(actual_chunk,"More prose.\n~~~{r other}\ny <- 1\n~~~"),"chunk approval preserves document YAML, fences, prose and the other chunk")
   js('openAction("close");')
   worker$wait(timeout=10000)
   check(identical(worker$get_exit_status(),0L),"standalone Close restores the upload option")

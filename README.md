@@ -317,6 +317,11 @@ a long-running command can temporarily grow the spool before control returns.
 
 ## Review and apply Source changes
 
+Extra empty lines and final newlines are spacing, not code errors. Spacing-only
+answers do not open an automatic correction. Manual Review groups safe spacing
+changes separately and excludes them until **Include spacing changes** is chosen.
+Blank lines that change a multiline string's value are still real code changes.
+
 Each Send rereads the current Source buffer, including unsaved changes. Chat shows
 the file name and line count actually sent; hovering over the header name shows
 the character count. The current limit is 50,000 characters in one active file.
@@ -340,6 +345,33 @@ read-only; Fix/Improve propose replacements only within that captured range,
 preserving text before and after it, including on the same line. Moving the
 selection later does not change the proposed target. Source edits still require
 approval and never save or run automatically.
+
+**... > Current R chunk > Explain/Fix/Improve** targets the closed R chunk under
+the Source cursor in Rmd/Quarto. Only its body is replaced; YAML, fences, prose
+and other chunks stay intact. Only that chunk's R syntax is checked, so unrelated
+broken chunks do not prevent a local correction. Nothing is knitted or run.
+
+**... > Workspace context** is off by default. When enabled, the next request
+includes up to 30 objects' types, dimensions and column names (up to 40 columns),
+not rows, samples or statistics. Active bindings, lazy promises, functions and
+credential-like object names are skipped; user-defined dim/summary methods are
+not invoked. This is a current metadata snapshot, not proof the script ran.
+
+**... > Edit history** shows actual approved replacements with time, target,
+status, proposal notes and the exact before/after comparison. Backups are stored
+separately from chats under the project's hash in the local RAssistant data
+directory, with private permissions. The latest 100 records are retained.
+`options(RAssistant.edits_dir = "/chosen/directory")` changes the location;
+setting it to `NULL` keeps edits in memory only. Log failure prevents an
+unrecorded edit. Uncertain API failures are logged and cannot be retried blindly.
+
+**... > Undo last AI change** previews the previous buffer before **Confirm Undo**.
+It restores one approved change, unsaved and unexecuted, and logs the restoration.
+Any intervening manual edit or change after the preview blocks Undo. Open the
+matching Source document first. Saved-file edits can be undone after relaunch;
+unsaved documents require the same app instance. Document creation is logged
+but Undo does not delete a newly created document. These backups contain code
+and are never automatically included in AI requests.
 Multiple alternative code blocks require choosing **Review** on the one you want.
 
 You can also click **Review** beside Copy on an AI R/Rmd code block. Choose **Replace entire
@@ -376,6 +408,7 @@ Rscript tests/regression.R
 Rscript tests/source-context.R
 Rscript tests/source-edits.R
 Rscript tests/source-workflow.R
+Rscript tests/source-advanced.R
 Rscript tests/assignment-context.R
 Rscript tests/image-reading.R
 Rscript tests/conversation-context.R

@@ -1,3 +1,10 @@
+# RAssistant 0.6.0
+
+- Extra blank lines are spacing, not errors. Spacing-only edits stay out of automatic fixes and need explicit inclusion.
+- Keep a local edit history with exact before/after code, and preview Undo before restoring an AI change. Manual edits block Undo.
+- Optional Workspace context reads object types, dimensions and column names without sending data rows.
+- Explain, fix or improve the current R chunk in Rmd/Quarto while preserving other chunks, fences and prose.
+
 # RAssistant 0.5.0
 
 - Apply or skip individual changes, with fresh comparisons after each approval.

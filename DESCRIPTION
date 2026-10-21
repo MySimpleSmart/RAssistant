@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.5.0
+Version: 0.6.0
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -22,12 +22,14 @@ Imports:
     knitr,
     later,
     remotes,
+    rlang,
     rstudioapi,
     shiny (>= 1.14.0)
 Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Apply or skip individual changes, with fresh comparisons after each approval.
-    Click a file-and-line link or Source line number to select that line in RStudio.
-    Selected code in More actions offers Explain, Fix and Improve. Fixes stay within the selected range.
+Config/RAssistant/Changes: Extra blank lines are spacing, not errors. Spacing-only edits stay out of automatic fixes and need explicit inclusion.
+    Keep a local edit history with exact before/after code, and preview Undo before restoring an AI change. Manual edits block Undo.
+    Optional Workspace context reads object types, dimensions and column names without sending data rows.
+    Explain, fix or improve the current R chunk in Rmd/Quarto while preserving other chunks, fences and prose.
