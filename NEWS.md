@@ -1,3 +1,9 @@
+# RAssistant 0.8.0
+
+- One Code actions entry detects the selected code, current R chunk or whole file and opens a compact toolbar with its exact target.
+- Explain, Fix and Improve stay visible after activation. Syntax failures suggest Fix; changing Source or selection refreshes the target before sending another request.
+- Put Check updates and Help on one row, with a separate full-width red Close button.
+
 # RAssistant 0.7.0
 
 - Open Code edit history on a separate page with Back to chat, preserving the conversation, draft and attachments.

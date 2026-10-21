@@ -26,12 +26,13 @@ installation fails. Use your personal R library if R offers to create one. RAssi
 an R package library, separately from the RStudio application. The RStudio Addins
 menu also has an **RAssistant** entry after installation.
 The header keeps **Console On/Off**, **Workspace On/Off** and **New chat** visible. The **More actions
-(...)** menu groups tools under **Code actions**, **Chat** and **App**.
-Code sections have visible arrows: expand one to see Source instructions and
-Explain/Fix/Improve. Fix/Improve show proposed changes in chat; Replace still
+(...)** menu groups tools under **Code**, **Chat** and **App**.
+**Code actions** opens a toolbar that detects the selected code, current R chunk
+or whole file. Fix/Improve show proposed changes in chat; Replace still
 requires approval. **Code edit history** records code changes; **Chat history**
 opens conversations. **Course knowledge** holds course files and instructions.
-App contains Check updates, Help, Close and the installed version.
+Check updates and Help share one row; Close is a separate red full-width button.
+App also shows the installed version.
 Help contains launch, API-key and update instructions with Copy buttons.
 Advanced commands are expandable; manual update results appear below the header.
 The current file name shares the header row with the visible actions; long names have a tooltip.
@@ -344,17 +345,21 @@ the comparison; Cancel does not undo changes you already approved.
 Click the `filename:line` link or an old line number in a comparison to select
 that line in the matching Source editor, including unsaved documents.
 
-Select one non-empty range in Source, then choose **... > Selected code >
-Explain, Fix or Improve**. The current draft can add instructions. Explain stays
-read-only; Fix/Improve propose replacements only within that captured range,
-preserving text before and after it, including on the same line. Moving the
-selection later does not change the proposed target. Source edits still require
-approval and never save or run automatically.
+Choose **... > Code actions** to activate a compact toolbar above the composer.
+It detects one verified selection first, otherwise the closed R chunk under the
+cursor in Rmd/Quarto, otherwise the whole file. The toolbar shows the file and
+exact target before **Explain**, **Fix** or **Improve** is clicked. **Refresh**
+rereads Source; the cross hides the toolbar. Activation alone sends no AI request.
+Syntax errors suggest Fix; valid syntax defaults to Explain without claiming
+the code is free from runtime errors. The current draft can add instructions.
 
-**... > Rmd / Quarto chunk > Explain/Fix/Improve** targets the closed R chunk under
-the Source cursor in Rmd/Quarto. Only its body is replaced; YAML, fences, prose
-and other chunks stay intact. Only that chunk's R syntax is checked, so unrelated
-broken chunks do not prevent a local correction. Nothing is knitted or run.
+Explain stays read-only. Fix/Improve propose a replacement for the displayed
+target only. A changed file or selection refreshes the toolbar and requires
+choosing the action again. Once an answer arrives, its proposal remains bound
+to that captured Source snapshot and still needs approval. Selected edits
+preserve their surrounding text; chunk edits preserve YAML, fences, prose and
+other chunks. Only the targeted chunk's R syntax is checked, so unrelated broken
+chunks do not prevent a local correction. Nothing is saved, run or knitted.
 
 **Workspace On/Off** sits beside Console in the header and starts On. You can
 switch it off there. When enabled, the next request
@@ -421,6 +426,7 @@ Rscript tests/source-edits.R
 Rscript tests/source-workflow.R
 Rscript tests/source-advanced.R
 Rscript tests/source-restore.R
+Rscript tests/source-smart.R
 Rscript tests/assignment-context.R
 Rscript tests/image-reading.R
 Rscript tests/conversation-context.R

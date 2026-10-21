@@ -41,8 +41,9 @@ A single Source correction automatically shows a numbered inline comparison
 with syntax checking and highlighted changes. Review opens other edit operations.
 Copy keeps Source unchanged; Replace, Append or Create requires an explicit click.
 Separate changes support Apply and Skip; Source links focus the matching editor
-line. More actions offers Explain, Fix and Improve for one selected Source range.
-Selected-code edits preserve surrounding text and require explicit approval.
+line. Code actions detects the selected Source range, current R chunk or whole
+file and shows Explain, Fix and Improve on a toolbar. Activation makes no AI
+request. A changed target must be reviewed again. Edits require explicit approval.
 Spacing-only proposals are separated from code corrections. A separate Code edit
 history page stores up to 100 local before/after backups. Visible Undo and Redo
 controls require a comparison and confirmation and refuse to overwrite manual

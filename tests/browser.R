@@ -76,7 +76,7 @@ main <- function() {
       if(source_unavailable)stop("Simulated RStudio Source lookup failure")
       if(standalone) {
         row <- if(grepl("qmd$",app$initial$path))6L else 14L
-        app$initial$selection <- list(list(text=app$initial$contents[[row]],range=list(start=c(row,1),end=c(row,nchar(app$initial$contents[[row]])+1L))))
+        app$initial$selection <- list(list(text=if(grepl("qmd$",app$initial$path))""else app$initial$contents[[row]],range=list(start=c(row,1),end=c(row,if(grepl("qmd$",app$initial$path))1L else nchar(app$initial$contents[[row]])+1L))))
       }
       app$initial
     }
@@ -179,18 +179,17 @@ main <- function() {
   check(isTRUE(js('document.getElementById("preview_undo").closest(".upload-row")!==null && document.getElementById("preview_redo").closest(".upload-row")!==null && document.querySelector("#app_menu #preview_undo")===null && document.getElementById("preview_undo").getClientRects().length>0 && document.getElementById("preview_redo").getClientRects().length>0')),
     "Undo and Redo are visible beside Image and Plot without opening a menu")
   js('document.querySelector("#app_menu>summary").click();')
-  check(isTRUE(js('Array.from(document.querySelectorAll(".menu-heading")).map(function(e){return e.textContent;}).join("|")==="Code actions|Chat|App" && document.getElementById("history").textContent==="Chat history" && document.getElementById("edit_history").textContent==="Code edit history" && document.querySelectorAll(".menu-chevron").length===2 && document.querySelectorAll(".selection-menu[open]").length===0')),
-    "More actions groups code, chat and app tools with distinct history names and visible disclosure arrows")
-  js('document.querySelector("#selection_actions>summary").click();')
-  wait_js('document.getElementById("selection_actions").open')
-  check(isTRUE(js('document.getElementById("selection_explain").getClientRects().length>0 && document.querySelector("#selection_actions .menu-hint").textContent.includes("RStudio Source") && document.querySelectorAll(".msg.user").length===0')),
-    "opening Selected code reveals Source instructions and actions without sending a request")
-  js('document.querySelector("#chunk_actions>summary").click();')
-  wait_js('document.getElementById("chunk_actions").open && !document.getElementById("selection_actions").open')
-  check(isTRUE(js('document.getElementById("chunk_fix").getClientRects().length>0 && document.querySelector("#chunk_actions .menu-hint").textContent.includes("Source cursor") && document.querySelectorAll(".msg.user").length===0')),
-    "the chunk section explains the cursor target and closes the other code section")
-  js('document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));')
-  wait_js('document.querySelectorAll(".selection-menu[open]").length===0')
+  check(isTRUE(js('Array.from(document.querySelectorAll(".menu-heading")).map(function(e){return e.textContent;}).join("|")==="Code|Chat|App" && document.getElementById("history").textContent==="Chat history" && document.getElementById("edit_history").textContent==="Code edit history" && document.querySelectorAll(".selection-menu").length===0 && document.getElementById("code_actions")!==null')),
+    "More actions has one Code actions entry instead of two competing scope menus")
+  check(isTRUE(js('var update=document.getElementById("check_updates").getBoundingClientRect(),help=document.getElementById("help").getBoundingClientRect(),close=document.getElementById("close").getBoundingClientRect();Math.abs(update.top-help.top)<2 && close.top>=help.bottom && close.width>=document.querySelector("#close").parentElement.getBoundingClientRect().width-2 && getComputedStyle(document.getElementById("close")).color==="rgb(255, 255, 255)" && getComputedStyle(document.getElementById("close")).backgroundColor!=="rgb(255, 255, 255)"')),
+    "Check updates and Help share a row while the red Close button spans its own row")
+  js('document.getElementById("code_actions").click();')
+  wait_js('document.querySelector(".code-target-toolbar")!==null')
+  check(isTRUE(js('document.querySelector(".code-target-label").textContent.includes("example.R") && document.querySelector(".code-target-label").textContent.includes("Whole file") && document.getElementById("smart_explain").getClientRects().length>0 && document.getElementById("smart_fix").getClientRects().length>0 && document.getElementById("smart_improve").getClientRects().length>0 && document.querySelectorAll(".msg.user").length===0 && !document.getElementById("app_menu").open')),
+    "activation detects the whole R file and reveals the three-action toolbar without an AI request")
+  js('document.querySelector(".code-target-close").click();')
+  wait_js('document.querySelector(".code-target-toolbar")===null')
+  js('document.querySelector("#app_menu>summary").click();document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));')
   check(isTRUE(js('!document.getElementById("app_menu").open && document.activeElement===document.querySelector("#app_menu>summary")')),
     "Escape closes the actions menu and restores keyboard focus")
   js('window.initialComposerHeight=document.getElementById("prompt").getBoundingClientRect().height;var p=document.getElementById("prompt");p.value=Array(15).fill("A longer draft line").join("\\n");p.dispatchEvent(new Event("input",{bubbles:true}));')
@@ -266,13 +265,15 @@ main <- function() {
   check(isTRUE(js('document.querySelector(".attachment-item img").naturalWidth>0 && document.getElementById("prompt").value==="Keep this draft" && document.querySelectorAll(".msg.user").length===0')),
     "Attach current plot previews one image and preserves the draft without an AI request")
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
-  js('document.querySelector("#app_menu>summary").click();document.querySelector("#selection_actions>summary").click();')
-  wait_js('document.getElementById("selection_actions").open')
-  check(isTRUE(js('var panel=document.querySelector(".menu-panel").getBoundingClientRect(),action=document.getElementById("selection_improve").getBoundingClientRect();panel.left>=0 && panel.right<=innerWidth && panel.bottom<=innerHeight && action.right<=panel.right && action.left>=panel.left')),
-    "the expanded code-action menu fits a narrow Viewer without clipping its buttons")
+  js('openAction("code_actions");')
+  wait_js('document.querySelector(".code-target-toolbar")!==null')
+  check(isTRUE(js('var toolbar=document.querySelector(".code-target-toolbar").getBoundingClientRect(),last=document.querySelector(".code-target-close").getBoundingClientRect();toolbar.left>=0 && toolbar.right<=innerWidth && last.right<=innerWidth')),
+    "the activated code toolbar fits a narrow Viewer without clipping its buttons")
+  js('document.querySelector("#app_menu>summary").click();')
   screenshot<-Sys.getenv("RA_BROWSER_MENU_SCREENSHOT")
   if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
-  js('document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));')
+  js('document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));document.querySelector(".code-target-close").click();')
+  wait_js('document.querySelector(".code-target-toolbar")===null')
   check(isTRUE(js('document.getElementById("attach_current_plot").getBoundingClientRect().right<=innerWidth && document.getElementById("send").getBoundingClientRect().right<=innerWidth && document.getElementById("source_context").closest(".toolbar")!==null && document.getElementById("source_context").textContent.trim()==="example.R" && document.getElementById("console_context").closest(".console-context").getBoundingClientRect().right<=innerWidth && document.querySelector(".toolbar").getBoundingClientRect().height<=40 && Math.abs(document.querySelector(".workspace-context").getBoundingClientRect().top-document.querySelector(".console-context").getBoundingClientRect().top)<2 && document.querySelector(".workspace-context").getBoundingClientRect().right<=innerWidth && document.getElementById("preview_redo").getBoundingClientRect().right<=innerWidth && Math.abs(document.getElementById("preview_undo").getBoundingClientRect().top-document.getElementById("send").getBoundingClientRect().top)<2')),
     "the file name, Console and Workspace share one compact header in a narrow Viewer")
   screenshot<-Sys.getenv("RA_BROWSER_LAYOUT_SCREENSHOT")
@@ -569,11 +570,16 @@ main <- function() {
   for(i in 1:100){if(file.exists(navigation_marker))break;Sys.sleep(.05)}
   check(file.exists(navigation_marker) && readRDS(navigation_marker)$row==14L && readRDS(navigation_marker)$id=="fixture",
     "the filename and line link focuses the exact verified Source document without a write")
-  js('window.openSelection=function(action){var menu=document.getElementById("app_menu");if(!menu.open)menu.querySelector("summary").click();var detail=menu.querySelector(".selection-menu");if(!detail.open)detail.querySelector("summary").click();document.getElementById("selection_"+action).click();};openSelection("explain");')
+  open_code <- function(action){
+    js('window.oldCodeTarget=document.getElementById("smart_explain") && document.getElementById("smart_explain").getAttribute("data-token");openAction("code_actions");')
+    wait_js('document.getElementById("smart_explain")!==null && !document.getElementById("smart_explain").disabled && document.getElementById("smart_explain").getAttribute("data-token")!==oldCodeTarget')
+    js(paste0('document.getElementById("smart_',action,'").click();'))
+  }
+  open_code("explain")
   wait_js('!document.getElementById("send").disabled && document.querySelector("#messages").textContent.includes("Selected function call explained")')
   check(isTRUE(js('document.getElementById("source-review-card")===null && document.querySelector("#messages").textContent.includes("selected 14-14")')),
     "Selected code Explain stays read-only and labels the selected Source lines")
-  js('openSelection("fix");')
+  open_code("fix")
   wait_js('document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
   check(isTRUE(js('document.querySelector(".source-apply").textContent==="Replace selection" && document.querySelector(".source-diff").textContent.includes("rtrtryydim")')),
     "Selected code Fix previews a bounded replacement instead of replacing the whole file")
@@ -585,7 +591,7 @@ main <- function() {
   wait_js('document.getElementById("source-review-card")===null && !document.getElementById("send").disabled')
   check(length(readRDS(edit_marker))==before_edits+1L && startsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"library(tidyverse)") &&
     endsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"dim(X)\n"),"selected-code approval keeps the surrounding file intact")
-  js('openSelection("improve");')
+  open_code("improve")
   wait_js('document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
   check(isTRUE(js('document.querySelector(".source-apply").textContent==="Replace selection" && document.querySelector(".source-diff").textContent.includes("+print(dim(X))")')),
     "Selected code Improve uses the fresh current selection and the same bounded approval")
@@ -653,7 +659,10 @@ main <- function() {
     "manual Review separates spacing changes and requires explicit inclusion")
   js('document.getElementById("cancel_source_edit").click();document.getElementById("prompt").value="SWITCH_TO_RMD";document.getElementById("send").click();')
   wait_js('!document.getElementById("send").disabled && document.querySelector("#messages").textContent.includes("Rmd fixture opened")')
-  js('var menu=document.getElementById("app_menu");menu.open=true;var chunks=document.getElementById("chunk_fix").closest("details");chunks.open=true;document.getElementById("chunk_fix").click();')
+  js('openAction("code_actions");')
+  wait_js('document.querySelector(".code-target-label")!==null && document.querySelector(".code-target-label").textContent.includes("R chunk first")')
+  check(isTRUE(js('document.querySelector(".code-target-label").textContent.includes("lines 6")')),"the same toolbar detects the current R chunk when nothing is selected")
+  js('document.getElementById("smart_fix").click();')
   wait_js('document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
   check(isTRUE(js('Array.from(document.querySelectorAll(".source-read")).pop().textContent.includes("chunk first") && document.querySelector("#source-review-card .edit-check").textContent.includes("R chunk first syntax checked")')),
     "Current R chunk Fix checks only the identified chunk and previews an inline correction")
