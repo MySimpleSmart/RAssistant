@@ -1,11 +1,11 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.10.2
+Version: 0.10.3
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
     Viewer. Supports image uploads, optional live console context, contextual R help,
-    project course knowledge (lecture PDFs, notes, R examples and custom instructions),
+    a project Knowledge Base (PDFs, notes, R examples and custom instructions),
     reviewed Source edits and explicitly approved script validation. Stores optional credentials
     in the operating system credential store, separately from package updates.
 License: file LICENSE
@@ -29,4 +29,4 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Automatically show a blue dot before Plot when RStudio has an image, without hovering or attaching it. Hide the dot when Plots is empty; keep the default button and hover preview.
+Config/RAssistant/Changes: Rename Course knowledge to Knowledge Base, using general reference-document labels. Keep existing local, project-specific files and instructions unchanged.

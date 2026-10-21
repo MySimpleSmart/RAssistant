@@ -95,7 +95,7 @@ Set \code{options(RAssistant.history_dir = "...")} before launch to change its
 location, or \code{options(RAssistant.save_history = FALSE)} to disable persistence.
 Already-closed conversations from versions before 0.2.0 cannot be recovered.
 
-Knowledge stores lecture PDFs, notes, R code examples and optional custom instructions per
+Knowledge Base stores reference PDFs, notes, R code examples and optional custom instructions locally per
 project, separately from History. Each request is matched locally, and only a
 bounded set of relevant excerpts, labelled by file and page or lines, is sent.
 Set \code{options(RAssistant.knowledge_dir = "...")} before launch to change its

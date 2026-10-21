@@ -104,7 +104,7 @@ main <- function() {
     plot.new();text(.5,.5,"Wilcoxon rank sum test with wilcox.test for skewed data");invisible(grDevices::dev.off())
     lecture <- store$add(slides)
     hit <- store$retrieve("wilcoxon rank sum test for skewed data")
-    check(identical(lecture$kind,"Lecture PDF") && identical(lecture$pages,2L) &&
+    check(identical(lecture$kind,"PDF") && identical(lecture$pages,2L) &&
       grepl("Lecture 6 - t tests.pdf, p. 2",hit$text,fixed=TRUE),"PDF text is retrieved with its page number")
   } else cat("SKIP PDF extraction: install pdftools to test lecture PDFs\n")
   cat("Completed",checks,"knowledge checks\n")

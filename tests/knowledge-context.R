@@ -32,7 +32,7 @@ shiny::testServer(app$server, {
   session$flushReact()
   session$setInputs(chat_submit=list(text="How should I choose k?",nonce=1L))
   first <- tail(calls,1L)[[1L]]
-  check(!grepl("COURSE",first$system,fixed=TRUE) && !grepl("COURSE MATERIAL",first$prompt,fixed=TRUE) &&
+  check(!grepl("KNOWLEDGE BASE",first$system,fixed=TRUE) && !grepl("KNOWLEDGE BASE EXCERPTS",first$prompt,fixed=TRUE) &&
     !length(state$messages[[2L]]$references),"without course knowledge, requests are unchanged")
 
   session$setInputs(knowledge=1L)
@@ -49,7 +49,7 @@ shiny::testServer(app$server, {
     grepl(instructions,request$system,fixed=TRUE) &&
     grepl("in preference to generic alternatives",request$system,fixed=TRUE),
     "requests carry custom instructions and the lecture-first instruction")
-  check(grepl("COURSE MATERIAL (retrieved locally for this request):\n[K1] week4.md, lines 1-4",request$prompt,fixed=TRUE) &&
+  check(grepl("KNOWLEDGE BASE EXCERPTS (retrieved locally for this request):\n[K1] week4.md, lines 1-4",request$prompt,fixed=TRUE) &&
     grepl("fviz_nbclust",request$prompt,fixed=TRUE),"relevant course excerpts are sent with their source label")
   answer <- tail(state$messages,1L)[[1L]]
   check(identical(answer$references[[1L]]$name,"week4.md") && identical(answer$references[[1L]]$label,"lines 1-4"),
@@ -58,7 +58,7 @@ shiny::testServer(app$server, {
   session$setInputs(chat_submit=list(text="Translate hello into French",nonce=3L))
   unrelated <- tail(calls,1L)[[1L]]
   check(grepl("CUSTOM INSTRUCTIONS",unrelated$system,fixed=TRUE) &&
-    !grepl("COURSE MATERIAL",unrelated$prompt,fixed=TRUE) && !length(tail(state$messages,1L)[[1L]]$references),
+    !grepl("KNOWLEDGE BASE EXCERPTS",unrelated$prompt,fixed=TRUE) && !length(tail(state$messages,1L)[[1L]]$references),
     "unrelated requests send custom instructions but no course excerpts")
 
   session$setInputs(chat_submit=list(text="Run my kmeans clustering script and interpret it",nonce=4L))
@@ -66,7 +66,7 @@ shiny::testServer(app$server, {
     "a run request keeps the course context for the later analysis")
   session$setInputs(yes=1L)
   analysis <- tail(calls,1L)[[1L]]
-  check(grepl("COURSE MATERIAL",analysis$prompt,fixed=TRUE) && grepl("CUSTOM INSTRUCTIONS",analysis$system,fixed=TRUE) &&
+  check(grepl("KNOWLEDGE BASE EXCERPTS",analysis$prompt,fixed=TRUE) && grepl("CUSTOM INSTRUCTIONS",analysis$system,fixed=TRUE) &&
     identical(tail(state$messages,1L)[[1L]]$references[[1L]]$name,"week4.md"),
     "execution analysis uses course material and records its sources")
 

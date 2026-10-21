@@ -31,7 +31,7 @@ Selecting text in Source automatically shows Explain/Fix/Improve above the
 composer. Placing the cursor in an Rmd/Quarto R chunk shows the same toolbar;
 there is no dropdown activation step. Fix/Improve show changes in chat; Replace still
 requires approval. **Code edit history** records code changes; **Chat history**
-opens conversations. **Course knowledge** holds course files and instructions.
+opens conversations. **Knowledge Base** holds reference files and instructions.
 Check updates and Help share one row; Close is separated below them, red,
 full-width and centered.
 App also shows the installed version.
@@ -232,12 +232,12 @@ options(RAssistant.save_history = FALSE) # Disable durable History for this sess
 The standalone script retains in-session context; durable History is provided
 by the installed package.
 
-## Course knowledge
+## Knowledge Base
 
-From 0.3.0, **Knowledge** stores course material for the current RStudio
-project: lecture PDFs, notes (`.txt`, `.md`) and R code examples (`.R`, `.Rmd`,
+**Knowledge Base** stores reference material locally for the current RStudio
+project: PDFs, notes (`.txt`, `.md`) and R code examples (`.R`, `.Rmd`,
 `.qmd`), up to 50 MB each. An optional **Custom instructions** box holds anything
-the assistant should always follow for the course, such as preferred packages,
+the assistant should always follow for your work, such as preferred packages,
 functions or coding conventions.
 
 For every request, RAssistant matches your message, the pasted task and the
@@ -246,8 +246,8 @@ few most relevant sections (about 6,000 characters at most) are added, with
 their file and page or line numbers; unrelated requests add none. No extra API
 call is made for searching. The assistant is instructed to prefer the methods,
 packages and functions taught in that material over generic alternatives and to
-name the source it used. Answers that received course material list it under
-**Course material**.
+name the source it used. Answers that received reference material list it under
+**Knowledge Base**.
 
 Knowledge is stored per project in `tools::R_user_dir("RAssistant", "data")`,
 separately from chat History and the package installation, so it survives

@@ -1,9 +1,9 @@
-# Course knowledge is stored per project under the user data directory, apart
+# Knowledge Base is stored per project under the user data directory, apart
 # from chat history and package installations, so it survives restarts and
 # updates. Only extracted text is kept. Retrieval is local: it makes no API
 # calls and sends only a small budget of the most relevant excerpts.
 
-.knowledge_kinds <- c(pdf = "Lecture PDF", txt = "Notes", md = "Notes", markdown = "Notes",
+.knowledge_kinds <- c(pdf = "PDF", txt = "Notes", md = "Notes", markdown = "Notes",
   r = "R code", rmd = "R code", qmd = "R code")
 
 .knowledge_stopwords <- c("the", "and", "for", "are", "but", "not", "you", "your", "with",
@@ -115,21 +115,21 @@
   }
   write_atomic <- function(value, path) {
     if (!dir.exists(dirname(path)) && !dir.create(dirname(path), recursive = TRUE, mode = "0700")) {
-      stop("Could not create the local course-knowledge directory.", call. = FALSE)
+      stop("Could not create the local Knowledge Base directory.", call. = FALSE)
     }
     temp <- tempfile(".pending-", tmpdir = dirname(path))
     on.exit(unlink(temp), add = TRUE)
     jsonlite::write_json(value, temp, auto_unbox = TRUE, null = "null", digits = NA)
     Sys.chmod(temp, "0600")
-    if (!file.rename(temp, path)) stop("Could not save course knowledge.", call. = FALSE)
+    if (!file.rename(temp, path)) stop("Could not save the Knowledge Base.", call. = FALSE)
   }
   read_doc <- function(path) {
     size <- file.info(path)$size
-    if (is.na(size) || size > 64 * 1024^2) stop("Invalid course document size.", call. = FALSE)
+    if (is.na(size) || size > 64 * 1024^2) stop("Invalid reference document size.", call. = FALSE)
     doc <- jsonlite::fromJSON(path, simplifyVector = FALSE)
     if (!identical(doc$schema, 1L) || !identical(doc$project, project) || !valid_id(doc$id) ||
         !is.character(doc$name) || !is.list(doc$chunks)) {
-      stop("Invalid course document.", call. = FALSE)
+      stop("Invalid reference document.", call. = FALSE)
     }
     doc$chunks <- Filter(function(x) is.list(x) && is.character(x$text) && is.character(x$label), doc$chunks)
     doc
@@ -179,9 +179,9 @@
     c(summary_of(doc), list(status = if (length(replaced)) "replaced" else "added"))
   }
   remove_doc <- function(id) {
-    if (!valid_id(id)) stop("Invalid course document identifier.", call. = FALSE)
+    if (!valid_id(id)) stop("Invalid reference document identifier.", call. = FALSE)
     path <- file.path(docs_dir, paste0(id, ".json"))
-    if (file.exists(path) && unlink(path) != 0L) stop("Could not remove the course document.", call. = FALSE)
+    if (file.exists(path) && unlink(path) != 0L) stop("Could not remove the reference document.", call. = FALSE)
     docs <<- Filter(function(doc) !identical(doc$id, id), load_docs())
     index <<- NULL
     invisible(NULL)
@@ -225,7 +225,7 @@
     n <- length(index$chunks)
     if (!n) return(none)
     # The latest request dominates; assignment text and editor calls refine it.
-    # A request with its own terms must match course material itself; only a
+    # A request with its own terms must match reference material itself; only a
     # request without them (an image turn, "explain (b)") relies on context.
     weights <- c(table(.knowledge_tokens(query)))
     if (length(weights) && !any(names(weights) %in% names(index$postings))) return(none)
