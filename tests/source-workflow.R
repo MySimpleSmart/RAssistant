@@ -39,7 +39,7 @@ app$initial <- editor$ctx
 app$active_doc <- function(id=NULL)editor$ctx
 app$write_source <- function(id,text){editor$writes[[length(editor$writes)+1L]]<-list(id=id,text=text);editor$ctx$contents<-strsplit(paste0(text,"\n"),"\n",fixed=TRUE)[[1L]]}
 app$focus_source <- function(id,row,column,end_column)editor$jumps[[length(editor$jumps)+1L]]<-list(id=id,row=row,column=column,end_column=end_column)
-reply <- paste0("```r\n",after,"\n```")
+reply <- paste0("```r-replace\n",after,"\n```")
 app$ask_ai <- function(system_prompt,prompt,images=character()){
   editor$calls[[length(editor$calls)+1L]]<-list(system=system_prompt,prompt=prompt)
   reply
@@ -74,7 +74,7 @@ shiny::testServer(app$server,{
   editor$ctx$contents <- strsplit(before,"\n",fixed=TRUE)[[1L]];send();stale <- job()$token
   editor$ctx$contents[[2L]] <- "manual <- 99";count <- length(editor$writes);apply_one(1L,stale)
   check(length(editor$writes)==count && is.null(job()),"manual Source edits revoke granular approval before writing")
-  editor$ctx <- ctx;reply <<- "```r\ndim(X)\n```";send("fix")
+  editor$ctx <- ctx;reply <<- "```r-replace\ndim(X)\n```";send("fix")
   check(job()$mode=="selection" && identical(job()$after,proposal$after) &&
     grepl("Work ONLY on the SELECTED SOURCE RANGE",tail(editor$calls,1L)[[1L]]$system,fixed=TRUE) &&
     grepl("bad(X)",tail(editor$calls,1L)[[1L]]$prompt,fixed=TRUE),
@@ -90,7 +90,7 @@ shiny::testServer(app$server,{
   editor$ctx <- list(id="doc",path="/tmp/example.R",contents=c("outside <- 1","a <- 1","keep <- 9","z <- 1","outside <- 2"),
     selection=list(list(text="a <- 1\nkeep <- 9\nz <- 1",range=list(start=c(2,1),end=c(4,7)))))
   end_before <- app$source_selection(editor$ctx)$end
-  reply <<- "```r\na <- 100\nkeep <- 9\nz <- 2\n```";send("fix");apply_one(1L)
+  reply <<- "```r-replace\na <- 100\nkeep <- 9\nz <- 2\n```";send("fix");apply_one(1L)
   check(identical(app$full_text(editor$ctx),"outside <- 1\na <- 100\nkeep <- 9\nz <- 1\noutside <- 2") &&
     review_context()$selection_end==end_before+2L && length(job()$changes)==1L,
     "partial approval within a selection adjusts its bounds while preserving all outside code")

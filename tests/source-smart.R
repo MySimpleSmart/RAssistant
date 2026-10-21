@@ -40,7 +40,7 @@ shiny::testServer(app$server,{
   action("explain")
   check(length(editor$calls)==1L && is.null(tail(state$messages,1L)[[1L]]$source_snapshot) && length(editor$writes)==0L,
     "smart Explain stays read-only and carries no editable Source snapshot")
-  editor$reply <- "```r\ndim(X)\n```";action("fix")
+  editor$reply <- "```r-replace\ndim(X)\n```";action("fix")
   job <- get("preview_job",envir=environment(clear_source_review),inherits=FALSE)
   check(job$mode=="selection" && job$after=="x <- dim(X)\ny <- 1" && length(editor$writes)==0L,"smart Fix proposes only the activated selection and waits for approval")
   approve();check(identical(editor$writes[[1L]],"x <- dim(X)\ny <- 1") && is.null(code_target()),"approval preserves surrounding code and retires the old toolbar target")
@@ -51,7 +51,7 @@ shiny::testServer(app$server,{
   editor$reply <- "Whole file explained.";action("explain")
   check(is.null(tail(state$messages,1L)[[1L]]$source_snapshot) && grepl("CURRENT FILE CODE ACTION",tail(editor$calls,1L)[[1L]]$system,fixed=TRUE),
     "whole-file Explain remains read-only and uses the explicit file action contract")
-  editor$reply <- "```r\nx <- dim(X)\ny <- 1\n```";action("fix")
+  editor$reply <- "```r-replace\nx <- dim(X)\ny <- 1\n```";action("fix")
   job <- get("preview_job",envir=environment(clear_source_review),inherits=FALSE)
   check(job$mode=="replace" && is.null(review_context()$snapshot$scope) && grepl("CURRENT FILE CODE ACTION",tail(editor$calls,1L)[[1L]]$system,fixed=TRUE),"a whole-file toolbar request uses a complete-file proposal rather than a fictitious selection")
   editor$ctx$selection <- script$selection;count<-length(editor$calls);action("fix")
@@ -63,7 +63,7 @@ shiny::testServer(app$server,{
   old <- code_target();editor$ctx$path <- "/tmp/other.R";action("fix",old$token)
   check(length(editor$calls)==count && code_target()$snapshot$path=="/tmp/other.R" && state$current$path=="/tmp/other.R","switching files refreshes the target and filename instead of redirecting an old action")
   editor$ctx <- rmd;editor$ctx$selection <- list(list(text="",range=list(start=c(6,1),end=c(6,1))))
-  activate();editor$reply <- "```r\nx <- dim(X)\n```";action("improve")
+  activate();editor$reply <- "```r-replace\nx <- dim(X)\n```";action("improve")
   job <- get("preview_job",envir=environment(clear_source_review),inherits=FALSE)
   check(job$mode=="selection" && grepl("CURRENT R CHUNK: first",tail(editor$calls,1L)[[1L]]$prompt,fixed=TRUE),"smart Improve inside an R chunk keeps the chunk-only contract")
   before <- app$full_text(editor$ctx);approve()

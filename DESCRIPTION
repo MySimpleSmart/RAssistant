@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.13.0
+Version: 0.13.1
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -29,5 +29,5 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Preserve complete code blocks, tables, display equations and R expressions in Knowledge Base excerpts. Keep indentation, long lines and section headings; retain PDF text-layer spacing and page labels.
-    Send complete blocks within the excerpt budget and clearly identify blocks that could not fit. Mark older document formatting and rebuild it when the original file is re-added, keeping its selection and saved chat receipts.
+Config/RAssistant/Changes: Keep explanation examples separate from Source corrections. Open inline comparisons only for explicitly marked replacements or additions; a single example block no longer proposes deleting the current file.
+    Preserve Copy for examples, and require an explicit replacement proposal before offering Replace. Keep reviewed fixes, selected-code edits and additions available.

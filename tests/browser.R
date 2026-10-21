@@ -26,6 +26,11 @@ main <- function() {
     for(file in c("R/history.R","R/knowledge.R"))sys.source(file,store_env)
     history <- store_env$.conversation_store(project=root,directory=history_root)
     knowledge <- store_env$.knowledge_store(project=root,directory=history_root)
+    function_source <- c("f <- function(x) {","","  result <- x + 1","","  result","}")
+    if(identical(Sys.getenv("RA_BROWSER_SOURCE_INTENT_ONLY"),"true")) {
+      original <- tempfile(fileext=".R");writeLines(function_source,original)
+      knowledge$add(original,"test.R");unlink(original)
+    }
     if(identical(Sys.getenv("RA_BROWSER_KNOWLEDGE_STRUCTURE_ONLY"),"true")) {
       body <- paste0("# Formatting\n\n```r\n  structure_sentinel <- \"",strrep("k",2400L),
         "\"\n\n  print(structure_sentinel)\n```\n")
@@ -63,6 +68,8 @@ main <- function() {
       },
       request_update=function(){cat("requested\n",file=update_marker,append=TRUE);invisible(TRUE)}))
     app$initial <- list(id="fixture",path=file.path(tempdir(),"example.R"),contents="plot(1:3)")
+    if(identical(Sys.getenv("RA_BROWSER_SOURCE_INTENT_ONLY"),"true"))
+      app$initial <- list(id="fixture",path=file.path(tempdir(),"test.R"),contents=function_source)
     if(standalone)app$initial <- list(id="fixture",path=file.path(tempdir(),"v2.R"),contents=c(
       "library(tidyverse)","","# 1. Read data",'birth_data <- read_csv("BIRTH_reduced.csv")',"",
       "# 2. Select four numeric variables","X_df <- birth_data %>%", "  select(matage, gestage, birthwt, head)","",
@@ -120,17 +127,23 @@ main <- function() {
       Sys.sleep(.2)
       if(grepl("SIMULATED_FAILURE",prompt,fixed=TRUE))stop("Simulated API failure")
       if(grepl("SIMULATE_SOURCE_LOSS",prompt,fixed=TRUE))source_unavailable <<- TRUE
+      if(identical(Sys.getenv("RA_BROWSER_SOURCE_INTENT_ONLY"),"true")) {
+        if(grepl("LATEST USER REQUEST:\nFIX_FUNCTION",prompt,fixed=TRUE))return(paste0("Correction:\n\n```r-replace\n",
+          paste(sub("x + 1","x + 2",function_source,fixed=TRUE),collapse="\n"),"\n```\n\nUsage:\n\n```r\nf(5)\n```"))
+        stopifnot(grepl(paste(function_source,collapse="\n"),prompt,fixed=TRUE))
+        return("f adds one to each supplied value.\n\n```r\nf(5)\nf(c(1, 2, 3))\n```")
+      }
       if(standalone) {
         if(grepl("LATEST USER REQUEST:\nSWITCH_TO_RMD",prompt,fixed=TRUE)) {
           app$initial <- list(id="chunk-fixture",path=file.path(tempdir(),"report.qmd"),contents=c("---","title: Keep","---","Keep this prose.",
             "```{r first}","x <- bad(X)","```","More prose.","~~~{r other}","y <- 1","~~~"))
           return("Rmd fixture opened for the next request.")
         }
-        if(grepl("CURRENT R CHUNK: first",prompt,fixed=TRUE))return("```r\nx <- dim(X)\n```")
-        if(grepl("LATEST USER REQUEST:\nBLANK_TEST",prompt,fixed=TRUE))return(paste0("Only spacing proposed.\n\n```r\n",paste(app$initial$contents,collapse="\n"),"\n\n```"))
+        if(grepl("CURRENT R CHUNK: first",prompt,fixed=TRUE))return("```r-replace\nx <- dim(X)\n```")
+        if(grepl("LATEST USER REQUEST:\nBLANK_TEST",prompt,fixed=TRUE))return(paste0("Only spacing proposed.\n\n```r-replace\n",paste(app$initial$contents,collapse="\n"),"\n\n```"))
         if(grepl("; action=explain",prompt,fixed=TRUE))return("Selected function call explained. No code changes proposed.")
-        if(grepl("; action=fix",prompt,fixed=TRUE))return("```r\ndim(X)\n```")
-        if(grepl("; action=improve",prompt,fixed=TRUE))return("```r\nprint(dim(X))\n```")
+        if(grepl("; action=fix",prompt,fixed=TRUE))return("```r-replace\ndim(X)\n```")
+        if(grepl("; action=improve",prompt,fixed=TRUE))return("```r-replace\nprint(dim(X))\n```")
         code <- sub("rtrtryydim(X)","dim(X)",paste(app$initial$contents,collapse="\n"),fixed=TRUE)
         if(grepl("GRANULAR_TEST",prompt,fixed=TRUE)) {
           code <- sub("library(tidyverse)","suppressPackageStartupMessages(library(tidyverse))",code,fixed=TRUE)
@@ -138,10 +151,10 @@ main <- function() {
         }
         return(paste0(if(grepl("WORKSPACE METADATA (enabled for this turn)",prompt,fixed=TRUE))"Workspace evidence received: 3 x 4.\n\n"else"",
           if(grepl("5432",prompt,fixed=TRUE))"Dataset cell evidence received: 5432.\n\n"else"",
-          "v2.R, line 14: rtrtryydim is a misspelled function name. Use dim(X). Static review; not run.\n\n```r\n",code,"```"))
+          "v2.R, line 14: rtrtryydim is a misspelled function name. Use dim(X). Static review; not run.\n\n```r-replace\n",code,"```"))
       }
       paste0("Response ",count,if(grepl("CONSOLE_BROWSER_VALUE_42",prompt,fixed=TRUE))" Console evidence received."else"",
-             "\n\n```r\nx <- c(\"<tag>\", \"&lt;\", \"\\\\(x\\\\)\", \"$$\")\nkeep <- x > \"a\" & x < \"z\"\n```\n\n",
+             "\n\n```r-replace\nx <- c(\"<tag>\", \"&lt;\", \"\\\\(x\\\\)\", \"$$\")\nkeep <- x > \"a\" & x < \"z\"\n```\n\n",
              "Math: \\(\\alpha < 1\\).\n\n[[ACADEMIC_COMMENT]]Verified result.[[/ACADEMIC_COMMENT]]")
     }
     previous_limit <- getOption("shiny.maxRequestSize")
@@ -229,6 +242,38 @@ main <- function() {
     check(isTRUE(js('document.querySelectorAll(".attachment-item").length===0 && document.querySelectorAll(".msg.user").length===0 && window.aisourceErrors.length===0')),
       "automatic availability checks leave attachments and chat empty without JavaScript errors")
     cat(checks,"Plot browser checks passed\n");return(invisible(NULL))
+  }
+  if(identical(Sys.getenv("RA_BROWSER_SOURCE_INTENT_ONLY"),"true")) {
+    js('openAction("knowledge");')
+    wait_js('document.querySelector("#knowledge_selected input")!==null')
+    js('document.querySelector("#knowledge_selected input").click();')
+    wait_js('document.querySelector(".knowledge-unpin")!==null')
+    js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
+    wait_js('document.getElementById("shiny-modal")===null')
+    js('var p=document.getElementById("prompt");p.value="Энэ файл дахь f() функцийг тайлбарла";p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click();')
+    wait_js('document.querySelector(".msg.assistant pre code")!==null && !document.getElementById("send").disabled')
+    check(isTRUE(js('document.getElementById("source-review-card")===null && document.querySelector(".source-diff")===null && document.querySelector(".source-apply")===null')) && !file.exists(edit_marker),
+      "the reported f() explanation displays example calls without a replacement diff or an editor write")
+    js('window.copied=null;Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:function(t){window.copied=t;return Promise.resolve();}}});document.querySelector(".code-copy").click();')
+    wait_js('window.copied!==null')
+    check(identical(js('window.copied'),"f(5)\nf(c(1, 2, 3))\n"),"example Copy preserves the two function calls exactly")
+    js('document.querySelector(".knowledge-read>summary").click();')
+    check(isTRUE(js('document.querySelector(".knowledge-read summary").textContent.includes("Sent") && document.querySelector(".knowledge-excerpts").textContent.includes("f <- function(x) {\\n\\n  result <- x + 1\\n\\n  result\\n}")')),
+      "the same explanation receives the complete selected Knowledge Base function with indentation and blank lines")
+    screenshot <- Sys.getenv("RA_BROWSER_SOURCE_INTENT_SCREENSHOT")
+    if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+    js('var p=document.getElementById("prompt");p.value="FIX_FUNCTION";p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click();')
+    wait_js('document.querySelector(".source-apply")!==null && !document.getElementById("send").disabled')
+    check(isTRUE(js('var wraps=Array.from(document.querySelectorAll(".msg.assistant .code-wrap"));wraps[1].classList.contains("review-open") && !wraps[2].classList.contains("review-open") && wraps[1].querySelector(".code-type").textContent==="R" && document.querySelector(".source-apply").textContent==="Replace"')) && !file.exists(edit_marker),
+      "a marked correction opens its own diff while its separate usage example remains plain code")
+    js('document.querySelector(".source-apply").click();')
+    wait_js('document.getElementById("source-review-card")===null && !document.getElementById("send").disabled')
+    writes <- readRDS(edit_marker)
+    check(length(writes)==1L && grepl("f <- function(x)",writes[[1L]]$text,fixed=TRUE) &&
+      grepl("  result <- x + 2",writes[[1L]]$text,fixed=TRUE) && !grepl("f(5)",writes[[1L]]$text,fixed=TRUE),
+      "Replace applies the complete correction once and keeps the example calls out of Source")
+    check(isTRUE(js('window.aisourceErrors.length===0')),"example and correction rendering completes without JavaScript errors")
+    cat(checks,"Source intent browser checks passed\n");return(invisible(NULL))
   }
   if(identical(Sys.getenv("RA_BROWSER_KNOWLEDGE_STRUCTURE_ONLY"),"true")) {
     js('openAction("knowledge");')

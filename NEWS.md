@@ -1,3 +1,8 @@
+# RAssistant 0.13.1
+
+- Keep explanation examples separate from Source corrections. Open inline comparisons only for explicitly marked replacements or additions; a single example block no longer proposes deleting the current file.
+- Preserve Copy for examples, and require an explicit replacement proposal before offering Replace. Keep reviewed fixes, selected-code edits and additions available.
+
 # RAssistant 0.13.0
 
 - Preserve complete code blocks, tables, display equations and R expressions in Knowledge Base excerpts. Keep indentation, long lines and section headings; retain PDF text-layer spacing and page labels.

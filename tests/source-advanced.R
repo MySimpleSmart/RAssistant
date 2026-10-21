@@ -47,7 +47,7 @@ unlink(directory,recursive=TRUE)
 editor <- new.env();editor$ctx <- list(id="doc",path="/tmp/x.R",contents=c("x <- 1","","","y <- 1"));editor$writes<-list();editor$calls<-list()
 app$initial <- editor$ctx;app$active_doc <- function(id=NULL)editor$ctx
 app$write_source <- function(id,text){editor$writes[[length(editor$writes)+1L]]<-text;editor$ctx$contents<-strsplit(paste0(text,"\n"),"\n",fixed=TRUE)[[1L]]}
-reply <- "```r\nx <- 2\n\n\ny <- 1\n```"
+reply <- "```r-replace\nx <- 2\n\n\ny <- 1\n```"
 app$ask_ai <- function(system_prompt,prompt,images=character()){
   editor$calls[[length(editor$calls)+1L]]<-list(system=system_prompt,prompt=prompt);reply
 }
@@ -77,13 +77,13 @@ shiny::testServer(app$server,{
   editor$ctx$contents <- c(editor$ctx$contents,"# typed after preview")
   session$setInputs(confirm_source_undo=list(token=undo$token,nonce=4L));session$flushReact()
   check(length(editor$writes)==count && tail(editor$ctx$contents,1L)=="# typed after preview", "a manual edit after Undo preview revokes the approval before writing")
-  editor$ctx$contents <- c("x <- 1");reply <<- "```r\n\nx <- 1\n\n```";send()
+  editor$ctx$contents <- c("x <- 1");reply <<- "```r-replace\n\nx <- 1\n\n```";send()
   check(is.null(review_context()),"a spacing-only response does not automatically open an error-fix comparison")
   msg<-tail(state$messages,1L)[[1L]];session$setInputs(review_source_change=list(message=msg$sequence,block=1L,epoch=state$upload_epoch));session$flushReact();invisible(output$source_change_preview)
   check(length(job()$changes)==0L,"manual Review excludes spacing changes by default")
   session$setInputs(toggle_source_formatting=list(token=job()$token));session$flushReact();invisible(output$source_change_preview)
   check(length(job()$changes)>0L && isTRUE(review_context()$include_formatting),"spacing changes require explicitly including them")
-  clear_source_review();editor$ctx <- ctx;reply <<- "```r\n#| label: clean-data\nx <- dim(X)\n```";send("fix","chunk")
+  clear_source_review();editor$ctx <- ctx;reply <<- "```r-replace\n#| label: clean-data\nx <- dim(X)\n```";send("fix","chunk")
   check(job()$mode=="selection" && identical(job()$after,changed$after) &&
     grepl("CURRENT R CHUNK: clean-data",tail(editor$calls,1L)[[1L]]$prompt,fixed=TRUE),"Current R chunk Fix targets only the cursor's verified chunk body")
   approve();check(identical(app$full_text(editor$ctx),changed$after),"approving a chunk fix leaves the rest of the document intact")
@@ -98,7 +98,7 @@ shiny::testServer(app$server,{
   session$setInputs(workspace_context=TRUE);send()
   check(grepl("WORKSPACE METADATA (enabled for this turn)",tail(editor$calls,1L)[[1L]]$prompt,fixed=TRUE) &&
     grepl("dimensions=3 x 4",tail(editor$calls,1L)[[1L]]$prompt,fixed=TRUE),"opted-in Workspace metadata reaches the request as read-only current evidence")
-  editor$ctx <- list(id="doc",path="/tmp/x.R",contents="x <- 1");reply <<- "```r\nx <- 2\n```"
+  editor$ctx <- list(id="doc",path="/tmp/x.R",contents="x <- 1");reply <<- "```r-replace\nx <- 2\n```"
   app$edit_store$begin <- function(...)stop("Synthetic log write failure");send();count<-length(editor$writes);approve()
   check(length(editor$writes)==count && is.null(job()),"a log write failure prevents an unrecorded Source mutation and consumes approval")
 })

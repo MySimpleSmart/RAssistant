@@ -18,7 +18,7 @@ shiny::testServer(app$server,{
   preview <- function(direction){nonce<<-nonce+1L;do.call(session$setInputs,setNames(list(nonce),paste0("preview_",direction)));session$flushReact();undo_job()}
   confirm <- function(job,direction=job$direction){nonce<<-nonce+1L;do.call(session$setInputs,setNames(list(list(token=job$token,nonce=nonce)),paste0("confirm_source_",direction)));session$flushReact()}
   apply_edit <- function(text){
-    editor$reply <- paste0("```r\n",text,"```");nonce<<-nonce+1L
+    editor$reply <- paste0("```r-replace\n",text,"```");nonce<<-nonce+1L
     session$setInputs(chat_submit=list(text="Fix code",nonce=nonce));session$flushReact();invisible(output$source_change_preview)
     job <- get("preview_job",envir=environment(clear_source_review),inherits=FALSE)
     session$setInputs(apply_source_change=list(token=job$token,nonce=nonce));session$flushReact()

@@ -37,7 +37,7 @@ shiny::testServer(app$server,{
     "clicking Explain reads the latest selection immediately without requiring another click")
   read_status <- state$source_read;select_row(2L);tick()
   check(!is.null(read_status) && identical(state$source_read,read_status),"selection movement preserves the last message's Source read status")
-  select_row(2L);editor$reply<-"```r\ny <- dim(Y)\n```";action("fix")
+  select_row(2L);editor$reply<-"```r-replace\ny <- dim(Y)\n```";action("fix")
   job<-get("preview_job",envir=environment(clear_source_review),inherits=FALSE)
   check(job$mode=="selection" && job$after=="x <- bad(X)\ny <- dim(Y)" && length(editor$writes)==0L,
     "Fix targets the latest selected lines even before the next watcher tick and still waits for approval")

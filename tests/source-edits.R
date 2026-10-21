@@ -14,7 +14,7 @@ app$write_source <- function(id,text){
   editor$ctx$contents <- strsplit(paste0(text,"\n"),"\n",fixed=TRUE)[[1L]]
 }
 app$new_source <- function(text,kind){editor$news[[length(editor$news)+1L]]<-list(text=text,kind=kind)}
-reply <- "```r\nx <- 2\ny <- x + 1\n```"
+reply <- "```r-replace\nx <- 2\ny <- x + 1\n```"
 app$ask_ai <- function(...)reply
 app$validate_script <- function(...)stop("Reading/checking edits must never execute code")
 
@@ -87,7 +87,7 @@ shiny::testServer(app$server,{
   check(length(editor$writes)==1L,"double Apply cannot write the same proposal again")
   check(is.null(job()) && !state$busy && grepl("unsaved",tail(state$messages,1L)[[1L]]$text,fixed=TRUE),
     "Apply consumes approval and reports unsaved, unexecuted editor changes")
-  reply<<-"```r\nx <- 3\ny <- x + 1\n```";send();review()
+  reply<<-"```r-replace\nx <- 3\ny <- x + 1\n```";send();review()
   token<-job()$token;editor$ctx$contents<-c("MANUAL_EDIT <- 99",editor$ctx$contents);approve(token)
   check(length(editor$writes)==1L && is.null(job()),"manual edits after preview cancel Apply without overwriting the user")
   review()
@@ -95,20 +95,20 @@ shiny::testServer(app$server,{
   token<-job()$token;approve(token);approve(token)
   check(length(editor$news)==1L && identical(editor$news[[1L]],list(text="x <- 3\ny <- x + 1\n",kind="R")),
     "new-document approval creates exactly one unsaved script from the reviewed bytes")
-  reply<<-"```r\nx <-\n```";send();review()
+  reply<<-"```r-replace\nx <-\n```";send();review()
   token<-job()$token;approve(token)
   check(!job()$syntax$ok && length(editor$writes)==1L,"invalid syntax cannot be applied even through a forged click")
-  reply<<-"```r\nx <- 4\n```";send();review()
+  reply<<-"```r-replace\nx <- 4\n```";send();review()
   token<-job()$token;editor$ctx$path<-"/tmp/renamed-review.R";approve(token)
   check(length(editor$writes)==1L && is.null(job()),"Save As or target-path changes invalidate an open approval")
   send();review();token<-job()$token
   session$setInputs(new_chat=1L);approve(token)
   check(length(editor$writes)==1L && is.null(job()),"New chat revokes an open Source approval")
-  reply<<-"```r\nx <- 5\n```";send();review();editor$fail<-TRUE
+  reply<<-"```r-replace\nx <- 5\n```";send();review();editor$fail<-TRUE
   token<-job()$token;approve(token);approve(token);editor$fail<-FALSE
   check(length(editor$writes)==2L && is.null(job()) && !state$busy,
     "an editor API error consumes approval rather than retrying an uncertain write")
-  reply<<-"````rmd\n---\ntitle: New document\n---\n```{r}\nz <- 7\n```\n````";send();review();approve()
+  reply<<-"````rmd-replace\n---\ntitle: New document\n---\n```{r}\nz <- 7\n```\n````";send();review();approve()
   check(length(editor$news)==2L && editor$news[[2L]]$kind=="Rmd" && grepl("```{r}",editor$news[[2L]]$text,fixed=TRUE),
     "a complete Rmd block can create a new document with nested chunk fences intact")
   saved<-app$snapshot_messages(state$messages)
@@ -130,7 +130,7 @@ app$initial <- editor$ctx
 request <- NULL
 app$ask_ai <- function(system_prompt,prompt,images=character()) {
   request <<- list(system=system_prompt,prompt=prompt)
-  paste0("The last function name is misspelled.\n\n```r\n",paste(corrected,collapse="\n"),"\n```")
+  paste0("The last function name is misspelled.\n\n```r-replace\n",paste(corrected,collapse="\n"),"\n```")
 }
 shiny::testServer(app$server,{
   session$flushReact()
@@ -156,11 +156,63 @@ shiny::testServer(app$server,{
   check(length(editor$writes)==writes+1L && identical(app$full_text(editor$ctx),job$after),
     "Replace on the automatically opened comparison applies exactly the reviewed bytes without a Review click")
   reply <- "Unchanged"
-  app$ask_ai <- function(...)paste0("```r\n",app$full_text(editor$ctx),"```")
+  app$ask_ai <- function(...)paste0("```r-replace\n",app$full_text(editor$ctx),"```")
   session$setInputs(chat_submit=list(text="Explain this code",nonce=3L));session$flushReact()
   check(is.null(review_context()),"an unchanged code block does not open a misleading comparison for its final newline")
-  app$ask_ai <- function(...)"```r\nx <- 1\n```\nOr:\n```r\nx <- 2\n```"
+  app$ask_ai <- function(...)"```r-replace\nx <- 1\n```\nOr:\n```r-replace\nx <- 2\n```"
   session$setInputs(chat_submit=list(text="Show alternatives",nonce=4L));session$flushReact()
   check(is.null(review_context()),"multiple alternative blocks are never automatically selected for replacement")
+})
+# A usage example is not a replacement, even if it is the only R block.
+original <- c("f <- function(x) {","","  result <- x + 1","","  result","}")
+editor$ctx <- list(id="function-doc",path="/tmp/test.R",contents=original)
+app$initial <- editor$ctx
+reply <- "Example calls:\n\n```r\nf(5)\nf(c(1, 2, 3))\n```"
+app$ask_ai <- function(system_prompt,prompt,images=character()) {
+  request <<- list(system=system_prompt,prompt=prompt);reply
+}
+block <- app$source_code_blocks(as.character(app$render_markdown("```r-replace\nf <- function(x) x + 2\n```")))[[1L]]
+check(identical(block$operation,"replace") && identical(block$kind,"R") && block$reviewable &&
+  identical(block$code,"f <- function(x) x + 2\n"),"replacement intent preserves the exact code and its R syntax kind")
+markup <- as.character(app$render_markdown("````rmd-replace\n```{r}\nx <- 1\n```\n````"))
+check(app$source_code_blocks(markup)[[1L]]$kind=="Rmd" &&
+  grepl('class="code-type">RMD</span>',markup,fixed=TRUE),"document replacement intent keeps nested fences and a plain RMD label")
+check(identical(app$source_code_blocks(as.character(app$render_markdown("```r\nx <- 'r-replace'\n```")))[[1L]]$operation,""),
+  "an intent label inside code does not turn an example into a replacement")
+shiny::testServer(app$server,{
+  session$flushReact();count <- length(editor$writes)
+  send <- function(text,nonce){session$setInputs(chat_submit=list(text=text,nonce=nonce));session$flushReact()}
+  send("Энэ файл дахь f() функцийг тайлбарла",1L)
+  check(is.null(review_context()) && length(editor$writes)==count && identical(editor$ctx$contents,original),
+    "the reported single f() example never previews deletion of the function definition")
+  answer <- tail(state$messages,1L)[[1L]]
+  check(grepl('class="code-copy"',as.character(answer$html),fixed=TRUE) &&
+    grepl("f(c(1, 2, 3))",as.character(answer$html),fixed=TRUE) &&
+    grepl("Ordinary r/rmd blocks are examples",request$system,fixed=TRUE),
+    "explanation examples retain Copy and the model receives the explicit intent contract")
+  session$setInputs(review_source_change=list(message=answer$sequence,block=1L,epoch=state$upload_epoch));session$flushReact()
+  invisible(output$source_change_preview)
+  check(!any(unname(review_context()$choices) %in% c("replace","selection")) &&
+    get("preview_job",envir=environment(clear_source_review))$mode=="append",
+    "manual Review of an unmarked example offers addition or a new file, never whole-file replacement")
+  do.call(session$setInputs,setNames(list("replace"),review_context()$mode_id));session$flushReact()
+  invisible(output$source_change_preview)
+  check(get("preview_job",envir=environment(clear_source_review))$mode=="append" && length(editor$writes)==count,
+    "an unoffered replacement mode cannot turn an example into a destructive proposal")
+  reply <<- paste0("```r-replace\n",paste(sub("x + 1","x + 2",original,fixed=TRUE),collapse="\n"),
+    "\n```\n\nUsage:\n\n```r\nf(5)\n```")
+  send("Change the function to add two",2L);invisible(output$source_change_preview)
+  job <- get("preview_job",envir=environment(clear_source_review))
+  check(!is.null(review_context()) && job$mode=="replace" &&
+    grepl("f <- function",job$after,fixed=TRUE) && !grepl("f(5)",job$after,fixed=TRUE) && length(editor$writes)==count,
+    "only the explicitly marked complete correction opens a diff when an example follows it")
+  session$setInputs(apply_source_change=list(token=job$token,nonce=3L));session$flushReact()
+  check(length(editor$writes)==count+1L && identical(app$full_text(editor$ctx),job$after),
+    "an explicitly approved complete correction still applies without extra review steps")
+  reply <<- "```r-append\nf(5)\n```"
+  send("Add a demonstration after the function",4L);invisible(output$source_change_preview)
+  job <- get("preview_job",envir=environment(clear_source_review))
+  check(job$mode=="append" && startsWith(job$after,job$before) &&
+    !"replace" %in% unname(review_context()$choices),"a marked addition preserves the function and offers Append")
 })
 cat(checks,"Source editing checks passed\n")
