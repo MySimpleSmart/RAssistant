@@ -1,3 +1,8 @@
+# RAssistant 0.6.2
+
+- Group More actions into Code actions, Chat and App, with distinct Code edit history and Chat history labels.
+- Show clear arrows, brief Source instructions and Explain/Fix/Improve buttons for selected code and Rmd/Quarto chunks. Open one code section at a time.
+
 # RAssistant 0.6.1
 
 - Move Workspace On/Off beside Console in the header and enable it by default, freeing space in More actions.

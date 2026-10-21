@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.6.1
+Version: 0.6.2
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -29,4 +29,5 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Move Workspace On/Off beside Console in the header and enable it by default, freeing space in More actions.
+Config/RAssistant/Changes: Group More actions into Code actions, Chat and App, with distinct Code edit history and Chat history labels.
+    Show clear arrows, brief Source instructions and Explain/Fix/Improve buttons for selected code and Rmd/Quarto chunks. Open one code section at a time.

@@ -176,7 +176,19 @@ main <- function() {
   check(isTRUE(js('document.querySelector(".empty")!==null')), "existing Shiny UI connects and renders")
   check(isTRUE(js('!document.getElementById("app_menu").open && document.querySelector("#app_menu #history")!==null && document.querySelector("#app_menu #knowledge")!==null && document.querySelector("#app_menu #help")!==null && document.querySelector("#app_menu #close")!==null && document.getElementById("check_updates").closest("#app_menu")!==null && document.getElementById("console_context").closest(".toolbar-actions")!==null && document.querySelector(".upload-row #console_context")===null && document.getElementById("workspace_context").closest(".toolbar-actions")!==null && document.querySelector("#app_menu #workspace_context")===null && document.getElementById("workspace_context").checked && document.getElementById("workspace_context_state").textContent==="On"')),
     "Check updates lives in More actions while Console and default-on Workspace share the header")
-  js('document.querySelector("#app_menu>summary").click();document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));')
+  js('document.querySelector("#app_menu>summary").click();')
+  check(isTRUE(js('Array.from(document.querySelectorAll(".menu-heading")).map(function(e){return e.textContent;}).join("|")==="Code actions|Chat|App" && document.getElementById("history").textContent==="Chat history" && document.getElementById("edit_history").textContent==="Code edit history" && document.querySelectorAll(".menu-chevron").length===2 && document.querySelectorAll(".selection-menu[open]").length===0')),
+    "More actions groups code, chat and app tools with distinct history names and visible disclosure arrows")
+  js('document.querySelector("#selection_actions>summary").click();')
+  wait_js('document.getElementById("selection_actions").open')
+  check(isTRUE(js('document.getElementById("selection_explain").getClientRects().length>0 && document.querySelector("#selection_actions .menu-hint").textContent.includes("RStudio Source") && document.querySelectorAll(".msg.user").length===0')),
+    "opening Selected code reveals Source instructions and actions without sending a request")
+  js('document.querySelector("#chunk_actions>summary").click();')
+  wait_js('document.getElementById("chunk_actions").open && !document.getElementById("selection_actions").open')
+  check(isTRUE(js('document.getElementById("chunk_fix").getClientRects().length>0 && document.querySelector("#chunk_actions .menu-hint").textContent.includes("Source cursor") && document.querySelectorAll(".msg.user").length===0')),
+    "the chunk section explains the cursor target and closes the other code section")
+  js('document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));')
+  wait_js('document.querySelectorAll(".selection-menu[open]").length===0')
   check(isTRUE(js('!document.getElementById("app_menu").open && document.activeElement===document.querySelector("#app_menu>summary")')),
     "Escape closes the actions menu and restores keyboard focus")
   js('window.initialComposerHeight=document.getElementById("prompt").getBoundingClientRect().height;var p=document.getElementById("prompt");p.value=Array(15).fill("A longer draft line").join("\\n");p.dispatchEvent(new Event("input",{bubbles:true}));')
@@ -252,6 +264,13 @@ main <- function() {
   check(isTRUE(js('document.querySelector(".attachment-item img").naturalWidth>0 && document.getElementById("prompt").value==="Keep this draft" && document.querySelectorAll(".msg.user").length===0')),
     "Attach current plot previews one image and preserves the draft without an AI request")
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
+  js('document.querySelector("#app_menu>summary").click();document.querySelector("#selection_actions>summary").click();')
+  wait_js('document.getElementById("selection_actions").open')
+  check(isTRUE(js('var panel=document.querySelector(".menu-panel").getBoundingClientRect(),action=document.getElementById("selection_improve").getBoundingClientRect();panel.left>=0 && panel.right<=innerWidth && panel.bottom<=innerHeight && action.right<=panel.right && action.left>=panel.left')),
+    "the expanded code-action menu fits a narrow Viewer without clipping its buttons")
+  screenshot<-Sys.getenv("RA_BROWSER_MENU_SCREENSHOT")
+  if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+  js('document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));')
   check(isTRUE(js('document.getElementById("attach_current_plot").getBoundingClientRect().right<=innerWidth && document.getElementById("send").getBoundingClientRect().right<=innerWidth && document.getElementById("source_context").closest(".toolbar")!==null && document.getElementById("source_context").textContent.trim()==="example.R" && document.getElementById("console_context").closest(".console-context").getBoundingClientRect().right<=innerWidth && document.querySelector(".toolbar").getBoundingClientRect().height<=40 && Math.abs(document.querySelector(".workspace-context").getBoundingClientRect().top-document.querySelector(".console-context").getBoundingClientRect().top)<2 && document.querySelector(".workspace-context").getBoundingClientRect().right<=innerWidth')),
     "the file name, Console and Workspace share one compact header in a narrow Viewer")
   screenshot<-Sys.getenv("RA_BROWSER_LAYOUT_SCREENSHOT")

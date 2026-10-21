@@ -26,7 +26,12 @@ installation fails. Use your personal R library if R offers to create one. RAssi
 an R package library, separately from the RStudio application. The RStudio Addins
 menu also has an **RAssistant** entry after installation.
 The header keeps **Console On/Off**, **Workspace On/Off** and **New chat** visible. The **More actions
-(...)** menu contains History, Knowledge, Check updates, Help, Close and the installed version.
+(...)** menu groups tools under **Code actions**, **Chat** and **App**.
+Code sections have visible arrows: expand one to see Source instructions and
+Explain/Fix/Improve. Fix/Improve show proposed changes in chat; Replace still
+requires approval. **Code edit history** records code changes; **Chat history**
+opens conversations. **Course knowledge** holds course files and instructions.
+App contains Check updates, Help, Close and the installed version.
 Help contains launch, API-key and update instructions with Copy buttons.
 Advanced commands are expandable; manual update results appear below the header.
 The current file name shares the header row with the visible actions; long names have a tooltip.
@@ -346,7 +351,7 @@ preserving text before and after it, including on the same line. Moving the
 selection later does not change the proposed target. Source edits still require
 approval and never save or run automatically.
 
-**... > Current R chunk > Explain/Fix/Improve** targets the closed R chunk under
+**... > Rmd / Quarto chunk > Explain/Fix/Improve** targets the closed R chunk under
 the Source cursor in Rmd/Quarto. Only its body is replaced; YAML, fences, prose
 and other chunks stay intact. Only that chunk's R syntax is checked, so unrelated
 broken chunks do not prevent a local correction. Nothing is knitted or run.
@@ -358,7 +363,7 @@ not rows, samples or statistics. Active bindings, lazy promises, functions and
 credential-like object names are skipped; user-defined dim/summary methods are
 not invoked. This is a current metadata snapshot, not proof the script ran.
 
-**... > Edit history** shows actual approved replacements with time, target,
+**... > Code edit history** shows actual approved replacements with time, target,
 status, proposal notes and the exact before/after comparison. Backups are stored
 separately from chats under the project's hash in the local RAssistant data
 directory, with private permissions. The latest 100 records are retained.
@@ -366,7 +371,7 @@ directory, with private permissions. The latest 100 records are retained.
 setting it to `NULL` keeps edits in memory only. Log failure prevents an
 unrecorded edit. Uncertain API failures are logged and cannot be retried blindly.
 
-**... > Undo last AI change** previews the previous buffer before **Confirm Undo**.
+**... > Undo last AI edit** previews the previous buffer before **Confirm Undo**.
 It restores one approved change, unsaved and unexecuted, and logs the restoration.
 Any intervening manual edit or change after the preview blocks Undo. Open the
 matching Source document first. Saved-file edits can be undone after relaunch;

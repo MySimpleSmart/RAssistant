@@ -1205,11 +1205,16 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     padding:4px 9px;background:white;color:#29323c;font-size:16px;line-height:14px}
   .app-menu>summary::-webkit-details-marker{display:none}
   .app-menu>summary:hover,.app-menu[open]>summary{background:#edf0f3}
-  .menu-panel{position:absolute;right:0;top:calc(100% + 6px);width:178px;max-width:calc(100vw - 16px);
+  .menu-panel{position:absolute;right:0;top:calc(100% + 6px);width:220px;max-width:calc(100vw - 16px);
     max-height:65vh;overflow:auto;padding:5px;background:white;border:1px solid var(--border);
     border-radius:3px;box-shadow:0 5px 18px #26354422}
   .menu-actions{display:flex;flex-direction:column;gap:2px}
   .menu-actions>.btn.ai-btn{text-align:left;width:100%;padding:7px 9px}
+  .menu-group+.menu-group{border-top:1px solid var(--border);margin-top:7px;padding-top:7px}
+  .menu-heading{font-size:10px;font-weight:600;color:var(--muted);margin:2px 4px 5px}
+  .menu-button-row,.code-action-buttons{display:flex;gap:4px}
+  .menu-button-row>.btn,.code-action-buttons>.btn{flex:1;min-width:0;white-space:normal}
+  .menu-hint{font-size:10px;color:var(--muted);margin:5px 4px}
   .menu-version{border-top:1px solid var(--border);margin-top:4px;padding:7px 9px 3px;color:var(--muted);font-size:10px}
   button:focus-visible,summary:focus-visible,.attach-plot:focus-visible{outline:2px solid #5a8db7;outline-offset:2px}
   .history-actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
@@ -1272,7 +1277,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .source-jump:hover{text-decoration:underline}
   .source-hunk{margin:8px 0;border-top:1px solid var(--border);padding-top:7px}
   .source-hunk-actions{display:flex;gap:6px;margin:6px 0}
-  .selection-menu summary{cursor:pointer;padding:7px 9px;font-size:11px}
+  .selection-menu>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;
+    cursor:pointer;padding:7px 9px;border:1px solid #ccd2d9;border-radius:3px;background:white;color:#29323c;font-size:11px}
+  .selection-menu>summary::-webkit-details-marker{display:none}
+  .selection-menu>summary:hover{background:#edf0f3}
+  .menu-chevron{font-size:16px;line-height:12px}
+  .selection-menu[open]>summary .menu-chevron{transform:rotate(90deg)}
+  .selection-menu .code-action-buttons{margin:5px 4px 7px}
   .edit-history-panel{border:1px solid var(--border);padding:9px;margin:8px 0;font-size:11px}
   .edit-log-list{display:flex;flex-direction:column;gap:4px;max-height:150px;overflow:auto;margin:8px 0}
   .edit-log-list .ai-btn{text-align:left}
@@ -1524,6 +1535,12 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       e.target.value=""; // No filename can persist after upload/send.
       stageImages(files);
     },true);
+    document.addEventListener("toggle",function(e){
+      var menu=document.getElementById("app_menu");if(!menu)return;
+      if(e.target===menu && !menu.open)menu.querySelectorAll(".selection-menu").forEach(function(detail){detail.open=false;});
+      else if(e.target.matches && e.target.matches(".selection-menu") && e.target.open)
+        menu.querySelectorAll(".selection-menu").forEach(function(detail){if(detail!==e.target)detail.open=false;});
+    },true);
     document.addEventListener("click",function(e){
       var plot=e.target && e.target.closest && e.target.closest("#attach_current_plot");
       if(plot && !plot.disabled){
@@ -1768,6 +1785,14 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   })();
   '
 
+  code_action_menu <- function(scope,label,hint)shiny::tags$details(id=paste0(scope,"_actions"),class="selection-menu",
+    shiny::tags$summary(shiny::span(label),shiny::span(class="menu-chevron","aria-hidden"="true","\u203a")),
+    shiny::p(class="menu-hint",hint),
+    shiny::div(class="code-action-buttons",lapply(c("Explain","Fix","Improve"),function(action)
+      shiny::tags$button(id=paste0(scope,"_",tolower(action)),type="button",class="btn ai-btn selection-action",
+        "data-action"=tolower(action),"data-scope"=scope,
+        title=if(action=="Explain")"Explain in chat without changing Source"else"Show proposed changes in chat; Replace requires your approval",action))))
+
   ui <- shiny::fluidPage(
     shiny::tags$head(shiny::tags$style(shiny::HTML(styles))),
     shiny::div(class="toolbar","aria-label"="RAssistant",
@@ -1785,22 +1810,24 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         shiny::tags$details(id="app_menu",class="app-menu",
           shiny::tags$summary("\u22ef",title="More actions","aria-label"="More actions"),
           shiny::div(class="menu-panel",
-            shiny::div(class="menu-actions",
-              shiny::tags$details(class="selection-menu",shiny::tags$summary("Selected code"),
-                shiny::div(class="menu-actions",lapply(c("Explain","Fix","Improve"),function(action)
-                  shiny::tags$button(id=paste0("selection_",tolower(action)),type="button",class="btn ai-btn selection-action",
-                    "data-action"=tolower(action),action)))),
-              shiny::tags$details(class="selection-menu",shiny::tags$summary("Current R chunk"),
-                shiny::div(class="menu-actions",lapply(c("Explain","Fix","Improve"),function(action)
-                  shiny::tags$button(id=paste0("chunk_",tolower(action)),type="button",class="btn ai-btn selection-action",
-                    "data-action"=tolower(action),"data-scope"="chunk",action)))),
-              shiny::actionButton("edit_history","Edit history",class="ai-btn"),
-              shiny::actionButton("preview_undo","Undo last AI change",class="ai-btn"),
-              if(!is.null(package_info$history))shiny::actionButton("history","History",class="ai-btn"),
-              if(!is.null(package_info$knowledge))shiny::actionButton("knowledge","Knowledge",class="ai-btn"),
-              if(!is.null(package_info))shiny::actionButton("check_updates","Check updates",class="ai-btn",title="Check for updates now"),
-              shiny::actionButton("help","Help",class="ai-btn"),
-              shiny::actionButton("close","Close",class="ai-btn")),
+            shiny::div(class="menu-group","aria-label"="Code actions",
+              shiny::p(class="menu-heading","Code actions"),
+              shiny::div(class="menu-actions",
+                code_action_menu("selection","Selected code","Select text in the RStudio Source editor first."),
+                code_action_menu("chunk","Rmd / Quarto chunk","Place the Source cursor inside an R chunk first."),
+                shiny::p(class="menu-hint","Fix / Improve show changes in chat. Replace applies them."),
+                shiny::div(class="menu-button-row",
+                  shiny::actionButton("edit_history","Code edit history",class="ai-btn",title="View previous AI edits and their before/after code"),
+                  shiny::actionButton("preview_undo","Undo last AI edit",class="ai-btn",title="Preview restoring the last AI code edit before confirming")))),
+            if(!is.null(package_info$history) || !is.null(package_info$knowledge))shiny::div(class="menu-group","aria-label"="Chat",
+              shiny::p(class="menu-heading","Chat"),shiny::div(class="menu-actions",
+                if(!is.null(package_info$history))shiny::actionButton("history","Chat history",class="ai-btn"),
+                if(!is.null(package_info$knowledge))shiny::actionButton("knowledge","Course knowledge",class="ai-btn"))),
+            shiny::div(class="menu-group","aria-label"="App",
+              shiny::p(class="menu-heading","App"),shiny::div(class="menu-actions",
+                if(!is.null(package_info))shiny::actionButton("check_updates","Check updates",class="ai-btn",title="Check for updates now"),
+                shiny::div(class="menu-button-row",shiny::actionButton("help","Help",class="ai-btn"),
+                  shiny::actionButton("close","Close",class="ai-btn")))),
             if(!is.null(package_info))shiny::div(class="menu-version","RAssistant ",
               shiny::span(class="app-version",paste0("v",package_info$version)))))
       )
@@ -2209,8 +2236,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
               shiny::p("OPENAI_API_KEY overrides the saved key. Remove that environment setting to use the saved replacement."))),
           shiny::tags$ul(
             shiny::tags$li("Corrections show numbered changes in the code block. Replace edits Source; Save and Run stay separate."),
-            if(!is.null(history))shiny::tags$li("History manages saved chats. New chat keeps the previous conversation."),
-            if(!is.null(knowledge))shiny::tags$li("Knowledge adds course files and instructions for this project."),
+            if(!is.null(history))shiny::tags$li("Chat history manages saved chats. New chat keeps the previous conversation."),
+            if(!is.null(knowledge))shiny::tags$li("Course knowledge adds course files and instructions for this project."),
             if(!is.null(console_capture))shiny::tags$li("Console starts On and includes new output. Plot attaches the selected RStudio plot.")),
           shiny::tags$strong("Updates"),
           if(is.null(package_info)) shiny::p("Close, replace AISource.R, then source it again.")
@@ -2688,7 +2715,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       selected <- if(!is.null(state$edit_selected))tryCatch(edit_store$get(state$edit_selected),error=function(e)NULL)else if(length(entries))entries[[1L]]else NULL
       job <- undo_job()
       shiny::div(class="edit-history-panel",
-        shiny::strong("Edit history"),shiny::p("Local editor changes and Undo backups. Save and Run are separate. Latest 100 edits retained."),
+        shiny::strong("Code edit history"),shiny::p("Local editor changes and Undo backups. Save and Run are separate. Latest 100 edits retained."),
         shiny::div(class="edit-log-list",lapply(head(entries,20L),function(entry)shiny::tags$button(type="button",class="btn ai-btn edit-log-view",
           "data-id"=entry$id,paste(entry$time,entry$name,entry$operation,entry$status,sep=" | ")))),
         if(is.null(selected))shiny::p("No changes recorded yet.")else shiny::tagList(
