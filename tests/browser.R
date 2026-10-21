@@ -176,6 +176,8 @@ main <- function() {
   check(isTRUE(js('document.querySelector(".empty")!==null')), "existing Shiny UI connects and renders")
   check(isTRUE(js('!document.getElementById("app_menu").open && document.querySelector("#app_menu #history")!==null && document.querySelector("#app_menu #knowledge")!==null && document.querySelector("#app_menu #help")!==null && document.querySelector("#app_menu #close")!==null && document.getElementById("check_updates").closest("#app_menu")!==null && document.getElementById("console_context").closest(".toolbar-actions")!==null && document.querySelector(".upload-row #console_context")===null && document.getElementById("workspace_context").closest(".toolbar-actions")!==null && document.querySelector("#app_menu #workspace_context")===null && document.getElementById("workspace_context").checked && document.getElementById("workspace_context_state").textContent==="On"')),
     "Check updates lives in More actions while Console and default-on Workspace share the header")
+  check(isTRUE(js('document.getElementById("preview_undo").closest(".upload-row")!==null && document.getElementById("preview_redo").closest(".upload-row")!==null && document.querySelector("#app_menu #preview_undo")===null && document.getElementById("preview_undo").getClientRects().length>0 && document.getElementById("preview_redo").getClientRects().length>0')),
+    "Undo and Redo are visible beside Image and Plot without opening a menu")
   js('document.querySelector("#app_menu>summary").click();')
   check(isTRUE(js('Array.from(document.querySelectorAll(".menu-heading")).map(function(e){return e.textContent;}).join("|")==="Code actions|Chat|App" && document.getElementById("history").textContent==="Chat history" && document.getElementById("edit_history").textContent==="Code edit history" && document.querySelectorAll(".menu-chevron").length===2 && document.querySelectorAll(".selection-menu[open]").length===0')),
     "More actions groups code, chat and app tools with distinct history names and visible disclosure arrows")
@@ -271,7 +273,7 @@ main <- function() {
   screenshot<-Sys.getenv("RA_BROWSER_MENU_SCREENSHOT")
   if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
   js('document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));')
-  check(isTRUE(js('document.getElementById("attach_current_plot").getBoundingClientRect().right<=innerWidth && document.getElementById("send").getBoundingClientRect().right<=innerWidth && document.getElementById("source_context").closest(".toolbar")!==null && document.getElementById("source_context").textContent.trim()==="example.R" && document.getElementById("console_context").closest(".console-context").getBoundingClientRect().right<=innerWidth && document.querySelector(".toolbar").getBoundingClientRect().height<=40 && Math.abs(document.querySelector(".workspace-context").getBoundingClientRect().top-document.querySelector(".console-context").getBoundingClientRect().top)<2 && document.querySelector(".workspace-context").getBoundingClientRect().right<=innerWidth')),
+  check(isTRUE(js('document.getElementById("attach_current_plot").getBoundingClientRect().right<=innerWidth && document.getElementById("send").getBoundingClientRect().right<=innerWidth && document.getElementById("source_context").closest(".toolbar")!==null && document.getElementById("source_context").textContent.trim()==="example.R" && document.getElementById("console_context").closest(".console-context").getBoundingClientRect().right<=innerWidth && document.querySelector(".toolbar").getBoundingClientRect().height<=40 && Math.abs(document.querySelector(".workspace-context").getBoundingClientRect().top-document.querySelector(".console-context").getBoundingClientRect().top)<2 && document.querySelector(".workspace-context").getBoundingClientRect().right<=innerWidth && document.getElementById("preview_redo").getBoundingClientRect().right<=innerWidth && Math.abs(document.getElementById("preview_undo").getBoundingClientRect().top-document.getElementById("send").getBoundingClientRect().top)<2')),
     "the file name, Console and Workspace share one compact header in a narrow Viewer")
   screenshot<-Sys.getenv("RA_BROWSER_LAYOUT_SCREENSHOT")
   if(nzchar(screenshot)){
@@ -601,20 +603,42 @@ main <- function() {
   js('document.querySelector(".source-skip").click();')
   wait_js('document.getElementById("source-review-card")===null && !document.getElementById("send").disabled')
   check(length(readRDS(edit_marker))==before_edits,"Skip dismisses the remaining proposal without modifying Source")
-  js('openAction("edit_history");')
+  js('document.getElementById("prompt").value="Draft kept while viewing code history";window.historyMessageCount=document.querySelectorAll(".msg").length;openAction("edit_history");')
   wait_js('document.querySelector(".edit-history-panel")!==null')
+  wait_js('getComputedStyle(document.getElementById("edit_history_page")).display!=="none"')
   check(isTRUE(js('document.querySelectorAll(".edit-log-view").length===2 && document.querySelector(".edit-history-panel").textContent.includes("applied")')),
     "Edit history shows each applied replacement and its actual code comparison")
-  js('document.querySelector(".undo-preview").click();')
+  check(isTRUE(js('document.querySelector("#chat_stream .edit-history-panel")===null && getComputedStyle(document.getElementById("chat_stream")).display==="none" && getComputedStyle(document.querySelector(".compose")).display==="none" && document.querySelectorAll(".msg").length===historyMessageCount')),
+    "Code edit history opens a separate view and keeps history out of the chat stream")
+  browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
+  check(isTRUE(js('document.querySelector(".edit-page-actions").getBoundingClientRect().right<=innerWidth && document.getElementById("edit_history_page").getBoundingClientRect().bottom<=innerHeight')),
+    "the history page and its Undo, Redo and Back controls fit a narrow Viewer")
+  js('document.querySelector("#edit_history_page .undo-preview").click();')
   wait_js('document.querySelector(".source-undo")!==null')
   before_edits <- length(readRDS(edit_marker))
   check(isTRUE(js('document.querySelector(".undo-comparison").textContent.includes("Undo preview")')),
-    "Undo opens an inline comparison before any editor write")
+    "Undo previews its comparison on the history page before any editor write")
   js('document.querySelector(".source-undo").click();')
   wait_js('document.querySelector(".source-undo")===null && !document.getElementById("send").disabled')
   check(length(readRDS(edit_marker))==before_edits+1L && startsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"library(tidyverse)") &&
     endsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"dim(X)\n"),"confirming Undo restores only the last AI change and logs the restoration")
-  js('document.querySelector(".edit-history-close").click();document.getElementById("prompt").value="Workspace evidence please";document.getElementById("send").click();')
+  js('document.querySelector("#edit_history_page .redo-preview").click();')
+  wait_js('document.querySelector(".source-redo")!==null')
+  check(isTRUE(js('document.querySelector(".undo-comparison").textContent.includes("Redo preview") && document.querySelector("#chat_stream .source-redo")===null')),
+    "Redo previews the undone change on the separate history page")
+  screenshot<-Sys.getenv("RA_BROWSER_EDIT_HISTORY_SCREENSHOT")
+  if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+  before_edits <- length(readRDS(edit_marker))
+  js('document.querySelector(".source-redo").click();')
+  wait_js('document.querySelector(".source-redo")===null && !document.getElementById("send").disabled')
+  check(length(readRDS(edit_marker))==before_edits+1L && startsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"suppressPackageStartupMessages"),
+    "Confirm Redo reapplies the exact last undone code once")
+  js('document.querySelector(".edit-history-close").click();')
+  wait_js('getComputedStyle(document.getElementById("chat_stream")).display!=="none" && getComputedStyle(document.querySelector(".compose")).display!=="none"')
+  check(isTRUE(js('document.getElementById("prompt").value==="Draft kept while viewing code history" && document.querySelectorAll(".msg").length===historyMessageCount')),
+    "Back to chat restores the existing conversation and unchanged draft")
+  browser$Emulation$clearDeviceMetricsOverride()
+  js('document.getElementById("prompt").value="Workspace evidence please";document.getElementById("send").click();')
   wait_js('!document.getElementById("send").disabled && document.querySelector("#messages").textContent.includes("Workspace evidence received: 3 x 4")')
   check(isTRUE(js('document.getElementById("workspace_context").checked')),"Workspace starts on and supplies metadata without opening More actions")
   js('document.getElementById("workspace_context").click();')

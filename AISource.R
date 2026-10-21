@@ -170,7 +170,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     valid_id <- function(id)is.character(id) && length(id)==1L && !is.na(id) && grepl("^[A-Za-z0-9][A-Za-z0-9._-]{4,100}$",id)
     valid <- function(entry)is.list(entry) && valid_id(entry$id) && all(vapply(entry[c("before","after","path","name","document_id","session","time","operation","status","summary")],
       function(x)is.character(x) && length(x)==1L && !is.na(x),logical(1))) && length(entry[c("before","after","path","name","document_id","session","time","operation","status","summary")])==10L &&
-      nchar(entry$before)<=50000L && nchar(entry$after)<=50000L && entry$status %in% c("pending","applied","uncertain","undone")
+      nchar(entry$before)<=50000L && nchar(entry$after)<=50000L && (is.null(entry$original_id) || valid_id(entry$original_id)) &&
+      entry$status %in% c("pending","applied","uncertain","undone","superseded")
     get_entry <- function(id) {
       if(!valid_id(id))stop("Invalid edit identifier.")
       if(is.null(root))entry <- memory[[id]] else {
@@ -202,8 +203,16 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       entry$id <- paste0(format(Sys.time(),"%Y%m%dT%H%M%OS6",tz="UTC"),"-",basename(tempfile("edit-")))
       entry$time <- format(Sys.time(),"%Y-%m-%d %H:%M:%OS6 UTC",tz="UTC");entry$status <- "pending"
       save(entry)
-      old <- entries();if(length(old)>100L)for(item in old[-seq_len(100L)]) {
-        if(is.null(root))rm(list=item$id,envir=memory)else unlink(file.path(root,paste0(item$id,".json")))
+      old <- entries()
+      if(length(old)>100L) {
+        ids <- vapply(old,function(item)item$id,character(1))
+        # Retain the original while committing an Undo/Redo transaction, even
+        # when it is the oldest record at the retention boundary.
+        pinned <- intersect(ids,c(entry$id,entry$original_id))
+        keep <- c(pinned,head(setdiff(ids,pinned),100L-length(pinned)))
+        for(item in old[!ids %in% keep]) {
+          if(is.null(root))rm(list=item$id,envir=memory)else unlink(file.path(root,paste0(item$id,".json")))
+        }
       }
       entry$id
     }
@@ -213,6 +222,31 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   edit_store <- source_edit_store(directory=getOption("RAssistant.edits_dir",tools::R_user_dir("RAssistant","data")),
     project=tryCatch({project<-rstudioapi::getActiveProject();if(is.null(project))getwd()else project},error=function(e)getwd()))
   source_session_id <- basename(tempfile("source-session-"))
+  source_edit_matches <- function(entry,ctx,session=source_session_id)identical(entry$path,chat_text(ctx$path)) &&
+    (nzchar(entry$path) || (identical(entry$document_id,ctx$id) && identical(entry$session,session)))
+  source_restore_entry <- function(entries,ctx,direction,session=source_session_id) {
+    entries <- Filter(function(entry)source_edit_matches(entry,ctx,session),entries)
+    if(!length(entries))return(NULL)
+    if(entries[[1L]]$status %in% c("pending","uncertain"))stop("The last editor change was not verified. Inspect Source before making another edit.")
+    if(direction=="undo") {
+      found <- Filter(function(entry)entry$status=="applied" && !entry$operation %in% c("undo","redo","create"),entries)
+      if(length(found))return(found[[1L]])
+    } else if(direction=="redo") {
+      # The most recently undone edit is redone first, independent of the
+      # original edit's timestamp. This also survives app relaunch.
+      undone <- Filter(function(entry)entry$status=="undone",entries)
+      for(event in entries) {
+        # A newer original edit ends an older Redo branch, including logs
+        # written by versions that did not mark old entries superseded.
+        if(!event$operation %in% c("undo","redo","create"))break
+        if(event$operation=="undo" && event$status=="applied") {
+          found <- Filter(function(entry)identical(entry$id,event$original_id),undone)
+          if(length(found))return(found[[1L]])
+        }
+      }
+    }
+    NULL
+  }
   source_read_info <- function(value) {
     if(!is.list(value) || !is.character(value$name) || length(value$name)!=1L || is.na(value$name))return(NULL)
     if(!is.numeric(value$lines) || length(value$lines)!=1L || !is.finite(value$lines) || value$lines<0 ||
@@ -1285,6 +1319,10 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .selection-menu[open]>summary .menu-chevron{transform:rotate(90deg)}
   .selection-menu .code-action-buttons{margin:5px 4px 7px}
   .edit-history-panel{border:1px solid var(--border);padding:9px;margin:8px 0;font-size:11px}
+  .edit-history-page{flex:1 1 auto;min-height:0;overflow:auto;padding:8px}
+  .edit-page-header{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .edit-page-actions{display:flex;gap:4px}
+  .edit-log-list .ai-btn{min-width:0;white-space:normal;overflow-wrap:anywhere}
   .edit-log-list{display:flex;flex-direction:column;gap:4px;max-height:150px;overflow:auto;margin:8px 0}
   .edit-log-list .ai-btn{text-align:left}
   .formatting-changes .diff-add,.formatting-changes .diff-remove{background:#eef0f2;color:#626b75}
@@ -1376,7 +1414,15 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     var submitId=null, validationInFlight=false, serverBusy=false, pending=false;
     var readyCount=0, uploadEpoch=0, connected=false;
     var openDetails=Object.create(null);
-    var scrollLatest=function(){},holdReviewPosition=function(){},editApplying=false,sourceReadDetail="";
+    var scrollLatest=function(){},holdReviewPosition=function(){},resumeChatScroll=function(){},historyOpen=false,editApplying=false,sourceReadDetail="";
+    function showEditPage(open){
+      if(open===historyOpen)return;historyOpen=open;
+      var chat=document.getElementById("chat_stream"),compose=document.querySelector(".compose"),page=document.getElementById("edit_history_page");
+      if(chat)chat.style.display=open?"none":"";
+      if(compose)compose.style.display=open?"none":"";
+      if(page){page.style.display=open?"block":"none";if(open)page.scrollTop=0;}
+      if(!open){resumeChatScroll();window.requestAnimationFrame(resizePrompt);}
+    }
     function resizePrompt(){
       var field=document.getElementById("prompt");if(!field)return;
       var cap=Math.max(54,Math.min(140,window.innerHeight*.25));
@@ -1445,7 +1491,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       var knowledge=document.getElementById("knowledge");if(knowledge)knowledge.disabled=busy;
       var clear=document.getElementById("clear_images");if(clear)clear.disabled=working;
       document.querySelectorAll(".remove-attachment").forEach(function(btn){btn.disabled=busy;});
-      document.querySelectorAll(".source-review,.source-apply,.source-skip,.source-jump,.selection-action,.source-formatting,.source-undo").forEach(function(btn){btn.disabled=busy || btn.getAttribute("data-invalid")==="true";});
+      document.querySelectorAll(".source-review,.source-apply,.source-skip,.source-jump,.selection-action,.source-formatting,.source-undo,.source-redo,#preview_undo,#preview_redo,.undo-preview,.redo-preview,.edit-log-view,.edit-history-close,#edit_history").forEach(function(btn){btn.disabled=busy || btn.getAttribute("data-invalid")==="true";});
       document.querySelectorAll(".code-wrap").forEach(function(wrap){wrap.classList.toggle("review-open",!!wrap.querySelector(".source-edit-card"));});
       var imageLabel=document.getElementById("image_picker");if(imageLabel)imageLabel.setAttribute("aria-disabled",busy?"true":"false");
       ["check_updates","update_now","confirm_update"].forEach(function(id){
@@ -1624,8 +1670,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(view)Shiny.setInputValue("edit_history_view",{id:view.getAttribute("data-id"),nonce:++nonce},{priority:"event"});
       if(e.target.closest && e.target.closest(".edit-history-close"))Shiny.setInputValue("edit_history_close",++nonce,{priority:"event"});
       if(e.target.closest && e.target.closest(".undo-preview"))Shiny.setInputValue("preview_undo",{nonce:++nonce},{priority:"event"});
+      if(e.target.closest && e.target.closest(".redo-preview"))Shiny.setInputValue("preview_redo",{nonce:++nonce},{priority:"event"});
       var undo=e.target.closest && e.target.closest(".source-undo");
       if(undo && !undo.disabled && !editApplying){editApplying=true;updateSendState();Shiny.setInputValue("confirm_source_undo",{token:undo.getAttribute("data-token"),nonce:++nonce},{priority:"event"});}
+      var redo=e.target.closest && e.target.closest(".source-redo");
+      if(redo && !redo.disabled && !editApplying){editApplying=true;updateSendState();Shiny.setInputValue("confirm_source_redo",{token:redo.getAttribute("data-token"),nonce:++nonce},{priority:"event"});}
       var remove=e.target.closest && e.target.closest(".remove-attachment");
       if(remove && !remove.disabled){
         Shiny.setInputValue("remove_attachment",{id:remove.getAttribute("data-attachment-id"),epoch:uploadEpoch,nonce:++nonce},{priority:"event"});
@@ -1669,6 +1718,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           sourceReadDetail=msg.source_read||"";
           var source=document.getElementById("source_context");if(source)source.title=sourceReadDetail||source.textContent.trim();
           uploadEpoch=msg.epoch;connected=true;updateSendState();
+          showEditPage(!!msg.edit_page);
         });
         Shiny.addCustomMessageHandler("ai_submit_complete",function(msg){
           if(msg && msg.id===submitId){submitId=null;scrollLatest();updateSendState();window.requestAnimationFrame(resizePrompt);}
@@ -1694,6 +1744,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(window.jQuery){
         window.jQuery(document).on("input change","#prompt",resizePrompt);
         window.jQuery(document).on("shiny:value",function(e){
+          if(e.name==="edit_history_panel")window.requestAnimationFrame(updateSendState);
           if(e.name==="filename")window.requestAnimationFrame(function(){
             var source=document.getElementById("source_context");if(source)source.title=sourceReadDetail||source.textContent.trim();
           });
@@ -1717,11 +1768,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         if(last && identity!==lastMessage){lastMessage=identity;followTail=true;readingUntil=0;readerScrollPending=false;}
       }
       function queueScroll(){
+        if(historyOpen)return;
         rendering=true;
         if(settleFrame!==null){window.cancelAnimationFrame(settleFrame);settleFrame=null;}
         if(scrollFrame!==null)return;
         scrollFrame=window.requestAnimationFrame(function(){
           scrollFrame=null;
+          if(historyOpen){rendering=false;return;}
           noteLatestMessage();
           root.scrollTop=followTail?root.scrollHeight:savedTop;
           if(followTail)savedTop=root.scrollTop;
@@ -1729,6 +1782,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         });
       }
       scrollLatest=function(){followTail=true;readingUntil=0;readerScrollPending=false;queueScroll();};
+      resumeChatScroll=queueScroll;
       holdReviewPosition=function(wrap){
         noteLatestMessage();followTail=false;readingUntil=0;readerScrollPending=false;
         // Anchor the chosen code block while its comparison replaces the code.
@@ -1747,6 +1801,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         if(["ArrowUp","ArrowDown","PageUp","PageDown","Home","End"," "].indexOf(e.key)>=0)readerIntent();
       });
       root.addEventListener("scroll",function(){
+        if(historyOpen)return;
         var intentional=dragging || Date.now()<readingUntil;
         if(rendering && !(readerScrollPending && intentional))return;
         if(intentional){
@@ -1816,9 +1871,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
                 code_action_menu("selection","Selected code","Select text in the RStudio Source editor first."),
                 code_action_menu("chunk","Rmd / Quarto chunk","Place the Source cursor inside an R chunk first."),
                 shiny::p(class="menu-hint","Fix / Improve show changes in chat. Replace applies them."),
-                shiny::div(class="menu-button-row",
-                  shiny::actionButton("edit_history","Code edit history",class="ai-btn",title="View previous AI edits and their before/after code"),
-                  shiny::actionButton("preview_undo","Undo last AI edit",class="ai-btn",title="Preview restoring the last AI code edit before confirming")))),
+                shiny::actionButton("edit_history","Code edit history",class="ai-btn",title="Open code changes on a separate page"))),
             if(!is.null(package_info$history) || !is.null(package_info$knowledge))shiny::div(class="menu-group","aria-label"="Chat",
               shiny::p(class="menu-heading","Chat"),shiny::div(class="menu-actions",
                 if(!is.null(package_info$history))shiny::actionButton("history","Chat history",class="ai-btn"),
@@ -1834,7 +1887,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     ),
     if(!is.null(package_info))shiny::textOutput("update_check_status"),
     shiny::uiOutput("update_notice"),
-    shiny::div(id="chat_stream",class="history",shiny::uiOutput("messages"),shiny::uiOutput("edit_history_panel")),
+    shiny::div(id="chat_stream",class="history",shiny::uiOutput("messages")),
+    shiny::div(id="edit_history_page",class="edit-history-page",style="display:none",shiny::uiOutput("edit_history_panel")),
     shiny::div(class="compose",
       shiny::uiOutput("attachment_status"),
       shiny::textAreaInput("prompt",label=NULL,rows=2,width="100%",
@@ -1847,6 +1901,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             accept="image/png,image/jpeg,image/webp")),
         shiny::tags$button(id="attach_current_plot",type="button",class="attach-plot",
           title="Attach the plot selected in RStudio's Plots pane as a PNG", "Plot"),
+        shiny::actionButton("preview_undo","Undo",class="ai-btn",title="Preview undoing the last AI code edit"),
+        shiny::actionButton("preview_redo","Redo",class="ai-btn",title="Preview reapplying the last undone AI code edit"),
         shiny::actionButton("send","Send",class="ai-btn ai-send")
       ),
       shiny::div(id="compose_status",class="compose-status",hidden="hidden",
@@ -2309,6 +2365,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     }
     sync_client <- function() {
       session$sendCustomMessage("ai_state", list(busy=state$busy,
+        edit_page=state$edit_panel,
         pending=!is.null(state$pending), attachments=length(state$attachments), epoch=state$upload_epoch,
         source_read=if(is.null(state$source_read))""else source_read_label(state$source_read)))
     }
@@ -2640,6 +2697,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           state$current <- fresh
         }
         edit_store$finish(record_id,"applied")
+        if(!job$creating)for(old in edit_store$list())
+          if(old$status=="undone" && source_edit_matches(old,job$snapshot))edit_store$finish(old$id,"superseded")
         TRUE
       },error=function(e)e)
       if(inherits(result,"error")) {
@@ -2660,46 +2719,53 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     shiny::observeEvent(input$edit_history,{
       if(state$busy || !session_active || !is.null(state$pending))return()
       clear_source_review();state$edit_panel <- TRUE;state$edit_selected <- NULL
-      session$sendCustomMessage("ai_scroll_latest",list())
     },ignoreInit=TRUE)
-    shiny::observeEvent(input$edit_history_close,{state$edit_panel<-FALSE;undo_job(NULL)},ignoreInit=TRUE)
+    shiny::observeEvent(input$edit_history_close,{
+      if(state$busy || !session_active)return()
+      state$edit_panel<-FALSE;undo_job(NULL)
+    },ignoreInit=TRUE)
     shiny::observeEvent(input$edit_history_view,{
       if(state$busy || !session_active || !state$edit_panel)return()
       entry <- tryCatch(edit_store$get(input$edit_history_view$id),error=function(e)NULL)
       if(!is.null(entry)){state$edit_selected<-entry$id;undo_job(NULL)}
     },ignoreInit=TRUE)
-    shiny::observeEvent(input$preview_undo,{
+    preview_restore <- function(direction) {
       if(!session_active || state$busy || !is.null(state$pending))return()
+      label <- if(direction=="undo")"Undo"else"Redo"
       fresh <- read_source_context(state$file_id)
-      if(!is_source_context(fresh)){shiny::showNotification("Open the Source document to undo its last AI change.",type="warning");return()}
-      entries <- tryCatch(edit_store$list(),error=function(e)list())
-      found <- Filter(function(entry)entry$status=="applied" && !entry$operation %in% c("undo","create") &&
-        identical(entry$path,chat_text(fresh$path)) && (nzchar(entry$path) ||
-          (identical(entry$document_id,fresh$id) && identical(entry$session,source_session_id))),entries)
-      if(!length(found)){shiny::showNotification("No AI change is available to undo for this Source document.");return()}
-      entry <- found[[1L]];clear_source_review();state$edit_panel <- TRUE;state$edit_selected <- entry$id
-      undo_job(list(entry=entry,snapshot=source_snapshot(fresh),token=basename(tempfile("undo-")),chat=state$chat$id,
-        conflict=!identical(full_text(fresh),entry$after)))
-      session$sendCustomMessage("ai_scroll_latest",list())
-    },ignoreInit=TRUE)
-    shiny::observeEvent(input$confirm_source_undo,{
+      if(!is_source_context(fresh)){shiny::showNotification(paste("Open the Source document before",label),type="warning");return()}
+      entry <- tryCatch(source_restore_entry(edit_store$list(),fresh,direction),error=function(e)e)
+      if(inherits(entry,"error")){clear_source_review();shiny::showNotification(conditionMessage(entry),type="warning");return()}
+      if(is.null(entry)){clear_source_review();shiny::showNotification(paste("No AI edit is available to",tolower(label),"for this Source document."));return()}
+      clear_source_review();state$edit_panel <- TRUE;state$edit_selected <- entry$id
+      undo_job(list(entry=entry,snapshot=source_snapshot(fresh),token=basename(tempfile("restore-")),chat=state$chat$id,
+        direction=direction,conflict=!identical(full_text(fresh),if(direction=="undo")entry$after else entry$before)))
+    }
+    shiny::observeEvent(input$preview_undo,preview_restore("undo"),ignoreInit=TRUE)
+    shiny::observeEvent(input$preview_redo,preview_restore("redo"),ignoreInit=TRUE)
+    confirm_restore <- function(obj,direction) {
       on.exit(session$sendCustomMessage("ai_edit_complete",list()),add=TRUE)
-      obj <- input$confirm_source_undo;job <- undo_job()
+      job <- undo_job();label <- if(direction=="undo")"Undo"else"Redo"
       if(!session_active || state$busy || !is.null(state$pending) || is.null(job) || isTRUE(job$conflict) ||
-        !is.list(obj) || !identical(obj$token,job$token) || !identical(job$chat,state$chat$id))return()
+        !identical(job$direction,direction) || !is.list(obj) || !identical(obj$token,job$token) || !identical(job$chat,state$chat$id))return()
       fresh <- matching_source(job$snapshot)
       undo_job(NULL)
-      if(is.null(fresh)){shiny::showNotification("Source changed after the Undo preview. Nothing was replaced.",type="warning");return()}
+      if(is.null(fresh)){shiny::showNotification(paste("Source changed after the",label,"preview. Nothing was replaced."),type="warning");return()}
+      current <- tryCatch(source_restore_entry(edit_store$list(),fresh,direction),error=function(e)NULL)
+      if(is.null(current) || !identical(current$id,job$entry$id)){
+        shiny::showNotification("Edit history changed. Open a fresh Undo or Redo preview.",type="warning");return()
+      }
       state$busy <- TRUE;sync_client();record_id <- NULL
       on.exit({state$busy<-FALSE;state$edit_version<-state$edit_version+1L;sync_client()},add=TRUE)
       result <- tryCatch({
-        entry <- edit_entry(job$snapshot,full_text(fresh),job$entry$before,"undo",paste("Undo:",job$entry$summary))
+        target <- if(direction=="undo")job$entry$before else job$entry$after
+        entry <- edit_entry(job$snapshot,full_text(fresh),target,direction,paste0(label,": ",job$entry$summary))
         entry$original_id <- job$entry$id;record_id <- edit_store$begin(entry)
         write_source(fresh$id,entry$after)
         verified <- active_doc(id=fresh$id)
         if(!is_source_context(verified) || !identical(verified$id,fresh$id) || !identical(chat_text(verified$path),job$snapshot$path) ||
-          !identical(full_text(verified),entry$after))stop("Undo could not be verified; inspect Source before retrying.")
-        edit_store$finish(record_id,"applied");edit_store$finish(job$entry$id,"undone")
+          !identical(full_text(verified),entry$after))stop(paste(label,"could not be verified; inspect Source before retrying."))
+        edit_store$finish(record_id,"applied");edit_store$finish(job$entry$id,if(direction=="undo")"undone"else"applied")
         state$current <- verified;state$source_read <- NULL;state$edit_selected <- record_id
         TRUE
       },error=function(e)e)
@@ -2707,7 +2773,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         if(!is.null(record_id))try(edit_store$finish(record_id,"uncertain"),silent=TRUE)
         shiny::showNotification(conditionMessage(result),type="error",duration=NULL)
       }
-    },ignoreInit=TRUE)
+    }
+    shiny::observeEvent(input$confirm_source_undo,confirm_restore(input$confirm_source_undo,"undo"),ignoreInit=TRUE)
+    shiny::observeEvent(input$confirm_source_redo,confirm_restore(input$confirm_source_redo,"redo"),ignoreInit=TRUE)
     output$edit_history_panel <- shiny::renderUI({
       state$edit_version
       if(!state$edit_panel)return(NULL)
@@ -2715,20 +2783,27 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       selected <- if(!is.null(state$edit_selected))tryCatch(edit_store$get(state$edit_selected),error=function(e)NULL)else if(length(entries))entries[[1L]]else NULL
       job <- undo_job()
       shiny::div(class="edit-history-panel",
-        shiny::strong("Code edit history"),shiny::p("Local editor changes and Undo backups. Save and Run are separate. Latest 100 edits retained."),
-        shiny::div(class="edit-log-list",lapply(head(entries,20L),function(entry)shiny::tags$button(type="button",class="btn ai-btn edit-log-view",
+        shiny::div(class="edit-page-header",shiny::strong("Code edit history"),
+          shiny::div(class="edit-page-actions",
+            shiny::tags$button(type="button",class="btn ai-btn undo-preview","Undo"),
+            shiny::tags$button(type="button",class="btn ai-btn redo-preview","Redo"),
+            shiny::tags$button(type="button",class="btn ai-btn edit-history-close","Back to chat"))),
+        shiny::p("Last 100 changes, stored on this computer."),
+        if(!is.null(job))shiny::div(class="undo-comparison",
+          shiny::strong(if(job$conflict)paste0(if(job$direction=="undo")"Undo"else"Redo"," blocked: Source changed after this AI edit.")
+            else paste0(if(job$direction=="undo")"Undo"else"Redo"," preview: ",job$entry$name)),
+          shiny::tags$pre(class="source-diff",shiny::HTML(source_diff_display(job$snapshot$text,
+            if(job$direction=="undo")job$entry$before else job$entry$after)$html)),
+          if(!job$conflict)shiny::tags$button(type="button",class=paste("btn ai-btn",if(job$direction=="undo")"source-undo"else"source-redo"),
+            "data-token"=job$token,if(job$direction=="undo")"Confirm Undo"else"Confirm Redo")),
+        shiny::div(class="edit-log-list",lapply(head(entries,100L),function(entry)shiny::tags$button(type="button",class="btn ai-btn edit-log-view",
           "data-id"=entry$id,paste(entry$time,entry$name,entry$operation,entry$status,sep=" | ")))),
-        if(is.null(selected))shiny::p("No changes recorded yet.")else shiny::tagList(
+        if(is.null(selected))shiny::p("No changes recorded yet.")else if(is.null(job))shiny::tagList(
           shiny::p(title=selected$path,paste(selected$name,selected$status,sep=" - ")),
           if(nzchar(selected$summary))shiny::p(paste("AI proposal notes:",selected$summary)),
-          shiny::tags$pre(class="source-diff",shiny::HTML(source_diff_display(selected$before,selected$after)$html))),
-        if(!is.null(job))shiny::div(class="undo-comparison",
-          shiny::strong(if(job$conflict)"Undo blocked: Source changed after this AI edit."else"Undo preview: restore the previous Source"),
-          shiny::tags$pre(class="source-diff",shiny::HTML(source_diff_display(job$snapshot$text,job$entry$before)$html)),
-          if(!job$conflict)shiny::tags$button(type="button",class="btn ai-btn source-undo","data-token"=job$token,"Confirm Undo")),
-        shiny::div(class="source-edit-actions",shiny::tags$button(type="button",class="btn ai-btn undo-preview","Undo last AI change"),
-          shiny::tags$button(type="button",class="btn ai-btn edit-history-close","Close")))
+          shiny::tags$pre(class="source-diff",shiny::HTML(source_diff_display(selected$before,selected$after)$html))))
     })
+    shiny::outputOptions(output,"edit_history_panel",suspendWhenHidden=FALSE)
     output$workspace_context_state <- shiny::renderText(if(isTRUE(input$workspace_context))"On"else"Off")
     output$filename <- shiny::renderText({
       if (!is_source_context(state$current)) return("No Source document")

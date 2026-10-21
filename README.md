@@ -36,7 +36,7 @@ Help contains launch, API-key and update instructions with Copy buttons.
 Advanced commands are expandable; manual update results appear below the header.
 The current file name shares the header row with the visible actions; long names have a tooltip.
 The controls retain their original bordered appearance. The two-line composer
-grows with your draft; Image, Plot and Send share one action row.
+grows with your draft; Image, Plot, Undo, Redo and Send share one action row.
 While a request runs, Send shows a loading indicator without a separate Thinking
 notification or Working status row.
 If the Viewer disappears or disconnects after sleep or locking the Mac, use the
@@ -363,18 +363,23 @@ not rows, samples or statistics. Active bindings, lazy promises, functions and
 credential-like object names are skipped; user-defined dim/summary methods are
 not invoked. This is a current metadata snapshot, not proof the script ran.
 
-**... > Code edit history** shows actual approved replacements with time, target,
-status, proposal notes and the exact before/after comparison. Backups are stored
+**... > Code edit history** opens a separate page with time, target, status,
+proposal notes and the exact before/after comparison for approved edits.
+**Back to chat** preserves the conversation, draft, attachments and reading position.
+Backups are stored
 separately from chats under the project's hash in the local RAssistant data
 directory, with private permissions. The latest 100 records are retained.
 `options(RAssistant.edits_dir = "/chosen/directory")` changes the location;
 setting it to `NULL` keeps edits in memory only. Log failure prevents an
 unrecorded edit. Uncertain API failures are logged and cannot be retried blindly.
 
-**... > Undo last AI edit** previews the previous buffer before **Confirm Undo**.
-It restores one approved change, unsaved and unexecuted, and logs the restoration.
-Any intervening manual edit or change after the preview blocks Undo. Open the
-matching Source document first. Saved-file edits can be undone after relaunch;
+**Undo** and **Redo** remain visible beside Image and Plot. Each opens a comparison
+on the history page, then waits for **Confirm Undo** or **Confirm Redo**.
+Undo reverses the last AI edit; Redo reapplies the last undone edit. Multiple
+steps follow their original order. A new AI edit ends the previous Redo branch.
+Restorations are logged, unsaved and unexecuted. Any intervening manual edit or
+change after the preview blocks restoration. Open the matching Source document
+first. Saved-file Undo and Redo remain available after relaunch;
 unsaved documents require the same app instance. Document creation is logged
 but Undo does not delete a newly created document. These backups contain code
 and are never automatically included in AI requests.
@@ -415,6 +420,7 @@ Rscript tests/source-context.R
 Rscript tests/source-edits.R
 Rscript tests/source-workflow.R
 Rscript tests/source-advanced.R
+Rscript tests/source-restore.R
 Rscript tests/assignment-context.R
 Rscript tests/image-reading.R
 Rscript tests/conversation-context.R

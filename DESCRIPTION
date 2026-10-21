@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.6.2
+Version: 0.7.0
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -29,5 +29,6 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Group More actions into Code actions, Chat and App, with distinct Code edit history and Chat history labels.
-    Show clear arrows, brief Source instructions and Explain/Fix/Improve buttons for selected code and Rmd/Quarto chunks. Open one code section at a time.
+Config/RAssistant/Changes: Open Code edit history on a separate page with Back to chat, preserving the conversation, draft and attachments.
+    Keep Undo and Redo visible beside Image and Plot. Preview each reversal on the history page before confirming.
+    Support multiple Undo/Redo steps and saved-file Redo after relaunch. Manual changes block restoration, and new AI edits end the old Redo branch.

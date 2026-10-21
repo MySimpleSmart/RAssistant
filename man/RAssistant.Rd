@@ -43,9 +43,10 @@ Copy keeps Source unchanged; Replace, Append or Create requires an explicit clic
 Separate changes support Apply and Skip; Source links focus the matching editor
 line. More actions offers Explain, Fix and Improve for one selected Source range.
 Selected-code edits preserve surrounding text and require explicit approval.
-Spacing-only proposals are separated from code corrections. Edit history stores
-up to 100 local before/after backups. Undo requires an explicit comparison and
-confirmation and refuses to overwrite intervening manual changes. Optional
+Spacing-only proposals are separated from code corrections. A separate Code edit
+history page stores up to 100 local before/after backups. Visible Undo and Redo
+controls require a comparison and confirmation and refuse to overwrite manual
+changes. A new AI edit ends the older Redo branch. Optional
 Workspace context includes types, dimensions and column names, not rows.
 Current R chunk actions target only a closed R chunk's body in Rmd or Quarto.
 Users can replace or append to the captured file, or create an unsaved R/Rmd

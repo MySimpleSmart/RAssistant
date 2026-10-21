@@ -1,3 +1,9 @@
+# RAssistant 0.7.0
+
+- Open Code edit history on a separate page with Back to chat, preserving the conversation, draft and attachments.
+- Keep Undo and Redo visible beside Image and Plot. Preview each reversal on the history page before confirming.
+- Support multiple Undo/Redo steps and saved-file Redo after relaunch. Manual changes block restoration, and new AI edits end the old Redo branch.
+
 # RAssistant 0.6.2
 
 - Group More actions into Code actions, Chat and App, with distinct Code edit history and Chat history labels.
