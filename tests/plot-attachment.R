@@ -45,10 +45,19 @@ app$ask_ai<-function(system_prompt,prompt,images=character()){
   "Received the actual plot image."
 }
 shiny::testServer(app$server,{
+  messages <- list();send_message <- session$sendCustomMessage
+  session$sendCustomMessage <- function(type,message){messages[[length(messages)+1L]]<<-list(type=type,value=message);send_message(type,message)}
+  plot_mark <- function()tail(Filter(function(x)x$type=="ai_state",messages),1L)[[1L]]$value$plot_attached
   session$flushReact()
   check(!length(state$attachments) && !length(exports) && !length(calls),"plot export is opt-in and idle startup makes no export or AI request")
   request<-function(id,epoch=state$upload_epoch)session$setInputs(attach_current_plot=list(nonce=id,epoch=epoch,text="Keep this draft"))
   request(1L)
+  check(isTRUE(plot_mark()),"capturing a plot sets the button attachment mark")
+  restored <- app$chat_images(state$attachments)
+  directory <- tempfile();dir.create(directory)
+  restored <- app$materialize_images(restored,directory)
+  check(app$is_plot_attachment(restored[[1L]]),"a saved plot draft retains its attachment mark after restoration")
+  unlink(directory,recursive=TRUE)
   check(length(exports)==1L && length(state$attachments)==1L && !length(calls) && reads==0L,
     "Attach current plot stages a preview without reading Source or sending to AI")
   check(identical(jsonlite::base64_dec(sub("^data:image/png;base64,","",state$attachments[[1L]]$preview)),bytes[[1L]]) &&
@@ -93,11 +102,13 @@ shiny::testServer(app$server,{
     grepl("Only describe the current plot's appearance when its image is attached",calls[[1L]]$system,fixed=TRUE),
     "Console context and actual attached plot images can be interpreted together")
   check(!length(state$attachments) && all(!file.exists(staged)),"successful Send releases plot staging files")
+  check(identical(plot_mark(),FALSE),"sending captured plots clears the button attachment mark")
   request(13L);staged<-state$attachments[[1L]]$path
   selected<<-2L;request(15L);other<-state$attachments[[2L]]$path
   session$setInputs(remove_attachment=list(id=basename(staged),epoch=state$upload_epoch,nonce=1L))
   check(!file.exists(staged) && length(state$attachments)==1L && identical(state$attachments[[1L]]$path,other),
     "removing one staged image preserves the other image and its file")
+  check(isTRUE(plot_mark()),"removing one captured plot keeps the mark while another remains attached")
   session$setInputs(remove_attachment=list(id=basename(staged),epoch=state$upload_epoch,nonce=2L))
   session$setInputs(remove_attachment=list(id=basename(other),epoch=state$upload_epoch-1L,nonce=3L))
   session$setInputs(remove_attachment=list(id=fixtures[[1L]],epoch=state$upload_epoch,nonce=4L))
@@ -105,6 +116,11 @@ shiny::testServer(app$server,{
     "duplicate removals, stale chats and arbitrary file paths cannot remove other files")
   session$setInputs(clear_images=1L)
   check(!length(state$attachments) && !file.exists(staged) && !file.exists(other),"Clear removes captured plots without sending")
+  check(identical(plot_mark(),FALSE),"clearing all plots clears the button attachment mark")
+  session$setInputs(paste_image=list(image=paste0("data:image/png;base64,",jsonlite::base64_enc(bytes[[1L]])),
+    filename="Current RStudio plot.png",nonce=500L,epoch=state$upload_epoch))
+  check(length(state$attachments)==1L && identical(plot_mark(),FALSE),"an ordinary uploaded image does not mark Plot even if its filename matches")
+  session$setInputs(clear_images=2L)
   request(14L);staged<-state$attachments[[1L]]$path
   session$close()
   check(!file.exists(staged) && !dir.exists(attachment_dir),"disconnecting removes staged plot images and their temporary directory")

@@ -269,8 +269,9 @@ Select a graph in RStudio's **Plots** pane, then click **Plot**
 beside Image in RAssistant. The selected plot is exported as a PNG and appears
 in the attachment previews. Type your question and press **Send** to submit it.
 There is no manual Export or clipboard step, and Source is not rerun.
-The Plot button shows a small preview of the selected RStudio plot. Hover or
-keyboard focus shows a larger preview; returning to the Viewer refreshes it.
+The Plot button shows a checkmark while a captured plot is attached; removing or
+sending it clears the mark. Hover or keyboard focus shows the current plot's
+preview; returning to the Viewer refreshes it.
 Previews stay local and do not create attachments. Clicking Plot captures a fresh
 full-size image for your next Send. No background plot-export timer runs.
 

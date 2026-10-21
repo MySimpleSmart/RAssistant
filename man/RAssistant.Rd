@@ -119,8 +119,9 @@ remain available after updates. A new R major/minor version can use a new librar
 requiring package reinstallation; the OS-stored key remains separate.
 
 Plot, beside Image, exports the plot selected in RStudio's Plots
-pane as a PNG using \code{rstudioapi::savePlotAsImage()}. The button shows a
-small local thumbnail, with a larger preview on hover or keyboard focus.
+pane as a PNG using \code{rstudioapi::savePlotAsImage()}. The text button shows
+a checkmark while a captured plot is attached, with a preview on hover or keyboard focus.
+Removing or sending the plot clears the checkmark.
 Returning to the Viewer refreshes the preview. Clicking Plot captures a fresh
 full-size image and stages it as an attachment;
 Send submits the actual image through the normal attachment flow. Source is not

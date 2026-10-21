@@ -197,9 +197,9 @@ main <- function() {
     "Check updates lives in More actions while Console and default-on Workspace share the header")
   check(isTRUE(js('document.getElementById("preview_undo").disabled && document.getElementById("preview_redo").disabled')),
     "Undo and Redo are disabled when this Source has no AI change")
-  wait_js('!document.getElementById("plot_button_thumbnail").hidden && document.getElementById("plot_button_thumbnail").naturalWidth>0')
-  check(isTRUE(js('document.querySelectorAll(".attachment-item").length===0 && document.querySelectorAll(".msg.user").length===0')),
-    "Plot shows its current image thumbnail before attaching or sending anything")
+  wait_js('!document.getElementById("plot_hover_thumbnail").hidden && document.getElementById("plot_hover_thumbnail").naturalWidth>0')
+  check(isTRUE(js('document.querySelectorAll("#attach_current_plot img").length===0 && document.getElementById("plot_attached_indicator").hidden && document.querySelectorAll(".attachment-item").length===0 && document.querySelectorAll(".msg.user").length===0')),
+    "Plot keeps one hover preview and shows no button image or attachment mark before attachment")
   js('document.querySelector("#workspace_menu>summary").click();')
   wait_js('document.querySelector("#workspace_datasets_selected input[value=birth_data]")!==null')
   js('document.querySelector("#workspace_datasets_selected input[value=birth_data]").click();')
@@ -316,6 +316,8 @@ main <- function() {
   check(isTRUE(js('document.getElementById("send").disabled && document.getElementById("attach_current_plot").disabled')),
     "plot capture disables Send and repeat clicks immediately")
   wait_js('document.querySelectorAll(".attachment-item").length===1 && !document.getElementById("send").disabled')
+  check(isTRUE(js('!document.getElementById("plot_attached_indicator").hidden && document.querySelectorAll("#attach_current_plot img").length===0')),
+    "attaching a plot adds only a checkmark to the text button")
   check(isTRUE(js('document.querySelector(".attachment-item img").naturalWidth>0 && document.getElementById("prompt").value==="Keep this draft" && document.querySelectorAll(".msg.user").length===0')),
     "Attach current plot previews one image and preserves the draft without an AI request")
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
@@ -341,6 +343,8 @@ main <- function() {
   browser$Emulation$clearDeviceMetricsOverride()
   js('document.querySelector(".remove-attachment").click();')
   wait_js('document.querySelectorAll(".attachment-item").length===0')
+  wait_js('document.getElementById("plot_attached_indicator").hidden')
+  check(TRUE,"removing the captured plot clears the button checkmark")
   check(isTRUE(js('document.getElementById("console_context").checked')),
     "Console context is checked by default")
   wait_js('document.getElementById("console_context_status").textContent.includes("On: 1 line")')

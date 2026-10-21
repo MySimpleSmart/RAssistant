@@ -1,3 +1,7 @@
+# RAssistant 0.10.1
+
+- Keep Plot as a text button with a checkmark only while a plot is attached. Remove the duplicate button image and retain the hover preview.
+
 # RAssistant 0.10.0
 
 - Disable Undo and Redo when the current Source has no available AI edit, without an unnecessary notification.
