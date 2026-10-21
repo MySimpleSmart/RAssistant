@@ -109,5 +109,24 @@ shiny::testServer(app$server,{
   session$close()
   check(!file.exists(staged) && !dir.exists(attachment_dir),"disconnecting removes staged plot images and their temporary directory")
 })
+shiny::testServer(app$server,{
+  messages <- list();send_message <- session$sendCustomMessage
+  session$sendCustomMessage <- function(type,message){messages[[length(messages)+1L]]<<-list(type=type,value=message);send_message(type,message)}
+  session$flushReact();before <- length(exports);ai_before <- length(calls)
+  selected <<- 1L;session$setInputs(preview_current_plot=list(nonce=1L))
+  preview <- tail(Filter(function(x)x$type=="ai_plot_preview",messages),1L)[[1L]]$value$image
+  check(length(exports)==before+1L && exports[[before+1L]]$width==240L && exports[[before+1L]]$height==180L &&
+    !length(state$attachments) && length(calls)==ai_before,"passive plot preview uses a small export without attaching or sending it")
+  check(identical(jsonlite::base64_dec(sub("^data:image/png;base64,","",preview)),bytes[[1L]]) && !file.exists(exports[[before+1L]]$path),
+    "plot thumbnail contains the actual selected pixels and leaves no spool file")
+  selected <<- 2L;session$setInputs(preview_current_plot=list(nonce=2L))
+  preview <- tail(Filter(function(x)x$type=="ai_plot_preview",messages),1L)[[1L]]$value$image
+  check(identical(jsonlite::base64_dec(sub("^data:image/png;base64,","",preview)),bytes[[2L]]),"refreshing the thumbnail follows the current selected plot")
+  mode <<- "error";session$setInputs(preview_current_plot=list(nonce=3L))
+  check(is.null(tail(Filter(function(x)x$type=="ai_plot_preview",messages),1L)[[1L]]$value$image) && !length(state$attachments),
+    "an unavailable plot clears the thumbnail without creating an attachment or error banner")
+  mode <<- "ok";before <- length(exports);state$busy <- TRUE;session$setInputs(preview_current_plot=list(nonce=4L));state$busy <- FALSE
+  check(length(exports)==before,"passive plot reads pause while the assistant is busy")
+})
 unlink(fixtures)
 cat(checks,"plot attachment checks passed\n")

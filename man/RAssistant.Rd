@@ -47,8 +47,14 @@ make no AI request. Actions reread Source on click. Edits require explicit appro
 Spacing-only proposals are separated from code corrections. A separate Code edit
 history page stores up to 100 local before/after backups. Visible Undo and Redo
 controls require a comparison and confirmation and refuse to overwrite manual
-changes. A new AI edit ends the older Redo branch. Optional
-Workspace context includes types, dimensions and column names, not rows.
+changes. They are disabled when no AI edit is available for the current Source.
+A new AI edit ends the older Redo branch. Workspace context includes types,
+dimensions and column names. When On, it also reads current cell values from
+up to three datasets referenced in the question or Source. The arrow beside
+Workspace opens a local picker and preview for manual selections. Each excerpt
+contains at most the first 20 rows and 20 columns, with further text limits;
+sample calculations are not full-dataset statistics. Workspace Off excludes
+both metadata and cell values. Previewing alone makes no AI request.
 Current R chunk actions target only a closed R chunk's body in Rmd or Quarto.
 Users can replace or append to the captured file, or create an unsaved R/Rmd
 document. R snippets appended to Rmd are wrapped in an R chunk. Static checks
@@ -113,7 +119,10 @@ remain available after updates. A new R major/minor version can use a new librar
 requiring package reinstallation; the OS-stored key remains separate.
 
 Plot, beside Image, exports the plot selected in RStudio's Plots
-pane as a PNG using \code{rstudioapi::savePlotAsImage()}. It stages a preview;
+pane as a PNG using \code{rstudioapi::savePlotAsImage()}. The button shows a
+small local thumbnail, with a larger preview on hover or keyboard focus.
+Returning to the Viewer refreshes the preview. Clicking Plot captures a fresh
+full-size image and stages it as an attachment;
 Send submits the actual image through the normal attachment flow. Source is not
 rerun. Plots history selection is respected. The button is in chat, not in
 RStudio's Plots toolbar. Up to three images of 4 MB each can be attached.

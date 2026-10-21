@@ -269,6 +269,10 @@ Select a graph in RStudio's **Plots** pane, then click **Plot**
 beside Image in RAssistant. The selected plot is exported as a PNG and appears
 in the attachment previews. Type your question and press **Send** to submit it.
 There is no manual Export or clipboard step, and Source is not rerun.
+The Plot button shows a small preview of the selected RStudio plot. Hover or
+keyboard focus shows a larger preview; returning to the Viewer refreshes it.
+Previews stay local and do not create attachments. Clicking Plot captures a fresh
+full-size image for your next Send. No background plot-export timer runs.
 
 Each click captures the plot currently selected, including an older graph
 selected with the Plots history arrows. This uses RStudio's `savePlotAsImage()`
@@ -322,7 +326,7 @@ a long-running command can temporarily grow the spool before control returns.
   images support multipart work. Use History to return to another conversation.
 - Script validation requires **Yes**, executes the entire current R/Rmd file in
   a child process, and may affect files. Only approved output/plots are shared.
-- Current Source text, detected CSV headers, enabled Console context and uploaded images are sent to
+- Current Source text, detected CSV headers, enabled Console/Workspace context and uploaded images are sent to
   OpenAI when you click **Send**. An API account/key and internet access are needed.
 - Standalone `source("AISource.R")` remains supported with `OPENAI_API_KEY` set.
 
@@ -358,8 +362,9 @@ Nothing appears for an ordinary R file without a selection. For whole-file
 questions, ask in chat as usual or select all code in Source.
 
 While Source has focus, a local check runs about every 300 ms, with only one
-request outstanding. Checks pause while the assistant is busy, on the history
-page and when hidden; returning to the Viewer triggers a fresh check. They use
+request outstanding. Checks pause while the assistant is busy or hidden; returning
+to the Viewer triggers a fresh check. The history page follows the Source name and
+Undo/Redo availability while leaving the code toolbar alone. Checks use
 RStudio's read-only Source API without moving focus, running code or sending AI
 requests. Unchanged selections do not rebuild the toolbar.
 Syntax errors suggest Fix; valid syntax defaults to Explain without claiming
@@ -375,11 +380,22 @@ other chunks. Only the targeted chunk's R syntax is checked, so unrelated broken
 chunks do not prevent a local correction. Nothing is saved, run or knitted.
 
 **Workspace On/Off** sits beside Console in the header and starts On. You can
-switch it off there. When enabled, the next request
-includes up to 30 objects' types, dimensions and column names (up to 40 columns),
-not rows, samples or statistics. Active bindings, lazy promises, functions and
-credential-like object names are skipped; user-defined dim/summary methods are
-not invoked. This is a current metadata snapshot, not proof the script ran.
+switch it off there to exclude both metadata and dataset excerpts. When On, Send
+includes up to 30 objects' types, dimensions and column names (up to 40 columns).
+Loaded data.frames and matrices named in the question or current Source also
+supply actual cell values. The small arrow beside Workspace opens a local dataset
+picker and table preview; select datasets there to prioritize them even when your
+question does not name them. Opening the picker does not call AI.
+
+Each request rereads up to three relevant datasets, with their actual dimensions
+and up to the first 20 rows / 20 columns. Cell text is capped at 160 characters;
+excerpts shrink further to fit 5,000 characters per dataset. They are samples,
+not whole-dataset statistical results or proof the current script ran. Active
+bindings, lazy promises, functions, S4 objects and credential-like names are
+skipped. Nested columns and credential-like columns do not supply cell values;
+user-defined print/subset/summary methods are not invoked. New chat clears manual
+selections. Ordinary data.frame/tibble/data.table columns and atomic matrices
+are supported; specialized column classes may be omitted.
 
 **... > Code edit history** opens a separate page with time, target, status,
 proposal notes and the exact before/after comparison for approved edits.
@@ -391,7 +407,8 @@ directory, with private permissions. The latest 100 records are retained.
 setting it to `NULL` keeps edits in memory only. Log failure prevents an
 unrecorded edit. Uncertain API failures are logged and cannot be retried blindly.
 
-The **Undo** and **Redo** arrow icons remain visible beside Image and Plot, with
+The **Undo** and **Redo** arrow icons are disabled when the current Source has no
+available AI change. They remain visible beside Image and Plot, with
 tooltips and accessible labels. Each opens a comparison
 on the history page, then waits for **Confirm Undo** or **Confirm Redo**.
 Undo reverses the last AI edit; Redo reapplies the last undone edit. Multiple

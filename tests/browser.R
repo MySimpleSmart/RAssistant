@@ -65,8 +65,16 @@ main <- function() {
       saveRDS(edits,edit_marker)
     }
     app$focus_source <- function(id,row,column,end_column)saveRDS(list(id=id,row=row,column=column,end_column=end_column),navigation_marker)
+    data_env <- new.env(parent=emptyenv())
+    data_env$birth_data <- data.frame(weight=c(3100,2800),group=c("A","B"))
+    data_env$extra_data <- data.frame(value=c(5432,9876))
+    data_env$X <- matrix(1:12,3,4,dimnames=list(NULL,c("a","b","c","d")))
+    catalog_data <- app$workspace_catalog;dataset_data <- app$workspace_dataset;context_data <- app$workspace_data_context
+    app$workspace_catalog <- function(env=data_env)catalog_data(env)
+    app$workspace_dataset <- function(name,env=data_env,...)dataset_data(name,env,...)
+    app$workspace_data_context <- function(request,source="",selected=character(),env=data_env)context_data(request,source,selected,env)
     app$workspace_summary <- function()"X: matrix; dimensions=3 x 4; columns=a, b, c, d"
-    app$capture_current_plot <- function(directory){
+    app$capture_current_plot <- function(directory,width=1200L,height=900L){
       Sys.sleep(.15)
       path<-tempfile("browser-current-plot-",tmpdir=directory,fileext=".png")
       grDevices::png(path,width=400,height=240)
@@ -111,6 +119,7 @@ main <- function() {
           code <- sub("dim(X)","print(dim(X))",code,fixed=TRUE)
         }
         return(paste0(if(grepl("WORKSPACE METADATA (enabled for this turn)",prompt,fixed=TRUE))"Workspace evidence received: 3 x 4.\n\n"else"",
+          if(grepl("5432",prompt,fixed=TRUE))"Dataset cell evidence received: 5432.\n\n"else"",
           "v2.R, line 14: rtrtryydim is a misspelled function name. Use dim(X). Static review; not run.\n\n```r\n",code,"```"))
       }
       paste0("Response ",count,if(grepl("CONSOLE_BROWSER_VALUE_42",prompt,fixed=TRUE))" Console evidence received."else"",
@@ -186,6 +195,18 @@ main <- function() {
   check(isTRUE(js('document.querySelector(".empty")!==null')), "existing Shiny UI connects and renders")
   check(isTRUE(js('!document.getElementById("app_menu").open && document.querySelector("#app_menu #history")!==null && document.querySelector("#app_menu #knowledge")!==null && document.querySelector("#app_menu #help")!==null && document.querySelector("#app_menu #close")!==null && document.getElementById("check_updates").closest("#app_menu")!==null && document.getElementById("console_context").closest(".toolbar-actions")!==null && document.querySelector(".upload-row #console_context")===null && document.getElementById("workspace_context").closest(".toolbar-actions")!==null && document.querySelector("#app_menu #workspace_context")===null && document.getElementById("workspace_context").checked && document.getElementById("workspace_context_state").textContent==="On"')),
     "Check updates lives in More actions while Console and default-on Workspace share the header")
+  check(isTRUE(js('document.getElementById("preview_undo").disabled && document.getElementById("preview_redo").disabled')),
+    "Undo and Redo are disabled when this Source has no AI change")
+  wait_js('!document.getElementById("plot_button_thumbnail").hidden && document.getElementById("plot_button_thumbnail").naturalWidth>0')
+  check(isTRUE(js('document.querySelectorAll(".attachment-item").length===0 && document.querySelectorAll(".msg.user").length===0')),
+    "Plot shows its current image thumbnail before attaching or sending anything")
+  js('document.querySelector("#workspace_menu>summary").click();')
+  wait_js('document.querySelector("#workspace_datasets_selected input[value=birth_data]")!==null')
+  js('document.querySelector("#workspace_datasets_selected input[value=birth_data]").click();')
+  wait_js('document.querySelector(".dataset-preview")!==null && document.querySelector(".dataset-preview").textContent.includes("3100")')
+  check(isTRUE(js('document.querySelector(".workspace-panel").getBoundingClientRect().left>=0 && document.querySelector(".workspace-panel").getBoundingClientRect().right<=innerWidth && document.querySelectorAll(".msg.user").length===0')),
+    "Workspace picker previews actual local cells without a chat request and stays inside the Viewer")
+  js('document.querySelector("#workspace_datasets_selected input[value=birth_data]").click();document.querySelector("#workspace_menu>summary").click();')
   check(isTRUE(js('document.getElementById("preview_undo").closest(".upload-row")!==null && document.getElementById("preview_redo").closest(".upload-row")!==null && document.querySelector("#app_menu #preview_undo")===null && document.getElementById("preview_undo").getClientRects().length>0 && document.getElementById("preview_redo").getClientRects().length>0')),
     "Undo and Redo are visible beside Image and Plot without opening a menu")
   js('document.querySelector("#app_menu>summary").click();')
@@ -664,6 +685,8 @@ main <- function() {
   wait_js('document.querySelector(".source-undo")===null && !document.getElementById("send").disabled')
   check(length(readRDS(edit_marker))==before_edits+1L && startsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"library(tidyverse)") &&
     endsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"dim(X)\n"),"confirming Undo restores only the last AI change and logs the restoration")
+  check(isTRUE(js('!document.querySelector("#edit_history_page .redo-preview").disabled')),
+    "an approved Undo immediately enables the Redo icon")
   js('document.querySelector("#edit_history_page .redo-preview").click();')
   wait_js('document.querySelector(".source-redo")!==null')
   check(isTRUE(js('document.querySelector(".undo-comparison").textContent.includes("Redo preview") && document.querySelector("#chat_stream .source-redo")===null')),
@@ -675,13 +698,20 @@ main <- function() {
   wait_js('document.querySelector(".source-redo")===null && !document.getElementById("send").disabled')
   check(length(readRDS(edit_marker))==before_edits+1L && startsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"suppressPackageStartupMessages"),
     "Confirm Redo reapplies the exact last undone code once")
+  check(isTRUE(js('document.querySelector("#edit_history_page .redo-preview").disabled && !document.querySelector("#edit_history_page .undo-preview").disabled')),
+    "Redo becomes disabled again when there is nothing left to redo")
   js('document.querySelector(".edit-history-close").click();')
   wait_js('getComputedStyle(document.getElementById("chat_stream")).display!=="none" && getComputedStyle(document.querySelector(".compose")).display!=="none"')
   check(isTRUE(js('document.getElementById("prompt").value==="Draft kept while viewing code history" && document.querySelectorAll(".msg").length===historyMessageCount')),
     "Back to chat restores the existing conversation and unchanged draft")
   browser$Emulation$clearDeviceMetricsOverride()
+  js('document.querySelector("#workspace_menu>summary").click();')
+  wait_js('document.querySelector("#workspace_datasets_selected input[value=extra_data]")!==null')
+  js('document.querySelector("#workspace_datasets_selected input[value=extra_data]").click();document.querySelector("#workspace_menu>summary").click();')
   js('document.getElementById("prompt").value="Workspace evidence please";document.getElementById("send").click();')
   wait_js('!document.getElementById("send").disabled && document.querySelector("#messages").textContent.includes("Workspace evidence received: 3 x 4")')
+  check(isTRUE(js('document.querySelector("#messages").textContent.includes("Dataset cell evidence received: 5432.")')),
+    "a manually selected Global Environment dataset supplies real cell values to chat")
   check(isTRUE(js('document.getElementById("workspace_context").checked')),"Workspace starts on and supplies metadata without opening More actions")
   js('document.getElementById("workspace_context").click();')
   wait_js('document.getElementById("workspace_context_state").textContent==="Off"')

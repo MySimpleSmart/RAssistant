@@ -1,3 +1,9 @@
+# RAssistant 0.10.0
+
+- Disable Undo and Redo when the current Source has no available AI edit, without an unnecessary notification.
+- Preview the current RStudio plot on the Plot button and on hover. Refresh when returning to the Viewer; click to attach a fresh full-size image.
+- Read relevant Global Environment datasets automatically, or select and preview them beside Workspace. Send bounded current cell values with their real dimensions; Workspace Off disables both routes.
+
 # RAssistant 0.9.1
 
 - Follow Source tab changes and file renames promptly, including files with no selected code. Refresh the label independently of the code actions toolbar.

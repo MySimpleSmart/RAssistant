@@ -54,7 +54,7 @@ shiny::testServer(app$server,{
   reads<-editor$reads;state$busy<-TRUE;select_row(2L);tick()
   check(editor$reads==reads,"the watcher makes no native Source request while the assistant is busy")
   state$busy<-FALSE;state$edit_panel<-TRUE;tick()
-  check(editor$reads==reads,"the watcher pauses on the separate history page")
+  check(editor$reads==reads+1L && code_target()$scope$start_row==1L,"the history page refreshes Source identity without changing its hidden code toolbar")
   state$edit_panel<-FALSE;tick();check(code_target()$scope$start_row==2L,"returning to chat refreshes a changed Source selection")
   editor$unavailable<-TRUE;tick();check(is.null(code_target()) && identical(output$filename,"No Source document"),"an unavailable Source quietly clears its label and hides automatic actions")
   editor$unavailable<-FALSE;tick();check(!is.null(code_target()),"Source recovery restores the toolbar without reopening the app")

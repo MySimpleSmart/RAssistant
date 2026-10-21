@@ -23,7 +23,12 @@ shiny::testServer(app$server,{
     job <- get("preview_job",envir=environment(clear_source_review),inherits=FALSE)
     session$setInputs(apply_source_change=list(token=job$token,nonce=nonce));session$flushReact()
   }
-  session$flushReact();apply_edit("x <- 1\n");apply_edit("x <- 2\n")
+  session$flushReact()
+  check(!restore_controls()$undo && !restore_controls()$redo,"Undo and Redo start unavailable when the Source has no AI edit")
+  session$setInputs(preview_undo=1L);session$flushReact()
+  check(!state$edit_panel && is.null(undo_job()),"an unavailable Undo request quietly leaves the chat alone")
+  apply_edit("x <- 1\n");apply_edit("x <- 2\n")
+  check(restore_controls()$undo && !restore_controls()$redo,"an approved AI edit makes only Undo available")
   messages <- length(state$messages);count <- length(editor$writes)
   first <- preview("undo")
   check(state$edit_panel && first$direction=="undo" && length(editor$writes)==count && length(state$messages)==messages,
@@ -32,8 +37,10 @@ shiny::testServer(app$server,{
   check(length(editor$writes)==count && !is.null(undo_job()),"an Undo approval cannot authorize Redo")
   confirm(first);check(identical(app$full_text(editor$ctx),"x <- 1\n"),"Undo restores the latest original edit")
   confirm(preview("undo"));check(identical(app$full_text(editor$ctx),"x <- 0\n"),"a second Undo restores the preceding edit")
+  check(!restore_controls()$undo && restore_controls()$redo,"exhausting the Undo stack disables Undo and enables Redo")
   confirm(preview("redo"));check(identical(app$full_text(editor$ctx),"x <- 1\n"),"Redo reapplies the last undone edit first")
   confirm(preview("redo"));check(identical(app$full_text(editor$ctx),"x <- 2\n"),"a second Redo restores the next edit in order")
+  check(restore_controls()$undo && !restore_controls()$redo,"exhausting the Redo stack disables Redo")
   events <- app$edit_store$list()
   check(sum(vapply(events,function(e)e$operation=="redo" && e$status=="applied",logical(1)))==2L,
     "each successful Redo has its own exact before/after audit record")
