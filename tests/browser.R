@@ -32,7 +32,10 @@ main <- function() {
     published <- FALSE
     console_enabled <- FALSE
     console <- list(start=function(){console_enabled<<-TRUE},stop=function(){console_enabled<<-FALSE;TRUE},
-      dispose=function(){console_enabled<<-FALSE;TRUE},snapshot=function(redact)"CONSOLE_BROWSER_VALUE_42",
+      dispose=function(){console_enabled<<-FALSE;TRUE},snapshot=function(redact){
+        fixture <- if(file.exists(source_marker))readRDS(source_marker)else list()
+        if(is.character(fixture$console))fixture$console else "CONSOLE_BROWSER_VALUE_42"
+      },
       status=function()list(enabled=console_enabled,ready=TRUE,pending=FALSE,notice="",lines=if(console_enabled)1L else 0L))
     app <- load_assistant(package_info=if(standalone)NULL else list(version="0.1.1",history=history,knowledge=knowledge,
       console=console,prepare_console=function()invisible(NULL),
@@ -73,6 +76,8 @@ main <- function() {
     app$workspace_catalog <- function(env=data_env)catalog_data(env)
     app$workspace_dataset <- function(name,env=data_env,...)dataset_data(name,env,...)
     app$workspace_data_context <- function(request,source="",selected=character(),env=data_env)context_data(request,source,selected,env)
+    work_data <- app$knowledge_work_context
+    app$knowledge_work_context <- function(request,...,env=data_env)work_data(request,...,env=env)
     app$workspace_summary <- function()"X: matrix; dimensions=3 x 4; columns=a, b, c, d"
     app$capture_current_plot <- function(directory,width=1200L,height=900L){
       if(file.exists(source_marker) && isTRUE(readRDS(source_marker)$no_plot))stop("No plot selected")
@@ -90,6 +95,7 @@ main <- function() {
       if(file.exists(source_marker)) {
         selected <- readRDS(source_marker);row <- selected$row
         if(!is.null(selected$path))context$path <- selected$path
+        if(is.character(selected$contents))context$contents <- selected$contents
         if(is.numeric(row) && row>=1L && row<=length(app$initial$contents)) {
           text <- if(selected$mode=="selection")app$initial$contents[[row]]else""
           context$selection <- list(list(text=text,range=list(start=c(row,1L),end=c(row,nchar(text)+1L))))
@@ -212,6 +218,49 @@ main <- function() {
     check(isTRUE(js('document.querySelectorAll(".attachment-item").length===0 && document.querySelectorAll(".msg.user").length===0 && window.aisourceErrors.length===0')),
       "automatic availability checks leave attachments and chat empty without JavaScript errors")
     cat(checks,"Plot browser checks passed\n");return(invisible(NULL))
+  }
+  if(identical(Sys.getenv("RA_BROWSER_KNOWLEDGE_WORK_ONLY"),"true")) {
+    js('openAction("knowledge");')
+    wait_js('document.getElementById("knowledge_files")!==null')
+    js('var dt=new DataTransfer();[["graphics.md","The ggplot2 package uses layers to draw statistical graphics with geom_smooth for fitted trends."],["birth.md","The weight column is birth weight in grams; group records the observed category. Check weight units and group definitions."],["arithmetic.md","A non-numeric argument to binary operator means arithmetic received character input. Inspect typeof and convert with as.numeric."],["regression.md","Linear regression estimates coefficients with lm. Examine linear regression residual diagnostics."]].forEach(function(x){dt.items.add(new File([x[1]],x[0],{type:"text/markdown"}));});var input=document.getElementById("knowledge_files");input.files=dt.files;input.dispatchEvent(new Event("change",{bubbles:true}));')
+    wait_js('document.querySelectorAll("#knowledge_selected input").length===4',timeout=30)
+    js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
+    wait_js('document.getElementById("shiny-modal")===null')
+    submit <- function(text,turn){
+      js(paste0('var p=document.getElementById("prompt");p.value=',jsonlite::toJSON(text,auto_unbox=TRUE),';p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click();'))
+      wait_js(paste0('document.querySelectorAll(".msg.user").length===',turn,' && !document.getElementById("send").disabled && Array.from(document.querySelectorAll(".knowledge-read>summary")).pop().textContent.includes("Sent")'))
+    }
+    last_receipt <- function()js('Array.from(document.querySelectorAll(".knowledge-read")).pop().textContent')
+    saveRDS(list(contents="library(ggplot2)"),source_marker)
+    js('document.getElementById("console_context").click();document.getElementById("workspace_context").click();')
+    wait_js('document.getElementById("console_context_state").textContent==="Off" && document.getElementById("workspace_context_state").textContent==="Off"')
+    submit("Explain my code",1L)
+    check(grepl("graphics.md",last_receipt(),fixed=TRUE) && !grepl("birth.md",last_receipt(),fixed=TRUE),
+      "a generic browser request retrieves a guide from the current Source package alone")
+    saveRDS(list(contents="identity(birth_data)"),source_marker)
+    js('document.getElementById("workspace_context").click();')
+    wait_js('document.getElementById("workspace_context_state").textContent==="On"')
+    submit("Explain these columns",2L)
+    check(grepl("birth.md",last_receipt(),fixed=TRUE),"Workspace column names connect the browser request to its data dictionary")
+    diagnostic <- "Error in arithmetic(): non-numeric argument to binary operator\n[End failed Console task; full command may be unavailable]"
+    saveRDS(list(contents="",console=diagnostic),source_marker)
+    js('document.getElementById("console_context").click();')
+    wait_js('document.getElementById("console_context_state").textContent==="On"')
+    submit("Энэ алдааг тайлбарла",3L)
+    check(grepl("arithmetic.md",last_receipt(),fixed=TRUE),"the enabled Console error supplies the topic for a short Mongolian browser question")
+    js('document.getElementById("console_context").click();')
+    wait_js('document.getElementById("console_context_state").textContent==="Off"')
+    submit("Fix this error",4L)
+    check(grepl("No matching excerpts",last_receipt(),fixed=TRUE),"Console Off removes the diagnostic from browser retrieval")
+    saveRDS(list(contents=c("library(ggplot2)","identity(birth_data)"),console=diagnostic),source_marker)
+    js('document.getElementById("console_context").click();')
+    wait_js('document.getElementById("console_context_state").textContent==="On"')
+    submit("Explain linear regression",5L)
+    check(grepl("regression.md",last_receipt(),fixed=TRUE) && !grepl("graphics.md|birth.md|arithmetic.md",last_receipt()),
+      "a specifically requested new topic overrides unrelated Source, Console and Workspace hints in the browser")
+    check(isTRUE(js('Array.from(document.querySelectorAll(".msg.assistant .content")).pop().textContent.includes("Response 5") && window.aisourceErrors.length===0')),
+      "five sends make five model requests with no extra translation call or JavaScript error")
+    cat(checks,"work-aware Knowledge Base browser checks passed\n");return(invisible(NULL))
   }
   if(identical(Sys.getenv("RA_BROWSER_KNOWLEDGE_ONLY"),"true")) {
     js('openAction("knowledge");')

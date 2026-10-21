@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.11.0
+Version: 0.12.0
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -29,5 +29,5 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Select up to five Knowledge Base files for each chat, or leave all unchecked for automatic local search. Restore the selection with chat History; start new chats with automatic search.
-    Expand Knowledge Base under a message to inspect the exact excerpts and instructions supplied. Keep receipts in History, and distinguish missing material, unsent validation and failed requests.
+Config/RAssistant/Changes: Connect Knowledge Base search to current Source functions and packages, the latest completed Console task, and relevant dataset column names. Respect Console and Workspace Off, with no extra API call.
+    Use work context for questions such as "explain this error" while keeping a specifically requested topic and manually selected files in charge of retrieval. Refresh hints on each Send without executing Source or reading dataset cells for search.

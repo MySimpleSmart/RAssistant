@@ -1,3 +1,8 @@
+# RAssistant 0.12.0
+
+- Connect Knowledge Base search to current Source functions and packages, the latest completed Console task, and relevant dataset column names. Respect Console and Workspace Off, with no extra API call.
+- Use work context for questions such as "explain this error" while keeping a specifically requested topic and manually selected files in charge of retrieval. Refresh hints on each Send without executing Source or reading dataset cells for search.
+
 # RAssistant 0.11.0
 
 - Select up to five Knowledge Base files for each chat, or leave all unchecked for automatic local search. Restore the selection with chat History; start new chats with automatic search.

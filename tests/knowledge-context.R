@@ -55,8 +55,9 @@ shiny::testServer(app$server, {
   check(identical(answer$references[[1L]]$name,"week4.md") && identical(answer$references[[1L]]$label,"lines 1-4"),
     "the answer records which course material was supplied")
   receipt <- tail(state$messages,2L)[[1L]]$knowledge_read
-  check(identical(receipt$text,knowledge$retrieve("How should I choose k for kmeans clustering?",
-      paste(state$assignment,app$editor_calls(app$initial$contents)))$text) &&
+  sent_excerpt <- strsplit(request$prompt,"KNOWLEDGE BASE EXCERPTS (retrieved locally for this request):\n",fixed=TRUE)[[1L]][[2L]]
+  sent_excerpt <- strsplit(sent_excerpt,"\n\nRECENT CHAT:",fixed=TRUE)[[1L]][[1L]]
+  check(identical(receipt$text,sent_excerpt) &&
     identical(receipt$instructions,instructions) && identical(receipt$delivery,"sent"),
     "each user message records the exact excerpts and instructions delivered to the model")
   markup <- as.character(app$knowledge_receipt_ui(receipt))

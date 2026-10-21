@@ -240,8 +240,17 @@ project: PDFs, notes (`.txt`, `.md`) and R code examples (`.R`, `.Rmd`,
 the assistant should always follow for your work, such as preferred packages,
 functions or coding conventions.
 
-For every request, RAssistant matches your message, the pasted task and the
-functions in the open script against this material on your computer. Only the
+For every request, RAssistant matches your message and pasted task against this
+material on your computer. Search also considers functions and package names
+in the current Source, conditions and command names from the latest completed
+Console task, and column names of relevant Global Environment datasets. A
+dataset is relevant when referenced in the question, Source or captured command,
+or selected beside Workspace; search does not read its cell values. Console Off
+and Workspace Off exclude their hints. These hints are refreshed on each Send.
+
+For a question such as “explain this error,” work context provides the search
+topic. A specific new question stays authoritative, so unrelated requests do not
+pull material from the open script merely because it is there. Only the
 few most relevant sections (about 6,000 characters at most) are added, with
 their file and page or line numbers; unrelated requests add none. Search uses
 the words and R function names you enter; it does not translate queries or make

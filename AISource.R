@@ -1335,17 +1335,95 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   # Custom instructions are short; retrieved excerpts are bounded by the store.
   knowledge <- package_info$knowledge
   console_capture <- package_info$console
-  editor_calls <- function(code) {
-    calls <- regmatches(code, gregexpr("[A-Za-z.][A-Za-z0-9._]*(?=\\s*\\()", code, perl = TRUE))[[1L]]
-    paste(head(unique(calls), 40L), collapse = " ")
+  knowledge_source_terms <- function(code,path="") {
+    none <- list(functions=character(),packages=character())
+    code <- substr(chat_text(code),1L,50000L)
+    if(!nzchar(code))return(none)
+    if(source_kind(path,code)=="Rmd") {
+      chunks <- source_chunks(list(id="knowledge",path=path,contents=strsplit(code,"\n",fixed=TRUE)[[1L]]))
+      code <- paste(vapply(chunks,function(x)x$text,character(1)),collapse="\n")
+    }
+    # Parse only. Partial parse data also retains complete calls before a
+    # syntax error; quoted examples and comments cannot become package names.
+    src <- srcfilecopy("knowledge-context",strsplit(code,"\n",fixed=TRUE)[[1L]])
+    tryCatch(parse(text=src$lines,srcfile=src,keep.source=TRUE),error=function(e)NULL)
+    data <- utils::getParseData(src)
+    if(is.null(data) || !nrow(data))return(none)
+    tokens <- data[data$terminal & data$token!="COMMENT",,drop=FALSE]
+    tokens <- tokens[order(tokens$line1,tokens$col1),,drop=FALSE]
+    packages <- tokens$text[tokens$token=="SYMBOL_PACKAGE"]
+    for(i in which(tokens$token=="SYMBOL_FUNCTION_CALL" & tokens$text %in% c("library","require","requireNamespace"))) {
+      parent <- data$parent[match(tokens$parent[[i]],data$id)]
+      if(any(tokens$parent==parent & tokens$token=="SYMBOL_SUB" & tokens$text=="character.only"))next
+      j <- i+2L
+      if(j<=nrow(tokens) && tokens$token[[j]]=="SYMBOL_SUB") {
+        if(tokens$text[[j]]!="package")next
+        j <- j+2L
+      }
+      if(j>=nrow(tokens) || !tokens$token[[j]] %in% c("SYMBOL","STR_CONST") ||
+          !tokens$text[[j+1L]] %in% c(",",")"))next
+      if(tokens$text[[i]]=="requireNamespace" && tokens$token[[j]]!="STR_CONST")next
+      value <- tryCatch(parse(text=tokens$text[[j]],keep.source=FALSE)[[1L]],error=function(e)NULL)
+      if(is.symbol(value))value <- as.character(value)
+      if(is.character(value) && length(value)==1L)packages <- c(packages,value)
+    }
+    valid <- function(x,limit)head(unique(x[!is.na(x) & grepl("^[A-Za-z.][A-Za-z0-9._]*$",x)]),limit)
+    list(functions=valid(tokens$text[tokens$token=="SYMBOL_FUNCTION_CALL"],40L),packages=valid(packages,20L))
   }
-  course_context <- function(request, context = "", selected=list()) {
+  knowledge_console_terms <- function(text) {
+    lines <- strsplit(chat_text(text),"\n",fixed=TRUE)[[1L]]
+    if(!length(lines))return(list(text="",command=""))
+    ends <- which(grepl("^\\[End (failed )?Console task",lines))
+    if(length(ends)) {
+      last <- tail(ends,1L);first <- if(length(ends)>1L)tail(ends,2L)[[1L]]+1L else 1L
+      lines <- lines[seq.int(first,last)]
+    } else lines <- tail(lines,40L)
+    # Conditions and recorded commands are useful search hints; arbitrary
+    # printed dataset values and older completed tasks are not indexed here.
+    errors <- grep("^[[:blank:]]*(Error(?: in|:)|Warning|Caused by|!|\u2139)",lines,perl=TRUE)
+    condition <- if(length(errors))lines[sort(unique(unlist(lapply(errors,function(i)
+      seq.int(i,min(length(lines),i+2L))))))]else character()
+    condition <- condition[!grepl("^\\[|^>",condition)]
+    commands <- lines[grepl("^> |^\\[Error (condition call|stack entry;.*)\\]",lines)]
+    commands <- sub("^(> |\\[Error [^]]+\\][[:blank:]]*)","",commands)
+    command <- substr(paste(commands,collapse="\n"),1L,3000L)
+    terms <- knowledge_source_terms(command)
+    list(text=substr(paste(c(head(condition,12L),terms$functions,terms$packages),collapse=" "),1L,1800L),command=command)
+  }
+  knowledge_work_context <- function(request,source="",path="",console="",workspace=FALSE,selected=character(),env=.GlobalEnv) {
+    source_terms <- knowledge_source_terms(source,path)
+    console_terms <- knowledge_console_terms(console)
+    columns <- character();datasets <- character()
+    if(isTRUE(workspace)) {
+      catalog <- tryCatch(workspace_catalog(env),error=function(e)list())
+      mentioned <- names(catalog)[vapply(names(catalog),workspace_mentions,logical(1),
+        text=paste(request,source,console_terms$command,sep="\n"))]
+      targets <- head(unique(c(intersect(selected,names(catalog)),mentioned)),3L)
+      datasets <- targets[vapply(targets,workspace_mentions,logical(1),text=request)]
+      for(name in targets) {
+        fields <- catalog[[name]]$names
+        fields <- fields[!is.na(fields) & !grepl("api.?key|token|secret|password|credential|auth",fields,ignore.case=TRUE)]
+        columns <- c(columns,substr(name,1L,100L),substr(head(fields,30L),1L,100L))
+      }
+    }
+    source_focus <- grepl("(?i)\\b(code|source|script|chunk)\\b|\u043a\u043e\u0434|\u0441\u043a\u0440\u0438\u043f\u0442",request,perl=TRUE)
+    console_focus <- grepl("(?i)\\b(console|error|warning)\\b|\u043a\u043e\u043d\u0441\u043e\u043b|\u0430\u043b\u0434\u0430\u0430|\u0430\u043d\u0445\u0430\u0430\u0440\u0443\u0443\u043b",request,perl=TRUE)
+    data_focus <- grepl("(?i)\\b(workspace|dataset|data|column|variable)\\b|\u04e9\u0433\u04e9\u0433\u0434|\u0431\u0430\u0433\u0430\u043d|\u0445\u0443\u0432\u044c\u0441\u0430\u0433\u0447",request,perl=TRUE)
+    focus <- if(console_focus && !source_focus && nzchar(console_terms$text))"console"else
+      if(data_focus && length(columns))"columns"else"source"
+    list(functions=paste(source_terms$functions,collapse=" "),packages=paste(source_terms$packages,collapse=" "),
+      console=console_terms$text,columns=substr(paste(unique(columns),collapse=" "),1L,4000L),datasets=datasets,focus=focus)
+  }
+  course_context <- function(request, context = "", selected=list(),work=list()) {
     none <- list(system="",text="",sources=list(),instructions="",receipt=NULL)
     if (is.null(knowledge)) return(none)
     profile <- tryCatch(knowledge$profile_text(), error = function(e) "")
     files <- knowledge_files_info(selected)
     ids <- vapply(files,function(x)x$id,character(1))
-    found <- tryCatch(if(length(ids))knowledge$retrieve(request,context,selected=ids)else knowledge$retrieve(request,context),
+    args <- list(query=request,context=context)
+    if(length(ids))args$selected <- ids
+    if(length(work))args$work <- work
+    found <- tryCatch(do.call(knowledge$retrieve,args),
       error=function(e)list(text="",sources=list(),status="error"))
     system <- paste(c(
       if (nzchar(profile)) paste0("CUSTOM INSTRUCTIONS set by the user for this project.",
@@ -3504,8 +3582,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       } else paste(editor_note, "No local CSV files were inspected.")
       state$assignment <- remember_assignment(state$assignment,text)
       earlier <- summarize_history(state$messages,max_chars=32000L,assignment=state$assignment,request=text)
-      # Local retrieval: no API call; the request outweighs task and editor terms.
-      course <- course_context(text,paste(state$assignment,if(source_included)editor_calls(content)else ""),state$knowledge_files)
+      # Build fresh local search hints only when reference documents exist.
+      # Off switches exclude their data from retrieval as well as the model.
+      has_knowledge <- !is.null(knowledge) && length(tryCatch(knowledge$list(),error=function(e)list()))>0L
+      work <- if(has_knowledge)tryCatch(knowledge_work_context(text,
+        source=if(source_included)content else "",path=chat_text(live$path),console=console_text,
+        workspace=isTRUE(input$workspace_context),selected=workspace_selected()),error=function(e)list())else list()
+      course <- course_context(text,state$assignment,state$knowledge_files,work)
       # Keep the draft and verified files available until the request succeeds.
       sent_images <- state$attachments
       for(i in seq_along(sent_images))sent_images[[i]]$number <- state$image_count+i

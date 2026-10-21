@@ -32,6 +32,21 @@
   words
 }
 
+.knowledge_query_topics <- function(query) {
+  # These phrases refer to the current work rather than naming a new topic.
+  generic <- .knowledge_tokens(paste("code script console error warning problem issue result output",
+    "dataset data column variable package function fix correct improve check review interpret analyze analyse analysis",
+    "run running execute current latest recent open selected attached here happening wrong broken failing failed failure",
+    "explanation again below above look tell see happen getting choose select fail compare",
+    "\u0438\u0439\u043d \u044b\u043d \u0438\u0439\u0433 \u044b\u0433 \u0442\u044d\u0439 \u0442\u0430\u0439 \u044e\u043c \u0433\u044d\u044d\u0434 \u0433\u044d\u0436 \u0433\u044d\u0445 \u0431\u043e\u043b\u043e\u043d \u0431\u04af\u0445 \u0430\u043b\u044c"))
+  words <- unique(.knowledge_tokens(query))
+  words <- words[!words %in% generic]
+  words[!grepl(paste0("^(\u044d\u043d\u044d|\u04af\u04af\u043d|\u0438\u043d\u0433\u044d|\u043e\u0434\u043e\u043e|\u043e\u0434\u043e\u043e\u0433|\u043c\u0438\u043d\u0438\u0439|\u043c\u0430\u043d\u0430\u0439|\u0442\u044d\u0440|\u044f\u043c\u0430\u0440|\u044e\u0443|\u044f\u0430\u0433\u0430\u0430\u0434|\u044f\u0430\u0436|\u0445\u044d\u0440\u0445\u044d\u043d|",
+    "\u043a\u043e\u0434|\u0441\u043a\u0440\u0438\u043f\u0442|\u0430\u043b\u0434\u0430\u0430|\u0430\u043d\u0445\u0430\u0430\u0440\u0443\u0443\u043b|\u043a\u043e\u043d\u0441\u043e\u043b|\u04e9\u0433\u04e9\u0433\u0434|\u0434\u0430\u0442\u0430\u0441\u0435\u0442|\u0431\u0430\u0433\u0430\u043d|\u0445\u0443\u0432\u044c\u0441\u0430\u0433\u0447|\u0444\u0443\u043d\u043a\u0446|",
+    "\u0442\u0430\u0439\u043b\u0431\u0430\u0440|\u0437\u0430\u0441|\u0448\u0430\u043b\u0433\u0430|\u0441\u0430\u0439\u0436\u0440\u0443\u0443\u043b|\u0445\u0430\u0440\u0443\u0443\u043b|\u0433\u0430\u0440|\u0430\u0436\u0438\u043b|\u0434\u043e\u0442\u043e\u0440|\u0431\u0430\u0439|\u0431\u043e\u043b|\u0443\u0443|\u0432\u044d|\u043d\u044c|\u0434\u044d\u044d\u0440|\u0434\u043e\u043e\u0440|\u0442\u0430\u043b\u0430\u0430\u0440|",
+    "\u0445\u0438\u0439|\u0442\u0443\u0441\u0430\u043b|\u0443\u043d\u0448|\u04af\u0440\u0433\u044d\u043b\u0436\u043b\u04af\u04af\u043b|\u0445\u0430\u0440\u0430|\u043c\u044d\u0434\u044d\u044d\u043b|\u043c\u04e9\u0440|\u0441\u04af\u04af\u043b\u0438\u0439\u043d)"),words,perl=TRUE)]
+}
+
 .knowledge_pdf_pages <- function(path) {
   if (requireNamespace("pdftools", quietly = TRUE)) return(pdftools::pdf_text(path))
   tool <- Sys.which("pdftotext")
@@ -216,7 +231,7 @@
     list(chunks=chunks,lengths=lengths,average=max(1,mean(lengths)),postings=postings)
   }
   retrieve <- function(query, context="", budget=getOption("RAssistant.knowledge_chars",6000L),
-      max_chunks=5L, selected=character()) {
+      max_chunks=5L, selected=character(), work=list()) {
     documents <- load_docs()
     selected <- unique(as.character(selected))
     missing <- setdiff(selected,vapply(documents,function(doc)doc$id,character(1)))
@@ -232,18 +247,42 @@
     scope <- if(length(selected))which(vapply(index$chunks,function(x)x$id %in% selected,logical(1)))else seq_len(n)
     if(!length(scope))return(none)
     weights <- c(table(.knowledge_tokens(query)))
-    query_matches <- any(names(weights) %in% names(index$postings))
-    if(length(weights) && !query_matches && !length(selected))return(none)
+    signals <- list()
+    if(!is.list(work))work <- list()
+    for(field in c("functions","packages","console","columns")) {
+      value <- work[[field]]
+      if(is.character(value))signals[[field]] <- unique(.knowledge_tokens(substr(paste(value,collapse=" "),1L,4000L)))
+    }
+    signal_terms <- unique(unlist(signals,use.names=FALSE))
+    anchors <- NULL
+    if(length(signal_terms)) {
+      topics <- setdiff(.knowledge_query_topics(query),.knowledge_tokens(work$datasets))
+      if(length(topics))anchors <- topics else {
+        focus <- if(identical(work$focus,"console"))"console"else if(identical(work$focus,"columns"))"columns"else"source"
+        anchors <- if(focus %in% names(signals))signals[[focus]]else unique(c(signals$functions,signals$packages,signals$columns))
+        if(!length(anchors))anchors <- signal_terms
+      }
+      # Context may rank results or supply a missing topic for "this error".
+      # It must not turn a specific unrelated question into an editor search.
+      anchors <- intersect(anchors,names(index$postings))
+      if(!length(anchors) && !length(selected))return(none)
+    } else if(length(weights) && !any(names(weights) %in% names(index$postings)) && !length(selected))return(none)
     extra <- 0.4*c(table(.knowledge_tokens(context)))
     for(term in names(extra))weights[term] <- sum(weights[term],extra[[term]],na.rm=TRUE)
+    strengths <- c(functions=0.55,packages=0.8,console=1.2,columns=0.7)
+    for(field in names(signals))for(term in signals[[field]])weights[term] <- sum(weights[term],strengths[[field]],na.rm=TRUE)
     weights <- pmin(weights[names(weights) %in% names(index$postings)],3)
-    scores <- numeric(n);matched <- integer(n)
+    scores <- numeric(n);primary_scores <- numeric(n);matched <- integer(n)
     for(term in names(weights)) {
       runs <- rle(index$postings[[term]]);idf <- log(1+(n-length(runs$values)+0.5)/(length(runs$values)+0.5))
       norm <- 1.2*(0.25+0.75*index$lengths[runs$values]/index$average)
       scores[runs$values] <- scores[runs$values]+weights[[term]]*idf*runs$lengths*2.2/(runs$lengths+norm)
+      if(term %in% anchors)primary_scores[runs$values] <- primary_scores[runs$values]+idf*runs$lengths*2.2/(runs$lengths+norm)
       matched[runs$values] <- matched[runs$values]+1L
     }
+    # The actual topic determines relevance; auxiliary context can refine its
+    # rank by at most 30%, never outweigh a clearly stronger topic match.
+    if(!is.null(anchors))scores <- primary_scores*(1+0.3*scores/(1+scores))
     if(length(selected)) {
       # Explicit files always contribute; a short question must not silently
       # fall back to other documents or drop a selected file for lack of words.
@@ -254,7 +293,12 @@
       relevant <- scope[scores[scope]>0]
       eligible <- unique(c(first,relevant[order(scores[relevant],decreasing=TRUE)]))
     } else {
-      strong <- scope[scores[scope]>0 & matched[scope]>=min(2L,length(weights))]
+      if(!is.null(anchors)) {
+        anchored <- unique(unlist(index$postings[anchors],use.names=FALSE))
+        scope <- intersect(scope,anchored)
+      }
+      strong <- if(!is.null(anchors))scope[primary_scores[scope]>0]else
+        scope[scores[scope]>0 & matched[scope]>=min(2L,length(weights))]
       if(!length(strong))return(none)
       top <- max(scores[scope]);eligible <- scope[scores[scope]>=0.35*top &
         (scope %in% strong | scores[scope]>=0.5*top)]

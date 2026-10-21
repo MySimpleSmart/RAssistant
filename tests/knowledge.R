@@ -67,6 +67,17 @@ main <- function() {
     "a missing selection cannot silently expand retrieval to other documents")
   check(identical(store$retrieve("zzzzzzz")$status,"none") &&
     !nzchar(store$retrieve("clustering",budget=1L)$text),"no matches and insufficient budgets return no excerpts")
+  work <- list(functions="kmeans",packages="factoextra",columns="mpg wt",focus="source")
+  check(grepl("fviz_nbclust",store$retrieve("Fix my code",work=work)$text,fixed=TRUE),
+    "current function names provide a local topic for a generic code question")
+  columns <- store$retrieve("Explain these columns",work=list(columns="mpg wt",focus="columns"))
+  check(identical(unique(vapply(columns$sources,function(x)x$name,character(1))),"lab5.R"),
+    "live column names retrieve the matching code example without needing the names in the question")
+  check(!nzchar(store$retrieve("Translate hello into French",context="kmeans clustering",work=work)$text),
+    "work and earlier task hints cannot replace a specific unrelated topic")
+  check(grepl("Fit linear models",store$retrieve("linear regression",work=work)$text,fixed=TRUE) &&
+    !grepl("fviz_nbclust",store$retrieve("linear regression",work=work)$text,fixed=TRUE),
+    "an explicit new topic remains authoritative over active clustering functions")
 
   # Version 0.3.0 saved four preference fields; they must all survive.
   profile_path <- file.path(store$path,"profile.json")
