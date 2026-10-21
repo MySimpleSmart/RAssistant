@@ -75,6 +75,7 @@ main <- function() {
     app$workspace_data_context <- function(request,source="",selected=character(),env=data_env)context_data(request,source,selected,env)
     app$workspace_summary <- function()"X: matrix; dimensions=3 x 4; columns=a, b, c, d"
     app$capture_current_plot <- function(directory,width=1200L,height=900L){
+      if(file.exists(source_marker) && isTRUE(readRDS(source_marker)$no_plot))stop("No plot selected")
       Sys.sleep(.15)
       path<-tempfile("browser-current-plot-",tmpdir=directory,fileext=".png")
       grDevices::png(path,width=400,height=240)
@@ -198,8 +199,20 @@ main <- function() {
   check(isTRUE(js('document.getElementById("preview_undo").disabled && document.getElementById("preview_redo").disabled')),
     "Undo and Redo are disabled when this Source has no AI change")
   wait_js('!document.getElementById("plot_hover_thumbnail").hidden && document.getElementById("plot_hover_thumbnail").naturalWidth>0')
-  check(isTRUE(js('document.querySelectorAll("#attach_current_plot img").length===0 && document.getElementById("plot_attached_indicator").hidden && document.querySelectorAll(".attachment-item").length===0 && document.querySelectorAll(".msg.user").length===0')),
-    "Plot keeps one hover preview and shows no button image or attachment mark before attachment")
+  check(isTRUE(js('var dot=document.getElementById("plot_available_indicator"),button=document.getElementById("attach_current_plot");button.querySelectorAll("img").length===0 && !dot.hidden && button.firstElementChild===dot && getComputedStyle(dot).backgroundColor==="rgb(47, 128, 237)" && document.querySelectorAll(".attachment-item").length===0 && document.querySelectorAll(".msg.user").length===0')),
+    "a blue dot appears before Plot as soon as a plot exists, before any chat attachment")
+  saveRDS(list(no_plot=TRUE),source_marker)
+  wait_js('document.getElementById("plot_available_indicator").hidden',timeout=6)
+  check(TRUE,"clearing RStudio plots automatically hides the dot without hover or focus")
+  unlink(source_marker)
+  wait_js('!document.getElementById("plot_available_indicator").hidden',timeout=6)
+  check(TRUE,"a new RStudio plot automatically restores the dot without hover, focus or attachment")
+  # Fast check for the passive indicator; the default still runs the full suite.
+  if(identical(Sys.getenv("RA_BROWSER_PLOT_ONLY"),"true")) {
+    check(isTRUE(js('document.querySelectorAll(".attachment-item").length===0 && document.querySelectorAll(".msg.user").length===0 && window.aisourceErrors.length===0')),
+      "automatic availability checks leave attachments and chat empty without JavaScript errors")
+    cat(checks,"Plot browser checks passed\n");return(invisible(NULL))
+  }
   js('document.querySelector("#workspace_menu>summary").click();')
   wait_js('document.querySelector("#workspace_datasets_selected input[value=birth_data]")!==null')
   js('document.querySelector("#workspace_datasets_selected input[value=birth_data]").click();')
@@ -316,8 +329,8 @@ main <- function() {
   check(isTRUE(js('document.getElementById("send").disabled && document.getElementById("attach_current_plot").disabled')),
     "plot capture disables Send and repeat clicks immediately")
   wait_js('document.querySelectorAll(".attachment-item").length===1 && !document.getElementById("send").disabled')
-  check(isTRUE(js('!document.getElementById("plot_attached_indicator").hidden && document.querySelectorAll("#attach_current_plot img").length===0')),
-    "attaching a plot adds only a checkmark to the text button")
+  check(isTRUE(js('!document.getElementById("plot_available_indicator").hidden && document.querySelectorAll("#attach_current_plot img").length===0')),
+    "the blue availability dot remains when a plot is attached")
   check(isTRUE(js('document.querySelector(".attachment-item img").naturalWidth>0 && document.getElementById("prompt").value==="Keep this draft" && document.querySelectorAll(".msg.user").length===0')),
     "Attach current plot previews one image and preserves the draft without an AI request")
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
@@ -343,8 +356,8 @@ main <- function() {
   browser$Emulation$clearDeviceMetricsOverride()
   js('document.querySelector(".remove-attachment").click();')
   wait_js('document.querySelectorAll(".attachment-item").length===0')
-  wait_js('document.getElementById("plot_attached_indicator").hidden')
-  check(TRUE,"removing the captured plot clears the button checkmark")
+  wait_js('!document.getElementById("plot_available_indicator").hidden')
+  check(TRUE,"removing a chat attachment does not hide the dot while RStudio still has a plot")
   check(isTRUE(js('document.getElementById("console_context").checked')),
     "Console context is checked by default")
   wait_js('document.getElementById("console_context_status").textContent.includes("On: 1 line")')

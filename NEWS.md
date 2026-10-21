@@ -1,3 +1,7 @@
+# RAssistant 0.10.2
+
+- Automatically show a blue dot before Plot when RStudio has an image, without hovering or attaching it. Hide the dot when Plots is empty; keep the default button and hover preview.
+
 # RAssistant 0.10.1
 
 - Keep Plot as a text button with a checkmark only while a plot is attached. Remove the duplicate button image and retain the hover preview.

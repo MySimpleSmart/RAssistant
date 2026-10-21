@@ -1120,7 +1120,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       on.exit(unlink(src),add=TRUE)
       path <- paste0(src,".",image_type(src))
       if (!file.rename(src,path)) stop("Could not restore image.")
-      list(path=path,label=a$label,preview=a$preview,number=a$number,from_plot=is_plot_attachment(a))
+      list(path=path,label=a$label,preview=a$preview,number=a$number)
     },error=function(e)NULL)))
   }
 
@@ -1250,14 +1250,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   chat_text <- function(value, default = "") {
     if (is.character(value) && length(value)==1L && !is.na(value)) value else default
   }
-  is_plot_attachment <- function(a)isTRUE(a$from_plot) ||
-    (is.null(a$from_plot) && identical(a$label,"Current RStudio plot.png"))
   chat_images <- function(images) {
     if (!is.list(images)) return(list())
     lapply(Filter(is.list,images),function(a) {
       preview <- chat_text(a$preview)
       list(label=chat_text(a$label,"Image"),
-        from_plot=is_plot_attachment(a),
         number=if(is.numeric(a$number) && length(a$number)==1L && is.finite(a$number))a$number else NULL,
         preview=if(nzchar(preview) && nchar(preview,type="bytes")<=6*1024^2 &&
           grepl("^data:image/(png|jpeg|webp);base64,",preview))preview else NULL,
@@ -1542,11 +1539,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .dataset-preview table{font:10px var(--mono);border-collapse:collapse;white-space:nowrap}
   .dataset-preview td,.dataset-preview th{padding:3px 5px;border:1px solid var(--border);max-width:180px;overflow:hidden;text-overflow:ellipsis}
   .plot-control{position:relative;display:inline-flex}
-  .plot-attached-indicator{margin-left:4px;color:#24583a}
+  .plot-available-indicator{display:inline-block;width:6px;height:6px;flex:0 0 6px;margin-right:5px;border-radius:50%;background:#2f80ed}
   .plot-peek{display:none;position:absolute;bottom:calc(100% + 6px);left:0;width:240px;padding:6px;z-index:1100;
     background:white;border:1px solid var(--border);border-radius:3px;box-shadow:0 4px 15px #0002;pointer-events:none;font-size:10px;color:var(--muted)}
   .plot-peek img{display:block;width:100%;max-height:180px;object-fit:contain}
-  .plot-attached-indicator[hidden],.plot-peek img[hidden]{display:none}
+  .plot-available-indicator[hidden],.plot-peek img[hidden]{display:none}
   .plot-control:hover .plot-peek,.plot-control:focus-within .plot-peek{display:block}
   .console-hint{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
   textarea#prompt{resize:none!important;width:100%;height:54px;min-height:54px;
@@ -1562,15 +1559,16 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   (function(){
     var nonce = 0;
     var submitId=null, validationInFlight=false, serverBusy=false, pending=false;
-    var readyCount=0, uploadEpoch=0, connected=false, undoAvailable=false, redoAvailable=false, plotAttached=false;
+    var readyCount=0, uploadEpoch=0, connected=false, undoAvailable=false, redoAvailable=false;
     var openDetails=Object.create(null);
     var scrollLatest=function(){},holdReviewPosition=function(){},resumeChatScroll=function(){},historyOpen=false,editApplying=false,targetRefreshing=false,sourceReadDetail="";
     var sourceWatchPending=false,sourceFocusPending=true,plotPreviewPending=false,lastPlotPreview=0;
     function previewPlot(force){
-      if(!connected || serverBusy || pending || document.visibilityState==="hidden" || plotPreviewPending || plotCaptureId!==null || historyOpen)return;
+      if(!connected || serverBusy || pending || submitId!==null || validationInFlight || editApplying || document.visibilityState==="hidden" || plotPreviewPending || plotCaptureId!==null || historyOpen)return;
       if(force!==true && Date.now()-lastPlotPreview<1000)return;
       plotPreviewPending=true;lastPlotPreview=Date.now();
-      var status=document.getElementById("plot_preview_status");if(status)status.textContent="Reading current plot…";
+      var status=document.getElementById("plot_preview_status"),image=document.getElementById("plot_hover_thumbnail");
+      if(status && (force===true || !image || image.hidden))status.textContent="Reading current plot…";
       Shiny.setInputValue("preview_current_plot",{nonce:++nonce},{priority:"event"});
     }
     function watchSource(){
@@ -1649,7 +1647,6 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       var picker=document.getElementById("plot_upload_native");
       if(picker)picker.disabled=busy;
       var plot=document.getElementById("attach_current_plot");if(plot)plot.disabled=busy || readyCount>=3;
-      var plotMark=document.getElementById("plot_attached_indicator");if(plotMark)plotMark.hidden=!plotAttached;
       var prompt=document.getElementById("prompt");if(prompt)prompt.disabled=working || pending || !connected;
       var fresh=document.getElementById("new_chat");if(fresh)fresh.disabled=working || !connected;
       var history=document.getElementById("history");if(history)history.disabled=busy;
@@ -1885,7 +1882,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         });
         Shiny.addCustomMessageHandler("ai_reset_file_input",function(msg){
           if(msg && typeof msg.epoch==="number")uploadEpoch=msg.epoch;
-          readyCount=0;plotAttached=false;
+          readyCount=0;
           resetTransfers();
           var file=document.getElementById("plot_upload_native");
           if(file)file.value="";
@@ -1893,7 +1890,6 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         Shiny.addCustomMessageHandler("ai_state",function(msg){
           var firstConnection=!connected;
           serverBusy=!!msg.busy;pending=!!msg.pending;readyCount=msg.attachments||0;
-          plotAttached=!!msg.plot_attached;
           sourceReadDetail=msg.source_read||"";
           var source=document.getElementById("source_context");if(source)source.title=sourceReadDetail||source.textContent.trim();
           undoAvailable=!!msg.undo_available;redoAvailable=!!msg.redo_available;
@@ -1903,8 +1899,10 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         });
         Shiny.addCustomMessageHandler("ai_plot_preview",function(msg){
           plotPreviewPending=false;
+          if(msg.skipped)return;
+          var dot=document.getElementById("plot_available_indicator");if(dot)dot.hidden=!msg.image;
           var large=document.getElementById("plot_hover_thumbnail"),status=document.getElementById("plot_preview_status");
-          if(large){large.hidden=!msg.image;if(msg.image)large.src=msg.image;else large.removeAttribute("src");}
+          if(large){large.hidden=!msg.image;if(msg.image){if(large.getAttribute("src")!==msg.image)large.src=msg.image;}else large.removeAttribute("src");}
           if(status)status.textContent=msg.image?"Current RStudio plot · click Plot to attach":"No plot available";
         });
         Shiny.addCustomMessageHandler("ai_submit_complete",function(msg){
@@ -1938,6 +1936,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         var panel=workspaceMenu.querySelector(".workspace-panel");panel.style.top=Math.round(workspaceMenu.getBoundingClientRect().bottom+6)+"px";
         Shiny.setInputValue("refresh_workspace",++nonce,{priority:"event"});}});
       window.setInterval(watchSource,300);
+      // Keep availability visible without hover, focus changes or attaching.
+      // One small local export at a time; previewPlot pauses while hidden/busy.
+      window.setInterval(previewPlot,2000);
       if(window.jQuery){
         window.jQuery(document).on("input change","#prompt",resizePrompt);
         window.jQuery(document).on("shiny:value",function(e){
@@ -2094,8 +2095,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             accept="image/png,image/jpeg,image/webp")),
         shiny::span(class="plot-control",
           shiny::tags$button(id="attach_current_plot",type="button",class="attach-plot",
-            title="Preview the current RStudio plot; click to attach","Plot",
-            shiny::span(id="plot_attached_indicator",class="plot-attached-indicator",hidden="hidden",title="Plot attached","aria-label"="Plot attached","✓")),
+            title="Preview the current RStudio plot; click to attach",
+            shiny::span(id="plot_available_indicator",class="plot-available-indicator",hidden="hidden",role="img","aria-label"="Plot available"),"Plot"),
           shiny::span(class="plot-peek",role="tooltip",shiny::tags$img(id="plot_hover_thumbnail",alt="Current RStudio plot preview",hidden="hidden"),
             shiny::span(id="plot_preview_status","Move here to preview the current plot"))),
         shiny::actionButton("preview_undo",restore_icon(),class="ai-btn icon-button",disabled="disabled",title="Undo last AI edit","aria-label"="Undo last AI edit"),
@@ -2693,7 +2694,6 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       session$sendCustomMessage("ai_state", list(busy=state$busy,
         edit_page=state$edit_panel,
         undo_available=restore_controls()$undo,redo_available=restore_controls()$redo,
-        plot_attached=any(vapply(state$attachments,is_plot_attachment,logical(1))),
         pending=!is.null(state$pending), attachments=length(state$attachments), epoch=state$upload_epoch,
         source_read=if(is.null(state$source_read))""else source_read_label(state$source_read)))
     }
@@ -2706,7 +2706,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       cancelled_uploads <<- character(0)
       session$sendCustomMessage("ai_reset_file_input",list(epoch=state$upload_epoch))
     }
-    add_attachment <- function(file_path, label, upload_id = NULL, from_plot=FALSE) {
+    add_attachment <- function(file_path, label, upload_id = NULL) {
       if (length(state$attachments)>=3L) {
         shiny::showNotification("Up to 3 images can be uploaded per message.",type="warning")
         return(invisible(FALSE))
@@ -2717,7 +2717,6 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         att$preview <- attachment_preview(att)
         if (is.null(att$preview)) stop("Could not prepare image preview.")
         att$upload_id <- upload_id
-        att$from_plot <- isTRUE(from_plot)
         att
       },error=function(e)e)
       if (inherits(prepared,"error")) {
@@ -2732,9 +2731,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     shiny::observeEvent(input$preview_current_plot,{
       obj <- input$preview_current_plot
       if(!is.list(obj) || length(obj$nonce)!=1L)return()
-      preview <- NULL
-      on.exit(session$sendCustomMessage("ai_plot_preview",list(image=preview)),add=TRUE)
-      if(!session_active || state$busy || !is.null(state$pending))return()
+      preview <- NULL;skipped <- FALSE
+      on.exit(session$sendCustomMessage("ai_plot_preview",list(image=preview,skipped=skipped)),add=TRUE)
+      if(!session_active || state$busy || !is.null(state$pending)){skipped<-TRUE;return()}
       src <- tryCatch(capture_current_plot(attachment_dir,width=240L,height=180L),error=function(e)NULL)
       if(is.null(src))return()
       on.exit(unlink(src),add=TRUE)
@@ -2760,7 +2759,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         return()
       }
       on.exit(unlink(src),add=TRUE)
-      if(isTRUE(add_attachment(src,"Current RStudio plot.png",from_plot=TRUE))){
+      if(isTRUE(add_attachment(src,"Current RStudio plot.png"))){
         state$draft <- chat_text(obj$text,state$draft)
         persist_chat()
       }
