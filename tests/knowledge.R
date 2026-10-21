@@ -46,8 +46,27 @@ main <- function() {
   regression <- store$retrieve("adjusted r squared for a linear model")
   check(grepl("lab5.R",regression$text,fixed=TRUE) && grepl("adj.r.squared",regression$text,fixed=TRUE),
     "R function names in course code are matched by request terms")
-  check(nchar(store$retrieve("kmeans clustering regression model",budget=300L)$text)<=400L,
-    "retrieved excerpts respect the character budget")
+  check(nchar(store$retrieve("kmeans clustering regression model",budget=300L)$text)<=300L,
+    "retrieved excerpts and source headers together respect the character budget")
+  docs <- store$list()
+  cluster_id <- Filter(function(x)identical(x$name,"week4.md"),docs)[[1L]]$id
+  code_id <- Filter(function(x)identical(x$name,"lab5.R"),docs)[[1L]]$id
+  pinned <- store$retrieve("Explain this",selected=code_id)
+  check(identical(pinned$status,"matched") && identical(pinned$mode,"selected") &&
+    identical(unique(vapply(pinned$sources,function(x)x$name,character(1))),"lab5.R") &&
+    grepl("adj.r.squared",pinned$text,fixed=TRUE),"an explicit document is read for a generic follow-up")
+  scoped <- store$retrieve("kmeans clustering",selected=code_id)
+  check(!grepl("week4.md",scoped$text,fixed=TRUE) && grepl("lab5.R",scoped$text,fixed=TRUE),
+    "selection restricts retrieval even when another file matches better")
+  both <- store$retrieve("Explain this",selected=c(cluster_id,code_id),budget=300L)
+  check(nchar(both$text)<=300L && length(both$sources)==2L &&
+    identical(sort(vapply(both$sources,function(x)x$name,character(1))),c("lab5.R","week4.md")),
+    "selected documents share a bounded budget instead of the first file consuming it")
+  absent <- store$retrieve("kmeans clustering",selected=c(code_id,strrep("0",32L)))
+  check(identical(absent$status,"missing") && !nzchar(absent$text) && identical(absent$missing,strrep("0",32L)),
+    "a missing selection cannot silently expand retrieval to other documents")
+  check(identical(store$retrieve("zzzzzzz")$status,"none") &&
+    !nzchar(store$retrieve("clustering",budget=1L)$text),"no matches and insufficient budgets return no excerpts")
 
   # Version 0.3.0 saved four preference fields; they must all survive.
   profile_path <- file.path(store$path,"profile.json")

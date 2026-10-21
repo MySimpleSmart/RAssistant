@@ -243,11 +243,24 @@ functions or coding conventions.
 For every request, RAssistant matches your message, the pasted task and the
 functions in the open script against this material on your computer. Only the
 few most relevant sections (about 6,000 characters at most) are added, with
-their file and page or line numbers; unrelated requests add none. No extra API
-call is made for searching. The assistant is instructed to prefer the methods,
+their file and page or line numbers; unrelated requests add none. Search uses
+the words and R function names you enter; it does not translate queries or make
+extra API calls. The assistant is instructed to prefer the methods,
 packages and functions taught in that material over generic alternatives and to
 name the source it used. Answers that received reference material list it under
 **Knowledge Base**.
+
+In **Knowledge Base**, check up to five files under **Use in this chat** to
+restrict the reference material. Each selected file contributes a short excerpt,
+even for a follow-up such as “explain this.” Uncheck all files for automatic
+search. Selected filenames appear above the message box; click **×** to stop
+using one. Selection is saved with that chat and resets for a new chat.
+
+Expand the **Knowledge Base** line under your message to see the exact excerpts
+and custom instructions supplied for that request. It also reports no matches,
+missing selected files, and requests that failed or were not sent. These local
+receipts remain in chat History even if a reference file is later changed or
+removed; they are not reused as current evidence on later requests.
 
 Knowledge is stored per project in `tools::R_user_dir("RAssistant", "data")`,
 separately from chat History and the package installation, so it survives

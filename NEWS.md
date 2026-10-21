@@ -1,3 +1,8 @@
+# RAssistant 0.11.0
+
+- Select up to five Knowledge Base files for each chat, or leave all unchecked for automatic local search. Restore the selection with chat History; start new chats with automatic search.
+- Expand Knowledge Base under a message to inspect the exact excerpts and instructions supplied. Keep receipts in History, and distinguish missing material, unsent validation and failed requests.
+
 # RAssistant 0.10.3
 
 - Rename Course knowledge to Knowledge Base, using general reference-document labels. Keep existing local, project-specific files and instructions unchanged.

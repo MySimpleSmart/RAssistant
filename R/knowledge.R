@@ -209,68 +209,74 @@
   profile_text <- function() read_profile()$instructions
   build_index <- function() {
     chunks <- unlist(lapply(load_docs(), function(doc) lapply(doc$chunks, function(chunk)
-      list(name = doc$name, label = chunk$label, text = chunk$text))), recursive = FALSE)
-    tokens <- lapply(chunks, function(chunk) .knowledge_tokens(chunk$text))
+      list(id=doc$id,name=doc$name,label=chunk$label,text=chunk$text))), recursive=FALSE)
+    tokens <- lapply(chunks,function(chunk).knowledge_tokens(chunk$text))
     lengths <- lengths(tokens)
-    # Postings list chunk positions per term; chunk ids are ascending, so run
-    # lengths give term frequencies at query time.
-    postings <- split(rep(seq_along(tokens), lengths), unlist(tokens, use.names = FALSE))
-    list(chunks = chunks, lengths = lengths, average = max(1, mean(lengths)), postings = postings)
+    postings <- split(rep(seq_along(tokens),lengths),unlist(tokens,use.names=FALSE))
+    list(chunks=chunks,lengths=lengths,average=max(1,mean(lengths)),postings=postings)
   }
-  retrieve <- function(query, context = "", budget = getOption("RAssistant.knowledge_chars", 6000L),
-      max_chunks = 5L) {
-    none <- list(text = "", sources = list())
-    if (!length(load_docs())) return(none)
-    if (is.null(index)) index <<- build_index()
-    n <- length(index$chunks)
-    if (!n) return(none)
-    # The latest request dominates; assignment text and editor calls refine it.
-    # A request with its own terms must match reference material itself; only a
-    # request without them (an image turn, "explain (b)") relies on context.
+  retrieve <- function(query, context="", budget=getOption("RAssistant.knowledge_chars",6000L),
+      max_chunks=5L, selected=character()) {
+    documents <- load_docs()
+    selected <- unique(as.character(selected))
+    missing <- setdiff(selected,vapply(documents,function(doc)doc$id,character(1)))
+    none <- list(text="",sources=list(),status=if(!length(documents))"empty"else"none",
+      mode=if(length(selected))"selected"else"automatic",missing=missing)
+    if(length(missing)){none$status<-"missing";return(none)}
+    if(!length(documents))return(none)
+    budget <- suppressWarnings(as.integer(budget));max_chunks <- suppressWarnings(as.integer(max_chunks))
+    if(length(budget)!=1L || is.na(budget) || budget<1L || length(max_chunks)!=1L || is.na(max_chunks) || max_chunks<1L)return(none)
+    budget <- min(budget,24000L);max_chunks <- min(max_chunks,5L)
+    if(is.null(index))index <<- build_index()
+    n <- length(index$chunks);if(!n)return(none)
+    scope <- if(length(selected))which(vapply(index$chunks,function(x)x$id %in% selected,logical(1)))else seq_len(n)
+    if(!length(scope))return(none)
     weights <- c(table(.knowledge_tokens(query)))
-    if (length(weights) && !any(names(weights) %in% names(index$postings))) return(none)
-    extra <- 0.4 * c(table(.knowledge_tokens(context)))
-    for (term in names(extra)) weights[term] <- sum(weights[term], extra[[term]], na.rm = TRUE)
-    weights <- pmin(weights[names(weights) %in% names(index$postings)], 3)
-    if (!length(weights)) return(none)
-    scores <- numeric(n)
-    matched <- integer(n)
-    for (term in names(weights)) {
-      runs <- rle(index$postings[[term]])
-      df <- length(runs$values)
-      idf <- log(1 + (n - df + 0.5) / (df + 0.5))
-      tf <- runs$lengths
-      norm <- 1.2 * (0.25 + 0.75 * index$lengths[runs$values] / index$average)
-      scores[runs$values] <- scores[runs$values] + weights[[term]] * idf * tf * 2.2 / (tf + norm)
-      matched[runs$values] <- matched[runs$values] + 1L
+    query_matches <- any(names(weights) %in% names(index$postings))
+    if(length(weights) && !query_matches && !length(selected))return(none)
+    extra <- 0.4*c(table(.knowledge_tokens(context)))
+    for(term in names(extra))weights[term] <- sum(weights[term],extra[[term]],na.rm=TRUE)
+    weights <- pmin(weights[names(weights) %in% names(index$postings)],3)
+    scores <- numeric(n);matched <- integer(n)
+    for(term in names(weights)) {
+      runs <- rle(index$postings[[term]]);idf <- log(1+(n-length(runs$values)+0.5)/(length(runs$values)+0.5))
+      norm <- 1.2*(0.25+0.75*index$lengths[runs$values]/index$average)
+      scores[runs$values] <- scores[runs$values]+weights[[term]]*idf*runs$lengths*2.2/(runs$lengths+norm)
+      matched[runs$values] <- matched[runs$values]+1L
     }
-    # Retrieve only when some section matches two query terms (when the query
-    # offers them), then keep strong single-term matches such as a function
-    # name, and drop weak tails so unrelated material does not consume tokens.
-    strong <- scores > 0 & matched >= min(2L, length(weights))
-    if (!any(strong)) return(none)
-    top <- max(scores)
-    eligible <- which(strong | scores >= 0.5 * top)
-    eligible <- eligible[order(scores[eligible], decreasing = TRUE)]
-    eligible <- eligible[scores[eligible] >= 0.35 * top]
-    selected <- integer()
-    used <- 0L
-    for (i in eligible) {
-      if (length(selected) >= max_chunks) break
-      size <- nchar(index$chunks[[i]]$text)
-      if (length(selected) && used + size > budget) next
-      selected <- c(selected, i)
-      used <- used + min(size, budget)
+    if(length(selected)) {
+      # Explicit files always contribute; a short question must not silently
+      # fall back to other documents or drop a selected file for lack of words.
+      first <- vapply(utils::head(selected,max_chunks),function(id){
+        candidates <- scope[vapply(index$chunks[scope],function(x)identical(x$id,id),logical(1))]
+        candidates[order(scores[candidates],decreasing=TRUE)][[1L]]
+      },integer(1))
+      relevant <- scope[scores[scope]>0]
+      eligible <- unique(c(first,relevant[order(scores[relevant],decreasing=TRUE)]))
+    } else {
+      strong <- scope[scores[scope]>0 & matched[scope]>=min(2L,length(weights))]
+      if(!length(strong))return(none)
+      top <- max(scores[scope]);eligible <- scope[scores[scope]>=0.35*top &
+        (scope %in% strong | scores[scope]>=0.5*top)]
+      eligible <- eligible[order(scores[eligible],decreasing=TRUE)]
     }
-    sources <- lapply(seq_along(selected), function(k) {
-      chunk <- index$chunks[[selected[[k]]]]
-      list(ref = paste0("K", k), name = chunk$name, label = chunk$label)
-    })
-    text <- paste(vapply(seq_along(selected), function(k) {
-      chunk <- index$chunks[[selected[[k]]]]
-      paste0("[K", k, "] ", chunk$name, ", ", chunk$label, "\n", substr(chunk$text, 1L, budget))
-    }, character(1)), collapse = "\n\n")
-    list(text = text, sources = sources)
+    excerpts <- list();used <- 0L
+    for(i in eligible) {
+      if(length(excerpts)>=max_chunks)break
+      chunk <- index$chunks[[i]]
+      header <- paste0("[K",length(excerpts)+1L,"] ",chunk$name,", ",chunk$label,"\n")
+      remaining_files <- if(length(selected))max(1L,min(length(selected),max_chunks)-length(excerpts))else 1L
+      room <- floor((budget-used)/remaining_files)-nchar(header)-if(length(excerpts))2L else 0L
+      if(room<1L)break
+      text <- substr(chunk$text,1L,room)
+      if(nchar(chunk$text)>room && room>=50L)text <- paste0(substr(chunk$text,1L,room-20L),"\n[excerpt truncated]")
+      excerpts[[length(excerpts)+1L]] <- list(ref=paste0("K",length(excerpts)+1L),name=chunk$name,
+        label=chunk$label,text=text)
+      used <- used+nchar(header)+nchar(text)+if(length(excerpts)>1L)2L else 0L
+    }
+    if(!length(excerpts))return(none)
+    list(text=paste(vapply(excerpts,function(x)paste0("[",x$ref,"] ",x$name,", ",x$label,"\n",x$text),character(1)),collapse="\n\n"),
+      sources=lapply(excerpts,function(x)x[c("ref","name","label")]),status="matched",mode=none$mode,missing=missing)
   }
   list(list = list_docs, add = add_doc, remove = remove_doc, profile = read_profile,
     save_profile = save_profile, profile_text = profile_text, retrieve = retrieve, path = root)

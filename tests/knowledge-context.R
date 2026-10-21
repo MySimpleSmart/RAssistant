@@ -54,30 +54,106 @@ shiny::testServer(app$server, {
   answer <- tail(state$messages,1L)[[1L]]
   check(identical(answer$references[[1L]]$name,"week4.md") && identical(answer$references[[1L]]$label,"lines 1-4"),
     "the answer records which course material was supplied")
+  receipt <- tail(state$messages,2L)[[1L]]$knowledge_read
+  check(identical(receipt$text,knowledge$retrieve("How should I choose k for kmeans clustering?",
+      paste(state$assignment,app$editor_calls(app$initial$contents)))$text) &&
+    identical(receipt$instructions,instructions) && identical(receipt$delivery,"sent"),
+    "each user message records the exact excerpts and instructions delivered to the model")
+  markup <- as.character(app$knowledge_receipt_ui(receipt))
+  check(grepl("<details",markup,fixed=TRUE) && grepl("Knowledge Base",markup,fixed=TRUE) &&
+    grepl("fviz_nbclust",markup,fixed=TRUE),"the exact receipt is collapsed and expandable in chat")
 
   session$setInputs(chat_submit=list(text="Translate hello into French",nonce=3L))
   unrelated <- tail(calls,1L)[[1L]]
   check(grepl("CUSTOM INSTRUCTIONS",unrelated$system,fixed=TRUE) &&
     !grepl("KNOWLEDGE BASE EXCERPTS",unrelated$prompt,fixed=TRUE) && !length(tail(state$messages,1L)[[1L]]$references),
     "unrelated requests send custom instructions but no course excerpts")
+  check(identical(tail(state$messages,2L)[[1L]]$knowledge_read$status,"none") &&
+    !nzchar(tail(state$messages,2L)[[1L]]$knowledge_read$text),"no-match receipts do not imply a document was sent")
 
   session$setInputs(chat_submit=list(text="Run my kmeans clustering script and interpret it",nonce=4L))
   check(is.list(state$pending$course) && grepl("fviz_nbclust",state$pending$course$text,fixed=TRUE),
     "a run request keeps the course context for the later analysis")
+  check(identical(tail(state$messages,2L)[[1L]]$knowledge_read$delivery,"prepared"),
+    "validation excerpts are only prepared until the user approves execution")
   session$setInputs(yes=1L)
   analysis <- tail(calls,1L)[[1L]]
   check(grepl("KNOWLEDGE BASE EXCERPTS",analysis$prompt,fixed=TRUE) && grepl("CUSTOM INSTRUCTIONS",analysis$system,fixed=TRUE) &&
     identical(tail(state$messages,1L)[[1L]]$references[[1L]]$name,"week4.md"),
     "execution analysis uses course material and records its sources")
+  check(identical(Filter(function(m)identical(m$role,"You"),state$messages)[[4L]]$knowledge_read$delivery,"sent"),
+    "approved validation marks its original user receipt as delivered")
 
   saved <- history$load(state$chat$id)
   restored <- Filter(function(m)length(m$references),saved$messages)
   check(length(restored)>=2L && identical(restored[[1L]]$references[[1L]]$name,"week4.md") &&
     !any(grepl("fviz_nbclust",unlist(lapply(saved$messages,function(m)m$text)),fixed=TRUE)),
-    "chat history saves source labels but not the course excerpts themselves")
+    "retrieved material stays outside conversational message text")
+  exact <- Filter(function(m)!is.null(m$knowledge_read) && nzchar(m$knowledge_read$text),saved$messages)
+  check(length(exact)>=2L && identical(exact[[1L]]$knowledge_read$text,receipt$text) &&
+    identical(exact[[1L]]$knowledge_read$instructions,instructions),"saved receipts preserve the supplied text independently of the Knowledge Base")
 
   doc <- knowledge$list()[[1L]]$id
-  session$setInputs(knowledge_selected=doc,knowledge_remove=1L,knowledge_confirm_remove=1L)
+  session$setInputs(knowledge_pin_change=list(ids=list(doc),epoch=state$upload_epoch,nonce=10L))
+  check(identical(state$knowledge_files[[1L]]$id,doc) &&
+    identical(history$load(state$chat$id)$knowledge_files[[1L]]$id,doc),"file selection is saved for this chat")
+  session$setInputs(chat_submit=list(text="Explain this",nonce=11L))
+  check(grepl("fviz_nbclust",tail(calls,1L)[[1L]]$prompt,fixed=TRUE) &&
+    identical(tail(state$messages,2L)[[1L]]$knowledge_read$mode,"selected"),
+    "a selected file supplies an excerpt even for a short follow-up without matching words")
+
+  other <- file.path(root,"other.md");writeLines("Use lm for regression and report regression coefficients.",other)
+  other_id <- knowledge$add(other)$id
+  session$setInputs(chat_submit=list(text="Explain regression coefficients",nonce=12L))
+  check(!grepl("[K1] other.md",tail(calls,1L)[[1L]]$prompt,fixed=TRUE) &&
+    identical(tail(state$messages,1L)[[1L]]$references[[1L]]$name,"week4.md"),
+    "explicit selection excludes other matching documents")
+
+  session$setInputs(knowledge_pin_change=list(ids=list(other_id),epoch=state$upload_epoch-1L,nonce=13L))
+  check(identical(state$knowledge_files[[1L]]$id,doc),"stale page events cannot change this chat's document selection")
+  session$setInputs(knowledge_unpin=list(id=doc,epoch=state$upload_epoch,nonce=14L))
+  check(!length(state$knowledge_files),"removing a scope chip returns the chat to automatic retrieval")
+  session$setInputs(chat_submit=list(text="Explain regression coefficients",nonce=15L))
+  check(grepl("[K1] other.md",tail(calls,1L)[[1L]]$prompt,fixed=TRUE),"automatic retrieval resumes after unpinning")
+
+  session$setInputs(knowledge_pin_change=list(ids=list(doc),epoch=state$upload_epoch,nonce=16L))
+  old_receipt <- receipt$text
+  replacement <- file.path(root,"replacement.md");writeLines("Hierarchical clustering uses hclust and cutree.",replacement)
+  session$setInputs(knowledge_files=data.frame(name="week4.md",size=file.info(replacement)$size,
+    type="text/markdown",datapath=replacement,stringsAsFactors=FALSE))
+  doc <- Filter(function(x)identical(x$name,"week4.md"),knowledge$list())[[1L]]$id
+  check(identical(state$knowledge_files[[1L]]$id,doc) &&
+    identical(exact[[1L]]$knowledge_read$text,old_receipt),"replacement updates the selected file without changing earlier receipts")
+
+  app$ask_ai <- function(...)stop("Simulated offline")
+  session$setInputs(chat_submit=list(text="Explain hierarchical clustering",nonce=17L))
+  failed <- Filter(function(m)identical(m$role,"You"),state$messages)
+  check(identical(tail(failed,1L)[[1L]]$knowledge_read$delivery,"failed"),"a failed request never claims the receipt was delivered")
+  app$ask_ai <- fake_ai
+
+  session$setInputs(chat_submit=list(text="Run my clustering script and interpret it",nonce=18L))
+  session$setInputs(no=1L)
+  declined <- tail(Filter(function(m)identical(m$role,"You"),state$messages),1L)[[1L]]
+  check(identical(declined$knowledge_read$delivery,"not_sent"),"declining validation marks its prepared material as not sent")
+
+  saved_selection <- history$load(state$chat$id)
+  count <- length(history$list())
+  session$setInputs(new_chat=1L)
+  check(!length(state$knowledge_files) && length(history$list())==count,
+    "a new chat resets document selection and does not save a blank chat")
+  adopt_chat(saved_selection)
+  check(identical(state$knowledge_files[[1L]]$id,doc) &&
+    any(vapply(state$messages,function(m)!is.null(m$knowledge_read) && identical(m$knowledge_read$text,old_receipt),logical(1))),
+    "restoring the chat recovers its selection and historical excerpt text")
+
+  knowledge$remove(doc)
+  session$setInputs(chat_submit=list(text="Explain regression coefficients",nonce=19L))
+  missing <- tail(Filter(function(m)identical(m$role,"You"),state$messages),1L)[[1L]]$knowledge_read
+  check(identical(missing$status,"missing") && !nzchar(missing$text) &&
+    !grepl("KNOWLEDGE BASE EXCERPTS",tail(calls,1L)[[1L]]$prompt,fixed=TRUE),
+    "a missing selected file is reported without silently substituting another document")
+
+  session$setInputs(knowledge_selected=other_id,knowledge_remove=1L,knowledge_confirm_remove=1L)
   check(!length(knowledge$list()) && length(history$list())==1L,"removing course material leaves chats intact")
 })
 
