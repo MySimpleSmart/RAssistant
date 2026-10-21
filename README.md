@@ -25,7 +25,7 @@ ellmer, to the versions RAssistant requires; `"never"` leaves them too old and
 installation fails. Use your personal R library if R offers to create one. RAssistant is installed in
 an R package library, separately from the RStudio application. The RStudio Addins
 menu also has an **RAssistant** entry after installation.
-The header keeps **Console On/Off** and **New chat** visible. The **More actions
+The header keeps **Console On/Off**, **Workspace On/Off** and **New chat** visible. The **More actions
 (...)** menu contains History, Knowledge, Check updates, Help, Close and the installed version.
 Help contains launch, API-key and update instructions with Copy buttons.
 Advanced commands are expandable; manual update results appear below the header.
@@ -351,7 +351,8 @@ the Source cursor in Rmd/Quarto. Only its body is replaced; YAML, fences, prose
 and other chunks stay intact. Only that chunk's R syntax is checked, so unrelated
 broken chunks do not prevent a local correction. Nothing is knitted or run.
 
-**... > Workspace context** is off by default. When enabled, the next request
+**Workspace On/Off** sits beside Console in the header and starts On. You can
+switch it off there. When enabled, the next request
 includes up to 30 objects' types, dimensions and column names (up to 40 columns),
 not rows, samples or statistics. Active bindings, lazy promises, functions and
 credential-like object names are skipped; user-defined dim/summary methods are

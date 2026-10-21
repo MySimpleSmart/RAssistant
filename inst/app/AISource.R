@@ -6,7 +6,7 @@
 # Package: RAssistant::launch() offers secure first-launch key setup.
 # Source edits require a checked comparison and an explicit Apply click.
 # The current editor's text, CSV headers, enabled Console context and attached images
-# and opted-in Workspace metadata are sent only on Send or a code action. Only after approved validation,
+# and enabled Workspace metadata are sent only on Send or a code action. Only after approved validation,
 # execution output and up to 3 captured plots may be sent.
 # Validation is NOT sandboxed and may affect files on your computer.
 
@@ -1273,7 +1273,6 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .source-hunk{margin:8px 0;border-top:1px solid var(--border);padding-top:7px}
   .source-hunk-actions{display:flex;gap:6px;margin:6px 0}
   .selection-menu summary{cursor:pointer;padding:7px 9px;font-size:11px}
-  .menu-actions .checkbox{margin:6px 9px;font-size:11px}
   .edit-history-panel{border:1px solid var(--border);padding:9px;margin:8px 0;font-size:11px}
   .edit-log-list{display:flex;flex-direction:column;gap:4px;max-height:150px;overflow:auto;margin:8px 0}
   .edit-log-list .ai-btn{text-align:left}
@@ -1344,12 +1343,12 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .compose{flex:0 0 auto;border-top:1px solid var(--border);padding:7px;background:var(--panel)}
   .compose .form-group{margin:0}
   .compose-status{font-size:10px;margin-top:3px}
-  .console-context{color:var(--muted);flex:0 0 auto}
-  .console-context .form-group{margin:0;width:auto!important}
-  .console-context .checkbox{margin:0}
-  .console-context .checkbox label{display:inline-flex;align-items:center;gap:4px;padding:0;
+  .context-toggle{color:var(--muted);flex:0 0 auto}
+  .context-toggle .form-group{margin:0;width:auto!important}
+  .context-toggle .checkbox{margin:0}
+  .context-toggle .checkbox label{display:inline-flex;align-items:center;gap:4px;padding:0;
     font:11px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#314455}
-  .console-context input[type=checkbox]{position:static;margin:0;width:13px;height:13px}
+  .context-toggle input[type=checkbox]{position:static;margin:0;width:13px;height:13px}
   .console-hint{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
   textarea#prompt{resize:none!important;width:100%;height:54px;min-height:54px;
     max-height:25vh;background:white;border:1px solid #c6ccd2;border-radius:3px;
@@ -1775,10 +1774,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       shiny::div(id="source_context",class="source-context",title="Current Source document",
         shiny::textOutput("filename",inline=TRUE)),
       shiny::div(class="toolbar-actions",
-        if(!is.null(console_capture))shiny::div(class="console-context",title="Include recent Console commands and output",
+        if(!is.null(console_capture))shiny::div(class="console-context context-toggle",title="Include recent Console commands and output",
           shiny::checkboxInput("console_context",shiny::tagList("Console ",
             shiny::textOutput("console_context_state",inline=TRUE)),value=TRUE),
           shiny::div(class="console-hint",shiny::textOutput("console_context_status"))),
+        shiny::div(class="workspace-context context-toggle",title="Include Workspace object types, dimensions and column names",
+          shiny::checkboxInput("workspace_context",shiny::tagList("Workspace ",
+            shiny::textOutput("workspace_context_state",inline=TRUE)),value=TRUE)),
         shiny::actionButton("new_chat","New chat",class="ai-btn"),
         shiny::tags$details(id="app_menu",class="app-menu",
           shiny::tags$summary("\u22ef",title="More actions","aria-label"="More actions"),
@@ -1792,7 +1794,6 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
                 shiny::div(class="menu-actions",lapply(c("Explain","Fix","Improve"),function(action)
                   shiny::tags$button(id=paste0("chunk_",tolower(action)),type="button",class="btn ai-btn selection-action",
                     "data-action"=tolower(action),"data-scope"="chunk",action)))),
-              shiny::checkboxInput("workspace_context","Workspace context",value=FALSE),
               shiny::actionButton("edit_history","Edit history",class="ai-btn"),
               shiny::actionButton("preview_undo","Undo last AI change",class="ai-btn"),
               if(!is.null(package_info$history))shiny::actionButton("history","History",class="ai-btn"),
@@ -2701,6 +2702,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         shiny::div(class="source-edit-actions",shiny::tags$button(type="button",class="btn ai-btn undo-preview","Undo last AI change"),
           shiny::tags$button(type="button",class="btn ai-btn edit-history-close","Close")))
     })
+    output$workspace_context_state <- shiny::renderText(if(isTRUE(input$workspace_context))"On"else"Off")
     output$filename <- shiny::renderText({
       if (!is_source_context(state$current)) return("No Source document")
       p <- state$current$path

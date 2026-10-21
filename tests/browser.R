@@ -174,8 +174,8 @@ main <- function() {
   wait_js('document.querySelector(".empty")!==null')
   js('window.alerts=[];window.alert=function(x){alerts.push(x);};window.receivedMessages=[];$(document).on("shiny:message",function(e){if(e.message.custom)receivedMessages.push(e.message.custom);});')
   check(isTRUE(js('document.querySelector(".empty")!==null')), "existing Shiny UI connects and renders")
-  check(isTRUE(js('!document.getElementById("app_menu").open && document.querySelector("#app_menu #history")!==null && document.querySelector("#app_menu #knowledge")!==null && document.querySelector("#app_menu #help")!==null && document.querySelector("#app_menu #close")!==null && document.getElementById("check_updates").closest("#app_menu")!==null && document.getElementById("console_context").closest(".toolbar-actions")!==null && document.querySelector(".upload-row #console_context")===null')),
-    "Check updates lives in More actions and Console is visible in the header")
+  check(isTRUE(js('!document.getElementById("app_menu").open && document.querySelector("#app_menu #history")!==null && document.querySelector("#app_menu #knowledge")!==null && document.querySelector("#app_menu #help")!==null && document.querySelector("#app_menu #close")!==null && document.getElementById("check_updates").closest("#app_menu")!==null && document.getElementById("console_context").closest(".toolbar-actions")!==null && document.querySelector(".upload-row #console_context")===null && document.getElementById("workspace_context").closest(".toolbar-actions")!==null && document.querySelector("#app_menu #workspace_context")===null && document.getElementById("workspace_context").checked && document.getElementById("workspace_context_state").textContent==="On"')),
+    "Check updates lives in More actions while Console and default-on Workspace share the header")
   js('document.querySelector("#app_menu>summary").click();document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));')
   check(isTRUE(js('!document.getElementById("app_menu").open && document.activeElement===document.querySelector("#app_menu>summary")')),
     "Escape closes the actions menu and restores keyboard focus")
@@ -252,8 +252,8 @@ main <- function() {
   check(isTRUE(js('document.querySelector(".attachment-item img").naturalWidth>0 && document.getElementById("prompt").value==="Keep this draft" && document.querySelectorAll(".msg.user").length===0')),
     "Attach current plot previews one image and preserves the draft without an AI request")
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
-  check(isTRUE(js('document.getElementById("attach_current_plot").getBoundingClientRect().right<=innerWidth && document.getElementById("send").getBoundingClientRect().right<=innerWidth && document.getElementById("source_context").closest(".toolbar")!==null && document.getElementById("source_context").textContent.trim()==="example.R" && document.getElementById("console_context").closest(".console-context").getBoundingClientRect().right<=innerWidth && document.querySelector(".toolbar").getBoundingClientRect().height<=40')),
-    "the file name and Console share a compact header in a narrow Viewer")
+  check(isTRUE(js('document.getElementById("attach_current_plot").getBoundingClientRect().right<=innerWidth && document.getElementById("send").getBoundingClientRect().right<=innerWidth && document.getElementById("source_context").closest(".toolbar")!==null && document.getElementById("source_context").textContent.trim()==="example.R" && document.getElementById("console_context").closest(".console-context").getBoundingClientRect().right<=innerWidth && document.querySelector(".toolbar").getBoundingClientRect().height<=40 && Math.abs(document.querySelector(".workspace-context").getBoundingClientRect().top-document.querySelector(".console-context").getBoundingClientRect().top)<2 && document.querySelector(".workspace-context").getBoundingClientRect().right<=innerWidth')),
+    "the file name, Console and Workspace share one compact header in a narrow Viewer")
   screenshot<-Sys.getenv("RA_BROWSER_LAYOUT_SCREENSHOT")
   if(nzchar(screenshot)){
     js('document.querySelectorAll(".shiny-notification-close").forEach(function(b){b.click();});')
@@ -595,9 +595,12 @@ main <- function() {
   wait_js('document.querySelector(".source-undo")===null && !document.getElementById("send").disabled')
   check(length(readRDS(edit_marker))==before_edits+1L && startsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"library(tidyverse)") &&
     endsWith(tail(readRDS(edit_marker),1L)[[1L]]$text,"dim(X)\n"),"confirming Undo restores only the last AI change and logs the restoration")
-  js('document.querySelector(".edit-history-close").click();document.getElementById("app_menu").querySelector("summary").click();document.getElementById("workspace_context").click();document.getElementById("app_menu").open=false;document.getElementById("prompt").value="Workspace evidence please";document.getElementById("send").click();')
+  js('document.querySelector(".edit-history-close").click();document.getElementById("prompt").value="Workspace evidence please";document.getElementById("send").click();')
   wait_js('!document.getElementById("send").disabled && document.querySelector("#messages").textContent.includes("Workspace evidence received: 3 x 4")')
-  check(isTRUE(js('document.getElementById("workspace_context").checked')),"the optional Workspace toggle supplies metadata on the next request")
+  check(isTRUE(js('document.getElementById("workspace_context").checked')),"Workspace starts on and supplies metadata without opening More actions")
+  js('document.getElementById("workspace_context").click();')
+  wait_js('document.getElementById("workspace_context_state").textContent==="Off"')
+  check(isTRUE(js('!document.getElementById("workspace_context").checked && !document.getElementById("app_menu").open')),"Workspace can be switched off directly in the header")
   js('document.getElementById("prompt").value="BLANK_TEST";document.getElementById("send").click();')
   wait_js('!document.getElementById("send").disabled && document.querySelector("#messages").textContent.includes("Only spacing proposed")')
   check(isTRUE(js('document.getElementById("source-review-card")===null')),"extra blank lines do not automatically appear as code errors")

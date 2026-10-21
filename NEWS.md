@@ -1,3 +1,7 @@
+# RAssistant 0.6.1
+
+- Move Workspace On/Off beside Console in the header and enable it by default, freeing space in More actions.
+
 # RAssistant 0.6.0
 
 - Extra blank lines are spacing, not errors. Spacing-only edits stay out of automatic fixes and need explicit inclusion.
