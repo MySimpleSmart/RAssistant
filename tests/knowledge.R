@@ -58,8 +58,8 @@ main <- function() {
   scoped <- store$retrieve("kmeans clustering",selected=code_id)
   check(!grepl("week4.md",scoped$text,fixed=TRUE) && grepl("lab5.R",scoped$text,fixed=TRUE),
     "selection restricts retrieval even when another file matches better")
-  both <- store$retrieve("Explain this",selected=c(cluster_id,code_id),budget=300L)
-  check(nchar(both$text)<=300L && length(both$sources)==2L &&
+  both <- store$retrieve("Explain this",selected=c(cluster_id,code_id),budget=600L)
+  check(nchar(both$text)<=600L && length(both$sources)==2L &&
     identical(sort(vapply(both$sources,function(x)x$name,character(1))),c("lab5.R","week4.md")),
     "selected documents share a bounded budget instead of the first file consuming it")
   absent <- store$retrieve("kmeans clustering",selected=c(code_id,strrep("0",32L)))

@@ -26,6 +26,17 @@ main <- function() {
     for(file in c("R/history.R","R/knowledge.R"))sys.source(file,store_env)
     history <- store_env$.conversation_store(project=root,directory=history_root)
     knowledge <- store_env$.knowledge_store(project=root,directory=history_root)
+    if(identical(Sys.getenv("RA_BROWSER_KNOWLEDGE_STRUCTURE_ONLY"),"true")) {
+      body <- paste0("# Formatting\n\n```r\n  structure_sentinel <- \"",strrep("k",2400L),
+        "\"\n\n  print(structure_sentinel)\n```\n")
+      original <- tempfile(fileext=".md");writeChar(body,original,eos=NULL,useBytes=TRUE)
+      doc <- knowledge$add(original,"legacy.md");unlink(original)
+      path <- file.path(knowledge$path,"documents",paste0(doc$id,".json"))
+      saved <- jsonlite::fromJSON(path,simplifyVector=FALSE);saved$format_version <- NULL
+      saved$chunks <- list(list(label="lines 1-9",text="structure_sentinel was flattened by an earlier format version."))
+      jsonlite::write_json(saved,path,auto_unbox=TRUE)
+      knowledge <- store_env$.knowledge_store(project=root,directory=history_root)
+    }
     available <- list(status="available",version="0.1.2",current="0.1.1",
       notes=c("Recover a disconnected Viewer.","Keep <draft> text & images."))
     update_result <- list(status="current",version="0.1.1",current="0.1.1")
@@ -218,6 +229,46 @@ main <- function() {
     check(isTRUE(js('document.querySelectorAll(".attachment-item").length===0 && document.querySelectorAll(".msg.user").length===0 && window.aisourceErrors.length===0')),
       "automatic availability checks leave attachments and chat empty without JavaScript errors")
     cat(checks,"Plot browser checks passed\n");return(invisible(NULL))
+  }
+  if(identical(Sys.getenv("RA_BROWSER_KNOWLEDGE_STRUCTURE_ONLY"),"true")) {
+    js('openAction("knowledge");')
+    wait_js('document.querySelector("#knowledge_selected input")!==null')
+    check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("legacy.md (older format)") && document.getElementById("shiny-modal").textContent.includes("Re-add files marked older format")')),
+      "legacy references identify the formatting limitation and the re-add action")
+    js('window.legacyId=document.querySelector("#knowledge_selected input").value;document.querySelector("#knowledge_selected input").click();')
+    wait_js('document.querySelector(".knowledge-unpin")!==null')
+    body <- paste0("# Formatting\n\n```r\n  structure_sentinel <- \"",strrep("k",2400L),
+      "\"\n\n  print(structure_sentinel)\n```\n")
+    js(paste0('window.structureBody=',jsonlite::toJSON(body,auto_unbox=TRUE),';var dt=new DataTransfer();dt.items.add(new File([structureBody],"legacy.md",{type:"text/markdown"}));var input=document.getElementById("knowledge_files");input.files=dt.files;input.dispatchEvent(new Event("change",{bubbles:true}));'))
+    wait_js('document.querySelector("#knowledge_selected input")!==null && !document.getElementById("shiny-modal").textContent.includes("older format")',timeout=30)
+    check(isTRUE(js('document.querySelector("#knowledge_selected input").value===legacyId && document.querySelector("#knowledge_selected input").checked && document.querySelector(".knowledge-unpin").getAttribute("data-id")===legacyId')),
+      "re-adding identical bytes upgrades formatting while keeping the same file id and selected scope")
+    js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
+    wait_js('document.getElementById("shiny-modal")===null')
+    js('var p=document.getElementById("prompt");p.value="Explain this";p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click();')
+    wait_js('document.querySelectorAll(".msg.user").length===1 && !document.getElementById("send").disabled && document.querySelector(".knowledge-read summary").textContent.includes("Sent")')
+    js('document.querySelector(".knowledge-read>summary").click();')
+    check(isTRUE(js('document.querySelector(".knowledge-excerpts").textContent.includes(structureBody.trimEnd()) && document.querySelector(".knowledge-excerpts").textContent.includes("Section: Formatting") && !document.querySelector(".knowledge-excerpts").textContent.includes("[excerpt truncated]")')),
+      "the sent receipt shows the entire long code fence, section, indentation and blank lines")
+    screenshot <- Sys.getenv("RA_BROWSER_KNOWLEDGE_STRUCTURE_SCREENSHOT")
+    if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+    js('openAction("knowledge");')
+    wait_js('document.getElementById("knowledge_files")!==null')
+    js('var content="```r\\nfirst_block <- \\\""+"z".repeat(7000)+"\\\"\\n```\\n\\n```r\\nsecond_block <- \\\""+"w".repeat(7000)+"\\\"\\n```\\n";var dt=new DataTransfer();dt.items.add(new File([content],"oversized.md",{type:"text/markdown"}));var input=document.getElementById("knowledge_files");input.files=dt.files;input.dispatchEvent(new Event("change",{bubbles:true}));')
+    wait_js('document.querySelectorAll("#knowledge_selected input").length===2',timeout=30)
+    js('document.querySelector("#knowledge_selected input:checked").click();Array.from(document.querySelectorAll("#knowledge_selected label")).find(function(x){return x.textContent.includes("oversized.md");}).querySelector("input").click();')
+    wait_js('document.querySelector(".knowledge-unpin").textContent.includes("oversized.md")')
+    js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
+    wait_js('document.getElementById("shiny-modal")===null')
+    js('var p=document.getElementById("prompt");p.value="Explain this";p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click();')
+    wait_js('document.querySelectorAll(".msg.user").length===2 && !document.getElementById("send").disabled')
+    check(isTRUE(js('var r=Array.from(document.querySelectorAll(".knowledge-read")).pop();r.querySelector("summary").textContent.includes("Matching content exceeds excerpt limit") && r.querySelector(".knowledge-excerpts")===null && r.querySelectorAll("li").length===2')),
+      "oversized complete blocks receive omission notices instead of partial code in the browser")
+    browser$Page$reload()
+    wait_js('document.querySelectorAll(".knowledge-read").length===2 && !document.getElementById("send").disabled',timeout=30)
+    check(isTRUE(js('var r=Array.from(document.querySelectorAll(".knowledge-read")).pop();r.querySelectorAll("li").length===2 && document.querySelector(".knowledge-excerpts").textContent.includes("k".repeat(2400)) && document.querySelector(".knowledge-unpin").textContent.includes("oversized.md") && window.aisourceErrors.length===0')),
+      "reopening preserves complete old receipts, multiple limit notices and the current file selection")
+    cat(checks,"structural Knowledge Base browser checks passed\n");return(invisible(NULL))
   }
   if(identical(Sys.getenv("RA_BROWSER_KNOWLEDGE_WORK_ONLY"),"true")) {
     js('openAction("knowledge");')

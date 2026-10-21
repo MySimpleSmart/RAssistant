@@ -252,7 +252,11 @@ For a question such as “explain this error,” work context provides the searc
 topic. A specific new question stays authoritative, so unrelated requests do not
 pull material from the open script merely because it is there. Only the
 few most relevant sections (about 6,000 characters at most) are added, with
-their file and page or line numbers; unrelated requests add none. Search uses
+their file and page or line numbers; unrelated requests add none. Code fences,
+tables, display equations and top-level R expressions stay whole, with section
+headings and original indentation. A block that cannot fit is omitted and
+identified in the expandable receipt instead of sending a cut-off fragment.
+Search uses
 the words and R function names you enter; it does not translate queries or make
 extra API calls. The assistant is instructed to prefer the methods,
 packages and functions taught in that material over generic alternatives and to
@@ -278,8 +282,16 @@ original files. Re-adding a file with the same name replaces the earlier
 version; deleting a chat does not affect knowledge, and removing a document does
 not affect chats.
 
-Adding PDFs needs the pdftools package. Scanned PDFs without a text layer need
-OCR first.
+Files added before structural extraction are marked **older format**. Re-add
+the original file to rebuild its formatting; this keeps its selection and does
+not change excerpts saved in earlier chats. Formatting removed by an older
+version cannot be recovered from the saved text alone.
+
+PDF extraction preserves spacing present in its text layer, including aligned
+text tables. It cannot reconstruct equation symbols or visual layout missing
+from that layer. Adding PDFs needs the pdftools package. Scanned PDFs without a
+text layer need OCR first; built-in OCR and image-based document reading are not
+included in this update.
 
 ```r
 install.packages("pdftools")

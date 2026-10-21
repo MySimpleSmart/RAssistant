@@ -1272,9 +1272,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     delivery <- chat_text(value$delivery,"prepared")
     if(!delivery %in% c("prepared","sent","failed","not_sent","interrupted"))delivery <- "interrupted"
     if(restore && delivery=="prepared")delivery <- "interrupted"
+    notices <- if(is.list(value$notices))vapply(Filter(is.character,value$notices),chat_text,character(1))else value$notices
     list(delivery=delivery,status=chat_text(value$status,"none"),mode=chat_text(value$mode,"automatic"),
       text=substr(chat_text(value$text),1L,24000L),instructions=substr(chat_text(value$instructions),1L,40000L),
-      sources=course_sources(value$sources),files=knowledge_files_info(value$files))
+      sources=course_sources(value$sources),files=knowledge_files_info(value$files),
+      notices=if(is.character(notices))head(substr(notices[!is.na(notices)],1L,300L),5L)else character())
   }
   knowledge_receipt_ui <- function(value) {
     receipt <- knowledge_receipt_info(value)
@@ -1283,13 +1285,15 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     sections <- length(receipt$sources)
     label <- if(sections)paste0(files,if(files==1L)" file"else" files"," / ",sections,
       if(sections==1L)" excerpt"else" excerpts")else switch(receipt$status,
-        empty="No documents",missing="Selected file unavailable",error="Search unavailable","No matching excerpts")
+        empty="No documents",missing="Selected file unavailable",error="Search unavailable",
+        limit="Matching content exceeds excerpt limit","No matching excerpts")
     if(nzchar(receipt$instructions))label <- paste(label,"+ instructions")
     delivery <- switch(receipt$delivery,sent="Sent",failed="Request failed",not_sent="Not sent",
       interrupted="Interrupted","Prepared")
     shiny::tags$details(class="knowledge-read",shiny::tags$summary(paste("Knowledge Base",delivery,label,sep=" \u00b7 ")),
       shiny::p(if(receipt$mode=="selected")paste("Selected:",paste(vapply(receipt$files,function(x)x$name,character(1)),collapse=", "))else"Automatic search"),
       if(nzchar(receipt$text))shiny::tags$pre(class="knowledge-excerpts",receipt$text),
+      if(length(receipt$notices))shiny::tags$ul(lapply(receipt$notices,shiny::tags$li)),
       if(receipt$status=="missing")shiny::p("Reselect the missing file in Knowledge Base. No other files were substituted."),
       if(nzchar(receipt$instructions))shiny::tags$details(shiny::tags$summary("Instructions"),shiny::tags$pre(receipt$instructions)))
   }
@@ -1339,6 +1343,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     none <- list(functions=character(),packages=character())
     code <- substr(chat_text(code),1L,50000L)
     if(!nzchar(code))return(none)
+    parse_options <- options(keep.parse.data=TRUE)
+    on.exit(options(parse_options),add=TRUE)
     if(source_kind(path,code)=="Rmd") {
       chunks <- source_chunks(list(id="knowledge",path=path,contents=strsplit(code,"\n",fixed=TRUE)[[1L]]))
       code <- paste(vapply(chunks,function(x)x$text,character(1)),collapse="\n")
@@ -1440,7 +1446,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     receipt <- if(nzchar(profile) || length(files) || !identical(found$status,"empty"))
       knowledge_receipt_info(list(delivery="prepared",status=chat_text(found$status,if(nzchar(found$text))"matched"else"none"),
         mode=if(length(ids))"selected"else"automatic",text=found$text,instructions=profile,sources=sources,
-        files=files))else NULL
+        files=files,notices=found$notices))else NULL
     list(system=system,text=found$text,sources=sources,instructions=profile,receipt=receipt)
   }
   course_sources <- function(sources) {
@@ -2631,12 +2637,14 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(is.null(profile))profile <- tryCatch(knowledge$profile(),error=function(e)list())
       docs <- tryCatch(knowledge$list(),error=function(e)list())
       choices <- stats::setNames(vapply(docs,function(x)x$id,character(1)),
-        vapply(docs,function(x)x$name,character(1)))
+        vapply(docs,function(x)paste0(x$name,if(isTRUE(x$legacy))" (older format)"else""),character(1)))
       shiny::showModal(shiny::modalDialog(title="Knowledge Base",
         shiny::div(class="assistant-help chat-history knowledge",
           shiny::p("Stored locally. Only excerpts are sent."),
           shiny::tags$strong("Use in this chat"),
           shiny::p(class="menu-hint","Select up to 5 files. Leave unchecked for automatic search."),
+          if(any(vapply(docs,function(x)isTRUE(x$legacy),logical(1))))
+            shiny::p(class="menu-hint","Re-add files marked older format to preserve their full structure."),
           if(length(docs))shiny::checkboxGroupInput("knowledge_selected",NULL,choices=choices,
             selected=vapply(state$knowledge_files,function(x)x$id,character(1)),width="100%")else shiny::p(class="empty","No documents yet."),
           knowledge_picker(),
@@ -2667,7 +2675,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         if(inherits(result,"error"))shiny::showNotification(paste0(files$name[[i]],": ",conditionMessage(result)),
           type="error",duration=NULL)
         else shiny::showNotification(paste0(switch(result$status,
-          duplicate="Already added: ",replaced="Updated: ","Added: "),result$name),type="message")
+          duplicate="Already added: ",replaced="Updated: ",reindexed="Updated formatting: ","Added: "),result$name),type="message")
       }
       # Replacing a document of the same name keeps this chat's selection on
       # the new content, rather than leaving an obsolete content-based ID.

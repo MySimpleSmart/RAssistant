@@ -166,5 +166,26 @@ shiny::testServer(fresh$server, {
     "restored chats keep the course sources shown under answers")
   check(identical(knowledge$profile()$instructions,instructions),
     "custom instructions persist after documents are removed and the app restarts")
+  large <- file.path(root,"large-blocks.md")
+  writeLines(c("```r",paste0('first_block <- "',strrep("x",7000L),'"'),"```","",
+    "```r",paste0('second_block <- "',strrep("y",7000L),'"'),"```"),large)
+  session$setInputs(knowledge_files=data.frame(name="large-blocks.md",size=file.info(large)$size,
+    type="text/markdown",datapath=large,stringsAsFactors=FALSE))
+  id <- knowledge$list()[[1L]]$id
+  session$setInputs(knowledge_pin_change=list(ids=list(id),epoch=state$upload_epoch,nonce=900L))
+  session$setInputs(chat_submit=list(text="Explain this",nonce=901L))
+  receipt <- tail(Filter(function(x)identical(x$role,"You"),state$messages),1L)[[1L]]$knowledge_read
+  check(identical(receipt$status,"limit") && length(receipt$notices)==2L && !nzchar(receipt$text) &&
+    !grepl("KNOWLEDGE BASE EXCERPTS",tail(calls,1L)[[1L]]$prompt,fixed=TRUE),
+    "Send reports both oversized complete blocks without silently sending their prefixes")
+  restored <- fresh$restore_chat_data(history$load(state$chat$id))
+  restored_receipt <- tail(Filter(function(x)identical(x$role,"You"),restored$messages),1L)[[1L]]$knowledge_read
+  check(identical(restored_receipt$notices,receipt$notices) && identical(restored_receipt$status,"limit"),
+    "multiple structural-limit notices survive JSON history storage and restoration")
+  restored_receipt$notices <- c(restored_receipt$notices,"<script>inert_reference_notice</script>")
+  markup <- as.character(fresh$knowledge_receipt_ui(restored_receipt))
+  check(grepl("Matching content exceeds excerpt limit",markup,fixed=TRUE) &&
+    grepl("&lt;script&gt;inert_reference_notice",markup,fixed=TRUE) && !grepl("<script>",markup,fixed=TRUE),
+    "limit receipts use a specific summary and render all omission notices as inert text")
 })
 cat("Completed",checks,"knowledge context checks\n")

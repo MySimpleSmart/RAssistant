@@ -1,3 +1,8 @@
+# RAssistant 0.13.0
+
+- Preserve complete code blocks, tables, display equations and R expressions in Knowledge Base excerpts. Keep indentation, long lines and section headings; retain PDF text-layer spacing and page labels.
+- Send complete blocks within the excerpt budget and clearly identify blocks that could not fit. Mark older document formatting and rebuild it when the original file is re-added, keeping its selection and saved chat receipts.
+
 # RAssistant 0.12.0
 
 - Connect Knowledge Base search to current Source functions and packages, the latest completed Console task, and relevant dataset column names. Respect Console and Workspace Off, with no extra API call.

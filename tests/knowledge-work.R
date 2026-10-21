@@ -22,6 +22,11 @@ check(identical(app$knowledge_source_terms(qmd,"report.qmd")$packages,"tidyr"),
 check(!exists("knowledge_executed",envir=.GlobalEnv,inherits=FALSE) &&
   "ggplot2" %in% app$knowledge_source_terms('knowledge_executed <<- TRUE; library(ggplot2)')$packages &&
   !exists("knowledge_executed",envir=.GlobalEnv,inherits=FALSE),"preparing search hints never evaluates Source")
+old_parse <- options(keep.parse.data=FALSE)
+forced <- app$knowledge_source_terms("library(ggplot2)")
+check(identical(forced$packages,"ggplot2") && identical(getOption("keep.parse.data"),FALSE),
+  "package parsing works with disabled global parse data and restores the user's option")
+options(old_parse)
 
 old <- c("Error: obsolete_error_sentinel","[End failed Console task; full command may be unavailable]")
 latest <- c("numeric_output_sentinel", "[Completed Console command for preceding output]",

@@ -53,7 +53,7 @@
   if (nzchar(tool)) {
     out <- tempfile(fileext = ".txt")
     on.exit(unlink(out), add = TRUE)
-    status <- suppressWarnings(system2(tool, c("-enc", "UTF-8", shQuote(path), shQuote(out)),
+    status <- suppressWarnings(system2(tool, c("-layout", "-enc", "UTF-8", shQuote(path), shQuote(out)),
       stdout = FALSE, stderr = FALSE))
     if (identical(as.integer(status), 0L) && file.exists(out)) {
       text <- paste(readLines(out, encoding = "UTF-8", warn = FALSE), collapse = "\n")
@@ -68,49 +68,164 @@
   lines <- readLines(path, encoding = "UTF-8", warn = FALSE)
   bad <- !validUTF8(lines)
   if (any(bad)) lines[bad] <- iconv(lines[bad], "latin1", "UTF-8", sub = "")
-  sub("^\uFEFF", "", substr(lines, 1L, 2000L))
+  sub("^\uFEFF", "", lines)
 }
 
-# Break at blank lines or headings once a chunk is half full, and always at the
-# size limit, so excerpts stay readable and labelled by page or line range.
-.knowledge_chunks <- function(lines, label, offset = 0L, size = 1200L) {
+# Locate complete top-level R expressions without evaluating any code. Keep a
+# malformed trailing expression together so even syntax-error examples survive.
+.knowledge_r_blocks <- function(lines) {
+  if(!length(lines))return(list())
+  parse_options <- options(keep.parse.data=TRUE)
+  on.exit(options(parse_options),add=TRUE)
+  src <- srcfilecopy("knowledge-reference",lines)
+  parsed <- tryCatch({parse(text=lines,srcfile=src,keep.source=TRUE);TRUE},error=function(e)FALSE)
+  data <- utils::getParseData(src)
+  ends <- if(is.null(data))integer()else sort(unique(data$line2[data$parent==0L & data$token=="expr"]))
+  if(!parsed) {
+    # An unfinished call can leave internal parse nodes with parent zero.
+    # Accept only complete prefixes and keep the first malformed remainder.
+    safe <- integer();start <- 1L
+    for(end in ends) {
+      complete <- tryCatch({parse(text=lines[seq.int(start,end)],keep.source=FALSE);TRUE},error=function(e)FALSE)
+      if(!complete)break
+      safe <- c(safe,end);start <- end+1L
+    }
+    ends <- safe
+  }
+  ends <- sort(unique(c(ends,length(lines))))
+  start <- 1L;result <- list()
+  for(end in ends) {
+    result[[length(result)+1L]] <- list(from=start,to=end,type="code",heading="")
+    start <- end+1L
+  }
+  result
+}
+
+# Structural blocks are indivisible. The target size controls grouping, never
+# cuts through a fence, table, display equation, paragraph or R expression.
+.knowledge_blocks <- function(lines,format="text") {
+  if(format=="r")return(.knowledge_r_blocks(lines))
+  n <- length(lines);if(!n)return(list())
+  result <- list();titles <- character();heading <- ""
+  fence <- function(x)regmatches(x,regexec("^[[:blank:]]{0,3}(`{3,}|~{3,})(.*)$",x,perl=TRUE))[[1L]]
+  atx <- function(x)regmatches(x,regexec("^[[:blank:]]{0,3}(#{1,6})[[:blank:]]+(.+)$",x,perl=TRUE))[[1L]]
+  separator <- function(x)grepl("^[[:blank:]]*\\|?[[:blank:]]*:?-{3,}:?[[:blank:]]*(\\|[[:blank:]]*:?-{3,}:?[[:blank:]]*)+\\|?[[:blank:]]*$",x)
+  columns <- function(x)grepl("\\S(?:[[:blank:]]{2,}|\t)\\S",x,perl=TRUE)
+  heading_at <- function(i) {
+    value <- atx(lines[[i]])
+    if(length(value))return(list(level=nchar(value[[2L]]),text=sub("[[:blank:]]+#+[[:blank:]]*$","",value[[3L]]),end=i))
+    if(i<n && nzchar(trimws(lines[[i]])) && grepl("^[[:blank:]]{0,3}(={3,}|-{3,})[[:blank:]]*$",lines[[i+1L]]))
+      return(list(level=if(grepl("=",lines[[i+1L]],fixed=TRUE))1L else 2L,text=trimws(lines[[i]]),end=i+1L))
+    if(format=="pdf" && nchar(trimws(lines[[i]]))<=100L &&
+        grepl("^[[:blank:]]*([0-9]+[.)][[:blank:]]+[[:alpha:]]|[[:upper:]][[:upper:][:blank:]]{3,}$)",lines[[i]]) &&
+        (i==1L || !nzchar(trimws(lines[[i-1L]]))) && (i==n || !nzchar(trimws(lines[[i+1L]]))))
+      return(list(level=1L,text=trimws(lines[[i]]),end=i))
+    NULL
+  }
+  math <- function(x) {
+    if(grepl("^[[:blank:]]*\\$\\$",x))return(list(open="$$",close="$$",type="math"))
+    if(grepl("^[[:blank:]]*\\\\\\[",x))return(list(open="\\[",close="\\]",type="math"))
+    value <- regmatches(x,regexec("^[[:blank:]]*\\\\begin\\{(equation\\*?|align\\*?|gather\\*?|multline\\*?|displaymath|eqnarray\\*?|tabular\\*?)\\}",x,perl=TRUE))[[1L]]
+    if(length(value))return(list(open=value[[1L]],close=paste0("\\end{",value[[2L]],"}"),
+      type=if(startsWith(value[[2L]],"tabular"))"table"else"math"))
+    NULL
+  }
+  special <- function(i)length(fence(lines[[i]])) || !is.null(heading_at(i)) || !is.null(math(lines[[i]])) ||
+    (i<n && separator(lines[[i+1L]]) && grepl("|",lines[[i]],fixed=TRUE)) ||
+    (i<n && columns(lines[[i]]) && columns(lines[[i+1L]])) ||
+    (format!="pdf" && grepl("^( {4,}|\t)[[:blank:]]*\\S",lines[[i]]))
+  i <- 1L
+  while(i<=n) {
+    if(!nzchar(trimws(lines[[i]]))){i<-i+1L;next}
+    from <- i;type <- "prose";h <- heading_at(i);f <- fence(lines[[i]]);m <- math(lines[[i]])
+    yaml_end <- if(from==1L && format!="pdf" && trimws(lines[[i]])=="---" && n>1L)
+      which(grepl("^(---|\\.\\.\\.)[[:blank:]]*$",lines[-1L]))else integer()
+    if(length(yaml_end)) {
+      type <- "metadata";i <- yaml_end[[1L]]+1L
+    } else if(length(f)) {
+      type <- if(grepl("^[[:blank:]]*math([[:blank:]]|$)",f[[3L]]))"math"else"code"
+      close <- paste0("^[[:blank:]]{0,3}",substr(f[[2L]],1L,1L),"{",nchar(f[[2L]]),",}[[:blank:]]*$")
+      i <- i+1L
+      while(i<=n && !grepl(close,lines[[i]],perl=TRUE))i <- i+1L
+      i <- min(i,n)
+    } else if(!is.null(m)) {
+      type <- m$type
+      rest <- substring(trimws(lines[[i]]),nchar(trimws(m$open))+1L)
+      if(!grepl(m$close,rest,fixed=TRUE)) {
+        i <- i+1L
+        while(i<=n && !grepl(m$close,lines[[i]],fixed=TRUE))i <- i+1L
+        i <- min(i,n)
+      }
+    } else if(!is.null(h)) {
+      type <- "heading";i <- h$end
+      length(titles) <- h$level
+      titles[[h$level]] <- h$text
+      heading <- substr(paste(titles[!is.na(titles) & nzchar(titles)],collapse=" / "),1L,500L)
+    } else if(i<n && separator(lines[[i+1L]]) && grepl("|",lines[[i]],fixed=TRUE)) {
+      type <- "table";i <- i+2L
+      while(i<=n && nzchar(trimws(lines[[i]])) && grepl("|",lines[[i]],fixed=TRUE))i <- i+1L
+      i <- i-1L
+    } else if(i<n && columns(lines[[i]]) && columns(lines[[i+1L]])) {
+      type <- "table";i <- i+1L
+      while(i<n && columns(lines[[i+1L]]))i <- i+1L
+    } else if(format!="pdf" && grepl("^( {4,}|\t)[[:blank:]]*\\S",lines[[i]])) {
+      type <- "code"
+      while(i<n && (!nzchar(trimws(lines[[i+1L]])) || grepl("^( {4}|\t)",lines[[i+1L]])))i <- i+1L
+    } else {
+      while(i<n && nzchar(trimws(lines[[i+1L]])) && !special(i+1L))i <- i+1L
+    }
+    result[[length(result)+1L]] <- list(from=from,to=i,type=type,heading=heading)
+    i <- i+1L
+  }
+  result
+}
+
+.knowledge_chunks <- function(lines, label, offset=0L, size=1200L,format="text",page_map=NULL) {
   if (!length(lines)) return(list())
-  chunks <- list()
-  start <- 1L
-  chars <- 0L
-  emit <- function(from, to) {
-    text <- trimws(paste(lines[from:to], collapse = "\n"))
-    if (nchar(gsub("[[:space:]]", "", text)) >= 40L) {
-      chunks[[length(chunks) + 1L]] <<- list(label = label(from + offset, to + offset), text = text)
-    }
+  blocks <- .knowledge_blocks(lines,format)
+  chunks <- list();pending <- list()
+  emit <- function() {
+    if(!length(pending))return()
+    from <- pending[[1L]]$from;to <- utils::tail(pending,1L)[[1L]]$to
+    while(from<to && !nzchar(trimws(lines[[from]])))from <- from+1L
+    while(to>from && !nzchar(trimws(lines[[to]])))to <- to-1L
+    text <- paste(lines[seq.int(from,to)],collapse="\n")
+    if(nzchar(trimws(text)))chunks[[length(chunks)+1L]] <<- list(label=label(from+offset,to+offset),
+      text=text,heading=utils::tail(pending,1L)[[1L]]$heading,
+      type=if(length(unique(vapply(pending,function(x)x$type,character(1))))==1L)pending[[1L]]$type else"mixed",whole=TRUE)
   }
-  for (i in seq_along(lines)) {
-    n <- nchar(lines[[i]]) + 1L
-    boundary <- !nzchar(trimws(lines[[i]])) || grepl("^[[:space:]]*(#|```|---)", lines[[i]])
-    if (i > start && (chars + n > size || (boundary && chars >= size %/% 2L))) {
-      emit(start, i - 1L)
-      start <- i
-      chars <- 0L
+  for(block in blocks) {
+    has_content <- any(vapply(pending,function(x)!x$type %in% c("heading","metadata"),logical(1)))
+    previous_page <- if(length(pending) && !is.null(page_map))utils::tail(stats::na.omit(
+      page_map[seq.int(utils::tail(pending,1L)[[1L]]$from,utils::tail(pending,1L)[[1L]]$to)]),1L)else integer()
+    new_page <- length(previous_page)>0L && !is.na(page_map[[block$from]]) && previous_page!=page_map[[block$from]]
+    if(length(pending) && has_content && (block$type=="heading" || new_page ||
+        sum(nchar(lines[seq.int(pending[[1L]]$from,block$to)]))+block$to-pending[[1L]]$from>size)) {
+      emit();pending <- list()
     }
-    chars <- chars + n
+    pending[[length(pending)+1L]] <- block
   }
-  emit(start, length(lines))
+  emit()
   chunks
 }
 
 .knowledge_extract <- function(path, extension) {
   if (identical(extension, "pdf")) {
     pages <- .knowledge_pdf_pages(path)
-    chunks <- unlist(lapply(seq_along(pages), function(page) {
-      lines <- strsplit(enc2utf8(pages[[page]]), "\n", fixed = TRUE)[[1L]]
-      lines <- trimws(gsub("[ \t\u00A0]+", " ", lines))
-      .knowledge_chunks(lines, function(from, to) paste0("p. ", page))
-    }), recursive = FALSE)
+    lines <- character();page_map <- integer()
+    for(page in seq_along(pages)) {
+      body <- strsplit(enc2utf8(pages[[page]]),"\n",fixed=TRUE)[[1L]]
+      lines <- c(lines,body,"");page_map <- c(page_map,rep(page,length(body)),NA_integer_)
+    }
+    chunks <- .knowledge_chunks(lines,function(from,to){
+      numbers <- unique(stats::na.omit(page_map[seq.int(from,to)]))
+      paste0("p. ",if(length(numbers)>1L)paste0(numbers[[1L]],"-",utils::tail(numbers,1L))else numbers[[1L]])
+    },format="pdf",page_map=page_map)
     return(list(chunks = chunks, pages = length(pages)))
   }
-  lines <- sub("[[:space:]]+$", "", .knowledge_read_lines(path))
+  lines <- .knowledge_read_lines(path)
   label <- function(from, to) if (from == to) paste0("line ", from) else paste0("lines ", from, "-", to)
-  list(chunks = .knowledge_chunks(lines, label), pages = NA_integer_)
+  list(chunks = .knowledge_chunks(lines,label,format=if(extension=="r")"r"else"text"), pages = NA_integer_)
 }
 
 .knowledge_store <- function(project = .history_project(),
@@ -135,6 +250,7 @@
     temp <- tempfile(".pending-", tmpdir = dirname(path))
     on.exit(unlink(temp), add = TRUE)
     jsonlite::write_json(value, temp, auto_unbox = TRUE, null = "null", digits = NA)
+    if(file.info(temp)$size>64*1024^2)stop("Extracted reference text is too large to save. Use a smaller file.",call.=FALSE)
     Sys.chmod(temp, "0600")
     if (!file.rename(temp, path)) stop("Could not save the Knowledge Base.", call. = FALSE)
   }
@@ -159,7 +275,7 @@
     docs
   }
   summary_of <- function(doc) list(id = doc$id, name = doc$name, kind = doc$kind,
-    added_at = doc$added_at, pages = doc$pages, chunks = length(doc$chunks))
+    added_at = doc$added_at, pages = doc$pages, chunks = length(doc$chunks),legacy=!identical(doc$format_version,2L))
   list_docs <- function() {
     result <- lapply(load_docs(), summary_of)
     result[order(tolower(vapply(result, function(x) x$name, character(1))))]
@@ -175,23 +291,24 @@
     id <- unname(tools::md5sum(path))
     existing <- load_docs()
     same <- Filter(function(doc) identical(doc$id, id), existing)
-    if (length(same)) return(c(summary_of(same[[1L]]), list(status = "duplicate")))
+    if (length(same) && identical(same[[1L]]$format_version,2L))return(c(summary_of(same[[1L]]),list(status="duplicate")))
+    if(length(same)){name<-same[[1L]]$name;extension<-tolower(tools::file_ext(name))}
     extracted <- .knowledge_extract(path, extension)
     if (!length(extracted$chunks)) {
       stop(if (identical(extension, "pdf")) "No text could be extracted. Scanned PDFs need OCR before they can be added."
         else "The file contains no usable text.", call. = FALSE)
     }
     if (length(extracted$chunks) > 5000L) stop("The file is too large to index (5,000 sections max).", call. = FALSE)
-    doc <- list(schema = 1L, project = project, id = id, name = name,
+    doc <- list(schema = 1L, format_version=2L, project = project, id = id, name = name,
       kind = unname(.knowledge_kinds[[extension]]), pages = extracted$pages,
       added_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"), chunks = extracted$chunks)
     write_atomic(doc, file.path(docs_dir, paste0(id, ".json")))
     # Re-adding a file with the same name replaces the earlier version.
     replaced <- Filter(function(old) identical(tolower(old$name), tolower(name)), existing)
-    for (old in replaced) unlink(file.path(docs_dir, paste0(old$id, ".json")))
+    for (old in replaced)if(!identical(old$id,id))unlink(file.path(docs_dir,paste0(old$id,".json")))
     docs <<- c(Filter(function(old) !identical(tolower(old$name), tolower(name)), existing), list(doc))
     index <<- NULL
-    c(summary_of(doc), list(status = if (length(replaced)) "replaced" else "added"))
+    c(summary_of(doc),list(status=if(length(same))"reindexed"else if(length(replaced))"replaced"else"added"))
   }
   remove_doc <- function(id) {
     if (!valid_id(id)) stop("Invalid reference document identifier.", call. = FALSE)
@@ -224,8 +341,10 @@
   profile_text <- function() read_profile()$instructions
   build_index <- function() {
     chunks <- unlist(lapply(load_docs(), function(doc) lapply(doc$chunks, function(chunk)
-      list(id=doc$id,name=doc$name,label=chunk$label,text=chunk$text))), recursive=FALSE)
-    tokens <- lapply(chunks,function(chunk).knowledge_tokens(chunk$text))
+      list(id=doc$id,name=doc$name,label=chunk$label,text=chunk$text,
+        heading=if(is.character(chunk$heading) && length(chunk$heading)==1L)chunk$heading else"",
+        legacy=!identical(doc$format_version,2L)))), recursive=FALSE)
+    tokens <- lapply(chunks,function(chunk).knowledge_tokens(paste(chunk$heading,chunk$text)))
     lengths <- lengths(tokens)
     postings <- split(rep(seq_along(tokens),lengths),unlist(tokens,use.names=FALSE))
     list(chunks=chunks,lengths=lengths,average=max(1,mean(lengths)),postings=postings)
@@ -236,7 +355,7 @@
     selected <- unique(as.character(selected))
     missing <- setdiff(selected,vapply(documents,function(doc)doc$id,character(1)))
     none <- list(text="",sources=list(),status=if(!length(documents))"empty"else"none",
-      mode=if(length(selected))"selected"else"automatic",missing=missing)
+      mode=if(length(selected))"selected"else"automatic",missing=missing,notices=character())
     if(length(missing)){none$status<-"missing";return(none)}
     if(!length(documents))return(none)
     budget <- suppressWarnings(as.integer(budget));max_chunks <- suppressWarnings(as.integer(max_chunks))
@@ -304,23 +423,54 @@
         (scope %in% strong | scores[scope]>=0.5*top)]
       eligible <- eligible[order(scores[eligible],decreasing=TRUE)]
     }
-    excerpts <- list();used <- 0L
-    for(i in eligible) {
-      if(length(excerpts)>=max_chunks)break
+    excerpts <- list();used <- 0L;sent <- integer();limited <- integer()
+    header <- function(chunk,number)paste0("[K",number,"] ",chunk$name,", ",chunk$label,"\n",
+      if(nzchar(chunk$heading))paste0("Section: ",chunk$heading,"\n")else"")
+    admit <- function(i,fair=FALSE) {
       chunk <- index$chunks[[i]]
-      header <- paste0("[K",length(excerpts)+1L,"] ",chunk$name,", ",chunk$label,"\n")
-      remaining_files <- if(length(selected))max(1L,min(length(selected),max_chunks)-length(excerpts))else 1L
-      room <- floor((budget-used)/remaining_files)-nchar(header)-if(length(excerpts))2L else 0L
-      if(room<1L)break
-      text <- substr(chunk$text,1L,room)
-      if(nchar(chunk$text)>room && room>=50L)text <- paste0(substr(chunk$text,1L,room-20L),"\n[excerpt truncated]")
-      excerpts[[length(excerpts)+1L]] <- list(ref=paste0("K",length(excerpts)+1L),name=chunk$name,
-        label=chunk$label,text=text)
-      used <- used+nchar(header)+nchar(text)+if(length(excerpts)>1L)2L else 0L
+      prefix <- header(chunk,length(excerpts)+1L)
+      represented <- vapply(excerpts,function(x)x$id,character(1))
+      remaining_files <- if(fair)max(1L,length(setdiff(selected,represented)))else 1L
+      room <- floor((budget-used)/remaining_files)-nchar(prefix)-if(length(excerpts))2L else 0L
+      if(nchar(chunk$text)>room){limited <<- unique(c(limited,i));return(FALSE)}
+      excerpts[[length(excerpts)+1L]] <<- list(id=chunk$id,ref=paste0("K",length(excerpts)+1L),name=chunk$name,
+        label=chunk$label,text=chunk$text,prefix=prefix)
+      used <<- used+nchar(prefix)+nchar(chunk$text)+if(length(excerpts)>1L)2L else 0L
+      sent <<- c(sent,i)
+      TRUE
     }
-    if(!length(excerpts))return(none)
-    list(text=paste(vapply(excerpts,function(x)paste0("[",x$ref,"] ",x$name,", ",x$label,"\n",x$text),character(1)),collapse="\n\n"),
-      sources=lapply(excerpts,function(x)x[c("ref","name","label")]),status="matched",mode=none$mode,missing=missing)
+    # Give each selected file a first chance, then reconsider deferred blocks
+    # with the actual remaining budget. No block is shortened to make it fit.
+    if(length(selected))for(i in first) {
+      if(length(excerpts)>=max_chunks)break
+      admit(i,TRUE)
+    }
+    candidates <- eligible
+    if(length(selected)) {
+      represented <- vapply(excerpts,function(x)x$id,character(1))
+      missing_files <- setdiff(selected,represented)
+      preferred <- eligible[vapply(index$chunks[eligible],function(x)x$id %in% missing_files,logical(1))]
+      # An explicitly selected file may contribute a shorter complete section
+      # when its best section cannot fit; do not fill space with unrelated
+      # sections of files already represented.
+      fallback <- scope[vapply(index$chunks[scope],function(x)x$id %in% missing_files,logical(1))]
+      candidates <- unique(c(preferred,fallback[order(scores[fallback],decreasing=TRUE)],eligible))
+    }
+    for(i in setdiff(candidates,sent)) {
+      if(length(excerpts)>=max_chunks)break
+      admit(i)
+    }
+    limited <- setdiff(limited,sent)
+    notices <- unique(c(vapply(utils::head(limited,5L),function(i){
+      chunk <- index$chunks[[i]]
+      paste0(chunk$name," (",chunk$label,"): complete block did not fit; not sent.")
+    },character(1)),vapply(Filter(function(x)x$legacy,index$chunks[sent]),function(x)
+      paste0(x$name,": older formatting; re-add the file to preserve its full structure."),character(1))))
+    none$notices <- utils::head(notices,5L)
+    if(!length(excerpts)){if(length(limited))none$status<-"limit";return(none)}
+    list(text=paste(vapply(excerpts,function(x)paste0(x$prefix,x$text),character(1)),collapse="\n\n"),
+      sources=lapply(excerpts,function(x)x[c("ref","name","label")]),status="matched",mode=none$mode,missing=missing,
+      notices=none$notices)
   }
   list(list = list_docs, add = add_doc, remove = remove_doc, profile = read_profile,
     save_profile = save_profile, profile_text = profile_text, retrieve = retrieve, path = root)
