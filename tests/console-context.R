@@ -158,4 +158,24 @@ old <- getOption("shiny.maxRequestSize")
 app$on_start();cleanup()
 check(disposed==1L && identical(getOption("shiny.maxRequestSize"),old),
   "app shutdown disposes capture and restores upload options")
+loading<-acks<-lost<-character();closed<-0L
+app$package_info$viewer_loading<-function(token){loading<<-c(loading,token);TRUE}
+app$package_info$viewer_ready<-function(token){acks<<-c(acks,token);identical(token,"current-page")}
+app$package_info$viewer_disconnected<-function(token)lost<<-c(lost,token)
+app$package_info$viewer_closed<-function()closed<<-closed+1L
+invisible(app$viewer_ui(list(QUERY_STRING="ra_view=current-page")))
+invisible(app$viewer_ui(list()))
+check(identical(loading,"current-page"),"the real app UI reports its token-bearing HTTP load without requiring a Shiny socket")
+before_calls<-length(calls)
+shiny::testServer(app$server,{
+  session$setInputs(ai_viewer_ready="old-page");session$flushReact()
+  session$setInputs(ai_viewer_ready="current-page");session$flushReact()
+  check(identical(acks,c("old-page","current-page")) &&
+    identical(get("viewer_token",envir=environment(end_session),inherits=FALSE),"current-page") && length(calls)==before_calls,
+    "the real server acknowledges only the accepted page and makes no AI request")
+  session$close()
+})
+check(identical(lost,"current-page"),"closing the real session reports the accepted page token for startup recovery")
+app$on_start();cleanup()
+check(closed==1L,"app shutdown cancels its pending Viewer opening")
 cat(checks,"Console context integration checks passed\n")

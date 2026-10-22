@@ -1,3 +1,8 @@
+# RAssistant 0.14.1
+
+- Reopen on a fresh local port after updates so a delayed disconnect from the previous app cannot clear the new Viewer. Open the Viewer after server startup completes and confirm the page's Shiny connection.
+- Retry an unconfirmed Viewer opening up to two times, then report how to reopen the still-running app. Cancel pending retries after connection, Close or a newer launch.
+
 # RAssistant 0.14.0
 
 - Propose fixes as exact Source line ranges, with Copy and Replace for each changed part. Preserve unrelated code, Markdown, chunk fences and options; reject stale, overlapping or out-of-selection proposals.

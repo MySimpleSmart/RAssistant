@@ -141,6 +141,13 @@ preserving your R workspace and loaded dependencies. A restart is only needed
 if reloading fails, such as when another loaded package imports RAssistant.
 If installation succeeds but reopening fails, the Console reports this separately
 and gives `RAssistant::launch()` as the retry command.
+Each new server uses a different local port so a delayed disconnect from the
+previous page cannot clear the replacement Viewer. The Viewer opens after server
+startup, then confirms its HTTP load and Shiny connection. A lost opening retries
+up to twice with a fresh page URL; a page that is still loading gets additional
+time. A short connection check also covers a page cleared just after connecting.
+Checks end after a stable connection, Close, or a newer launch. If confirmation
+never arrives, the Console explains how to reopen the still-running app.
 The updater installs from this repository's `main` branch into the **same R
 library containing the loaded RAssistant package**, rather than whichever
 library happens to be first. It uses a clean R process and normal installation

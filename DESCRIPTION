@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.14.0
+Version: 0.14.1
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -17,6 +17,7 @@ Imports:
     commonmark,
     ellmer (>= 0.5.0),
     htmltools,
+    httpuv,
     jsonlite,
     keyring (>= 1.3.0),
     knitr,
@@ -29,6 +30,5 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Propose fixes as exact Source line ranges, with Copy and Replace for each changed part. Preserve unrelated code, Markdown, chunk fences and options; reject stale, overlapping or out-of-selection proposals.
-    Read fresh numbered Source and Markdown/chunk structure. Scan a bounded project file inventory and referenced saved R/Markdown files with Workspace On; include function signatures and relevant in-memory definitions without executing code.
-    Isolate the latest captured Console task, retain multiline commands and include datasets referenced there. Keep the newest output when the capture exceeds the request limit. Use the same minimal fixes after approved validation.
+Config/RAssistant/Changes: Reopen on a fresh local port after updates so a delayed disconnect from the previous app cannot clear the new Viewer. Open the Viewer after server startup completes and confirm the page's Shiny connection.
+    Retry an unconfirmed Viewer opening up to two times, then report how to reopen the still-running app. Cancel pending retries after connection, Close or a newer launch.

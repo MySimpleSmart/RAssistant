@@ -26,6 +26,7 @@ main <- function() {
       for (name in ls(ns, all.names = TRUE)) get(name, envir = ns, inherits = FALSE)
       old_launch <- get("launch", ns)
       old_state <- get(".app_state", ns)
+      old_state$last_port <- 22222L
       history <- get(".conversation_store", ns)()
       chat <- list(id = history$new_id(), title = "Before updating",
         messages = list(list(role = "You", type = "text", text = "Keep this chat", sequence = 1L)),
@@ -52,7 +53,7 @@ main <- function() {
       }, action = "append")
       writeLines(c("function(api_key, package_info) {",
         "  list(status = function() 'running', url = function() 'http://127.0.0.1:4321', generation = 'updated',",
-        "    version = package_info$version, key = api_key, restored = package_info$history$load())", "}"),
+        "    version = package_info$version, key = api_key, port = package_info$port, restored = package_info$history$load())", "}"),
         file.path(lib, "RAssistant", "app", "AISource.R"))
       killed <- 0L
       old_updates <- get(".update_state", ns)
@@ -91,6 +92,8 @@ main <- function() {
           identical(handle$version, get(".installed_info", fresh)()$version),
         fresh_state = !get(".app_state", fresh)$updated &&
           identical(get(".app_state", fresh)$handle, handle),
+        fresh_origin = handle$port>=20000L && handle$port<=29999L && handle$port!=22222L &&
+          identical(get(".app_state",fresh)$last_port,handle$port),
         old_worker = killed == 1L && is.null(get(".update_state", ns)$worker),
         lifecycle = !old_state$update_queued && installs == as.integer(trigger != "manual_launch") &&
           stops == as.integer(trigger == "ui_update"),

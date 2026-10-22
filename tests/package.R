@@ -118,6 +118,8 @@ main <- function() {
   passed_key <- NULL
   running <- TRUE
   viewed <- character()
+  env$.new_app_port <- function()20001L
+  env$.viewer_later <- function(callback,delay)invisible(NULL)
   env$.show_viewer <- function(url) { viewed <<- c(viewed,url);invisible(NULL) }
   handle <- list(status = function() if (running) "running" else "success",
     url = function() "http://127.0.0.1:4321")
@@ -125,10 +127,10 @@ main <- function() {
   check(identical(env$launch(), handle) && identical(passed_key, "launch-key") &&
     identical(Sys.getenv("OPENAI_API_KEY"), ""), "launch supplies the key directly without setting a global environment variable")
   env$launch()
-  check(key_reads == 1L && identical(viewed,"http://127.0.0.1:4321?ra_reopen=1"),
+  check(key_reads == 1L && length(viewed)==2L && startsWith(tail(viewed,1L),"http://127.0.0.1:4321?ra_reopen=1&ra_view="),
     "repeated launch reopens the running server in Viewer without reading another key")
   env$launch()
-  check(identical(tail(viewed,1L),"http://127.0.0.1:4321?ra_reopen=2"),
+  check(startsWith(tail(viewed,1L),"http://127.0.0.1:4321?ra_reopen=2&ra_view="),
     "each reopen uses a fresh page URL instead of a cached disconnected Viewer")
   env$.show_viewer <- function(url)stop("Synthetic Viewer failure")
   check(failed(env$launch(),"Synthetic Viewer failure") && identical(env$.app_state$handle,handle) && running,

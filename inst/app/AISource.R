@@ -14,7 +14,7 @@
 # Shiny keeps the callbacks alive after this launcher returns.
 local({
 run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), package_info = NULL) {
-  packages <- c("shiny", "ellmer", "rstudioapi", "commonmark", "htmltools",
+  packages <- c("shiny", "ellmer", "rstudioapi", "commonmark", "htmltools", "httpuv",
                 "jsonlite", "callr", "knitr", "rlang")
   for (pkg in packages) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
@@ -2196,7 +2196,10 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         });
       }
       registerHandlers();
-      function onConnected(){registerHandlers();Shiny.setInputValue("ai_client_ready",++nonce,{priority:"event"});window.setTimeout(previewPlot,250);}
+      function onConnected(){registerHandlers();Shiny.setInputValue("ai_client_ready",++nonce,{priority:"event"});
+        var viewerToken=new URLSearchParams(window.location.search).get("ra_view");
+        if(viewerToken)Shiny.setInputValue("ai_viewer_ready",viewerToken,{priority:"event"});
+        window.setTimeout(previewPlot,250);}
       if(window.jQuery){window.jQuery(document).on("shiny:connected",onConnected);
         window.jQuery(document).on("shiny:disconnected",function(){
           connected=false;submitId=null;plotCaptureId=null;plotPreviewPending=false;validationInFlight=false;editApplying=false;targetRefreshing=false;sourceWatchPending=false;sourceFocusPending=true;resetTransfers();
@@ -2392,6 +2395,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     # Save and retire that page before restoring history into its replacement.
     if(!is.null(retire_session))retire_session()
     session_active <- TRUE
+    viewer_token <- NULL
+    shiny::observeEvent(input$ai_viewer_ready,{
+      if(session_active && is.function(package_info$viewer_ready) &&
+          isTRUE(package_info$viewer_ready(input$ai_viewer_ready)))viewer_token <<- input$ai_viewer_ready
+    },ignoreNULL=TRUE)
     attachment_dir <- tempfile(pattern="rstudio-ai-attached-")
     dir.create(attachment_dir, recursive=TRUE)
     history <- package_info$history
@@ -2640,6 +2648,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     end_session <- function() {
       if(!session_active)return(invisible(NULL))
       on.exit({session_active <<- FALSE;unlink(attachment_dir,recursive=TRUE,force=TRUE)},add=TRUE)
+      if(!is.null(viewer_token) && is.function(package_info$viewer_disconnected))package_info$viewer_disconnected(viewer_token)
       clear_source_review(remove=FALSE)
       code_target(NULL);source_watch_seen <<- NULL
       if(!is.null(console_capture))console_capture$stop()
@@ -4034,6 +4043,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     old_options <- options(shiny.maxRequestSize = 52 * 1024^2)
     tryCatch(shiny::onStop(function(){
       on.exit(options(old_options),add=TRUE)
+      if(is.function(package_info$viewer_closed))package_info$viewer_closed()
       if(!is.null(console_capture))console_capture$dispose()
     },session=NULL),error=function(e){
       options(old_options)
@@ -4041,9 +4051,15 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       stop(e)
     })
   }
-  app<-shiny::shinyApp(ui=ui,server=server,onStart=on_start)
+  viewer_ui <- function(request) {
+    token <- shiny::parseQueryString(chat_text(request$QUERY_STRING))$ra_view
+    if(!is.null(token) && is.function(package_info$viewer_loading))package_info$viewer_loading(token)
+    ui
+  }
+  app<-shiny::shinyApp(ui=viewer_ui,server=server,onStart=on_start)
   shiny::startApp(appDir=app,
-    launch.browser=function(url)rstudioapi::viewer(url),
+    port=if(!is.null(package_info$port))package_info$port else httpuv::randomPort(min=20000L,max=29999L),
+    launch.browser=if(is.null(package_info))function(url)rstudioapi::viewer(url)else FALSE,
     host="127.0.0.1",quiet=TRUE)
 }
 # The package loads this same launcher without starting it, then supplies its

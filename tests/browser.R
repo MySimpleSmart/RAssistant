@@ -4,7 +4,7 @@
 main <- function() {
   stopifnot(requireNamespace("chromote",quietly=TRUE))
   root <- normalizePath(".")
-  port <- httpuv::randomPort()
+  port <- if(identical(Sys.getenv("RA_BROWSER_VIEWER_ONLY"),"true"))httpuv::randomPort(20000L,29999L)else httpuv::randomPort()
   update_marker <- tempfile()
   on.exit(unlink(update_marker),add=TRUE)
   available_marker <- tempfile()
@@ -70,6 +70,17 @@ main <- function() {
           list(status="current",version="0.1.1",current="0.1.1") else available
       },
       request_update=function(){cat("requested\n",file=update_marker,append=TRUE);invisible(TRUE)}))
+    if(!standalone) {
+      app$package_info$viewer_ready <- function(token) {
+        result <- launch_env$.viewer_ready(token)
+        if(identical(Sys.getenv("RA_BROWSER_VIEWER_ONLY"),"true"))cat("Viewer acknowledgement:",token,"accepted:",result,
+          "expected:",launch_env$.app_state$viewer_request$token,"running:",launch_env$.app_running(),"time:",as.numeric(Sys.time()),"\n")
+        result
+      }
+      app$package_info$viewer_disconnected <- function(token)launch_env$.viewer_disconnected(token)
+      app$package_info$viewer_loading <- function(token)launch_env$.viewer_loading(token)
+      app$package_info$viewer_closed <- function()launch_env$.cancel_viewer_open()
+    }
     app$initial <- list(id="fixture",path=file.path(tempdir(),"example.R"),contents="plot(1:3)")
     if(identical(Sys.getenv("RA_BROWSER_SOURCE_INTENT_ONLY"),"true"))
       app$initial <- list(id="fixture",path=file.path(tempdir(),"test.R"),contents=function_source)
@@ -168,21 +179,34 @@ main <- function() {
              "Math: \\(\\alpha < 1\\).\n\n[[ACADEMIC_COMMENT]]Verified result.[[/ACADEMIC_COMMENT]]")
     }
     previous_limit <- getOption("shiny.maxRequestSize")
-    handle <- shiny::startApp(shiny::shinyApp(app$ui,app$server,onStart=app$on_start),
+    handle <- shiny::startApp(shiny::shinyApp(app$viewer_ui,app$server,onStart=app$on_start),
       host="127.0.0.1",port=port,launch.browser=FALSE,quiet=TRUE)
     on.exit(handle$stop(),add=TRUE)
     launch_env <- new.env(parent=globalenv())
     sys.source("R/launch.R",launch_env)
     launch_env$.in_rstudio <- function()TRUE
-    launch_env$.show_viewer <- function(url)writeLines(url,reopen_url)
+    launch_env$.show_viewer <- function(url) {
+      if(identical(Sys.getenv("RA_BROWSER_VIEWER_ONLY"),"true"))cat("Viewer opening:",url,"time:",as.numeric(Sys.time()),"\n")
+      writeLines(url,reopen_url)
+    }
     launch_env$.resolve_api_key <- function()stop("Reopening must not read credentials")
     launch_env$.app_state$handle <- handle
+    launch_env$.app_state$last_port <- port
     stopifnot(identical(getOption("shiny.maxRequestSize"),52*1024^2))
     while(identical(handle$status(),"running")){
       later::run_now(.05)
       if(file.exists(reopen_marker)){
+        action <- if(identical(Sys.getenv("RA_BROWSER_VIEWER_ONLY"),"true"))readRDS(reopen_marker)else"reopen"
         unlink(reopen_marker)
-        stopifnot(identical(launch_env$launch(),handle))
+        if(identical(action,"restart")) {
+          handle$stop()
+          fresh_port <- launch_env$.new_app_port()
+          handle <- shiny::startApp(shiny::shinyApp(app$viewer_ui,app$server,onStart=app$on_start),
+            host="127.0.0.1",port=fresh_port,launch.browser=FALSE,quiet=TRUE)
+          launch_env$.app_state$handle <- handle
+          launch_env$.app_state$last_port <- fresh_port
+          launch_env$.open_viewer(handle)
+        } else stopifnot(identical(launch_env$launch(),handle))
       }
     }
     stopifnot(identical(getOption("shiny.maxRequestSize"),previous_limit))
@@ -202,7 +226,10 @@ main <- function() {
   wait_js <- function(expression,timeout=10) {
     deadline <- Sys.time()+timeout
     repeat {
-      if(isTRUE(js(expression)))return(invisible(TRUE))
+      value <- tryCatch(js(expression),error=function(e) {
+        if(grepl("Inspected target navigated or closed|Cannot find context",conditionMessage(e)))FALSE else stop(e)
+      })
+      if(isTRUE(value))return(invisible(TRUE))
       if(Sys.time()>deadline) {
         cat("Page tail:\n",tail(strsplit(js('document.body && document.body.innerText'),"\n")[[1]],40),sep="\n")
         cat("\nServer:\n",paste(worker$read_error_lines(),collapse="\n"),"\n")
@@ -228,6 +255,8 @@ main <- function() {
   }
   browser$Page$enable()
   page_setup <- 'Object.defineProperty(document,"hasFocus",{configurable:true,value:function(){return false;}});window.openAction=function(id){var menu=document.getElementById("app_menu");if(menu&&!menu.open)menu.querySelector("summary").click();document.getElementById(id).click();};window.aisourceErrors=[];window.addEventListener("error",function(e){aisourceErrors.push(String(e.message));});window.addEventListener("unhandledrejection",function(e){aisourceErrors.push(String(e.reason));});'
+  if(identical(Sys.getenv("RA_BROWSER_VIEWER_ONLY"),"true"))page_setup <- paste0(page_setup,
+    'window.addEventListener("message",function(event){if(event.data==="disconnected" && window.location.href.indexOf(event.origin)===0)window.location.replace("about:blank");},true);')
   browser$Page$addScriptToEvaluateOnNewDocument(source=page_setup)
   browser$Page$navigate(url)
   wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled')
@@ -252,6 +281,59 @@ main <- function() {
     check(isTRUE(js('document.querySelectorAll(".attachment-item").length===0 && document.querySelectorAll(".msg.user").length===0 && window.aisourceErrors.length===0')),
       "automatic availability checks leave attachments and chat empty without JavaScript errors")
     cat(checks,"Plot browser checks passed\n");return(invisible(NULL))
+  }
+  if(identical(Sys.getenv("RA_BROWSER_VIEWER_ONLY"),"true")) {
+    next_url <- function(previous=NULL) {
+      deadline<-Sys.time()+6
+      repeat {
+        value<-if(file.exists(reopen_url))readLines(reopen_url,warn=FALSE)else character()
+        if(length(value)==1L && !identical(value,previous))return(value)
+        if(Sys.time()>deadline)stop("Viewer did not provide a new opening URL")
+        Sys.sleep(.05)
+      }
+    }
+    js('var p=document.getElementById("prompt");p.value="Keep this relaunch draft";p.dispatchEvent(new Event("input",{bubbles:true}));')
+    js('new Promise(function(resolve){setTimeout(resolve,1300);})')
+    js('setTimeout(function(){window.dispatchEvent(new MessageEvent("message",{data:"disconnected",origin:window.location.origin}));},50);true;')
+    wait_js('window.location.href==="about:blank"')
+    check(worker$is_alive(),"RStudio's origin-matching disconnect behavior reproduces an empty Viewer while its server remains alive")
+    saveRDS("restart",reopen_marker)
+    first<-next_url()
+    fresh_origin<-strsplit(first,"?",fixed=TRUE)[[1L]][[1L]]
+    check(!identical(fresh_origin,url),"relaunch starts the replacement server on a different origin")
+    retry<-next_url(first)
+    check(!identical(first,retry) && startsWith(retry,paste0(fresh_origin,"?ra_view=")),
+      "a deliberately dropped first Viewer opening retries with a fresh page token")
+    browser$Page$navigate(retry)
+    wait_js('document.getElementById("prompt")!==null && document.getElementById("prompt").value==="Keep this relaunch draft" && !document.getElementById("send").disabled',timeout=20)
+    check(TRUE,"the real reconnected Shiny page restores the unsent draft from before the empty Viewer")
+    js('new Promise(function(resolve){setTimeout(resolve,2300);})')
+    if(!identical(readLines(reopen_url),retry)) {
+      cat("Client state:",js('JSON.stringify({url:location.href,token:Shiny.shinyapp.$inputValues.ai_viewer_ready,errors:window.aisourceErrors})'),"\n",
+        "Worker output:",paste(worker$read_output_lines(),collapse="\n"),"\n",
+        "Worker errors:",paste(worker$read_error_lines(),collapse="\n"),"\n")
+    }
+    check(identical(readLines(reopen_url),retry),"a real client acknowledgement ends startup retries")
+    js(paste0('window.dispatchEvent(new MessageEvent("message",{data:"disconnected",origin:',jsonlite::toJSON(url,auto_unbox=TRUE),'}));'))
+    js('new Promise(function(resolve){setTimeout(resolve,250);})')
+    check(isTRUE(js('window.location.href!=="about:blank" && document.getElementById("prompt").value==="Keep this relaunch draft"')),
+      "a late disconnect from the previous server cannot clear the replacement Viewer")
+    saveRDS("reopen",reopen_marker)
+    reopened<-next_url(retry);browser$Page$navigate(reopened)
+    wait_js('document.getElementById("send")!==null && !document.getElementById("send").disabled')
+    js('setTimeout(function(){window.dispatchEvent(new MessageEvent("message",{data:"disconnected",origin:window.location.origin}));},50);true;')
+    wait_js('window.location.href==="about:blank"')
+    recovered<-next_url(reopened);browser$Page$navigate(recovered)
+    wait_js('document.getElementById("prompt")!==null && document.getElementById("prompt").value==="Keep this relaunch draft" && !document.getElementById("send").disabled')
+    check(startsWith(recovered,paste0(fresh_origin,"?ra_reopen=1&ra_view=")),
+      "manual reopening also recovers when the new page is cleared just after its initial handshake")
+    js('new Promise(function(resolve){setTimeout(resolve,2300);})')
+    check(identical(readLines(reopen_url),recovered) && isTRUE(js('window.aisourceErrors.length===0')),
+      "the recovered page stays connected without further reopening or JavaScript errors")
+    js('setTimeout(function(){openAction("close");},50);true;')
+    worker$wait(timeout=10000L)
+    check(!worker$is_alive(),"Close ends the app without a pending retry bringing it back")
+    cat(checks,"Viewer recovery browser checks passed\n");return(invisible(NULL))
   }
   if(identical(Sys.getenv("RA_BROWSER_SOURCE_INTENT_ONLY"),"true")) {
     js('openAction("knowledge");')
@@ -677,7 +759,7 @@ main <- function() {
     "Apply writes the exact reviewed bytes once after explicit approval")
   js('document.querySelector(".source-review").click();')
   wait_js('document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
-  check(isTRUE(js('document.querySelector(".source-edit-mode select").value==="new_r"')),
+  check(isTRUE(js('document.querySelector(".source-edit-mode select")===null && document.querySelector(".source-apply").textContent==="Create document"')),
     "a stale code answer cannot replace a changed Source snapshot")
   js('document.querySelector(".source-apply").click();')
   wait_js('document.getElementById("source-review-card")===null && !document.getElementById("send").disabled')
@@ -841,7 +923,7 @@ main <- function() {
   browser$Page$navigate("about:blank")
   unlink(reopen_url);file.create(reopen_marker)
   for(i in 1:100){if(file.exists(reopen_url))break;Sys.sleep(.05)}
-  check(worker$is_alive() && file.exists(reopen_url) && identical(readLines(reopen_url),paste0(url,"?ra_reopen=1")),
+  check(worker$is_alive() && file.exists(reopen_url) && startsWith(readLines(reopen_url),paste0(url,"?ra_reopen=1&ra_view=")),
     "launch reopens the same running server after the Viewer page disappears")
   browser$Page$navigate(readLines(reopen_url))
   wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled && document.querySelectorAll(".msg.user").length===2 && document.getElementById("prompt").value==="Draft before Viewer disappears"')
@@ -982,9 +1064,11 @@ main <- function() {
   browser$Emulation$clearDeviceMetricsOverride()
   js('document.querySelector("#workspace_menu>summary").click();')
   wait_js('document.querySelector("#workspace_datasets_selected input[value=extra_data]")!==null')
-  js('document.querySelector("#workspace_datasets_selected input[value=extra_data]").click();document.querySelector("#workspace_menu>summary").click();')
+  js('document.querySelector("#workspace_datasets_selected input[value=extra_data]").click();')
+  wait_js('document.getElementById("workspace_preview").textContent.includes("5432")')
+  js('document.querySelector("#workspace_menu>summary").click();')
   js('document.getElementById("prompt").value="Workspace evidence please";document.getElementById("send").click();')
-  wait_js('!document.getElementById("send").disabled && document.querySelector("#messages").textContent.includes("Workspace evidence received: 3 x 4")')
+  wait_js('!document.getElementById("send").disabled && document.querySelector("#messages").textContent.includes("Dataset cell evidence received: 5432.")')
   check(isTRUE(js('document.querySelector("#messages").textContent.includes("Dataset cell evidence received: 5432.")')),
     "a manually selected Global Environment dataset supplies real cell values to chat")
   check(isTRUE(js('document.getElementById("workspace_context").checked')),"Workspace starts on and supplies metadata without opening More actions")
