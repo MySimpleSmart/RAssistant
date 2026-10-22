@@ -1,3 +1,9 @@
+# RAssistant 0.14.0
+
+- Propose fixes as exact Source line ranges, with Copy and Replace for each changed part. Preserve unrelated code, Markdown, chunk fences and options; reject stale, overlapping or out-of-selection proposals.
+- Read fresh numbered Source and Markdown/chunk structure. Scan a bounded project file inventory and referenced saved R/Markdown files with Workspace On; include function signatures and relevant in-memory definitions without executing code.
+- Isolate the latest captured Console task, retain multiline commands and include datasets referenced there. Keep the newest output when the capture exceeds the request limit. Use the same minimal fixes after approved validation.
+
 # RAssistant 0.13.1
 
 - Keep explanation examples separate from Source corrections. Open inline comparisons only for explicitly marked replacements or additions; a single example block no longer proposes deleting the current file.

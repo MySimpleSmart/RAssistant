@@ -140,7 +140,7 @@ shiny::testServer(app$server,{
   check(grepl("even when the user only asks what is wrong",request$system,fixed=TRUE) &&
     grepl("preserve every other line, comment and string verbatim",request$system,fixed=TRUE) &&
     grepl("Respect requests for explanation only",request$system,fixed=TRUE) &&
-    grepl(paste(original,collapse="\n"),request$prompt,fixed=TRUE),
+    grepl(app$numbered_source(paste(original,collapse="\n")),request$prompt,fixed=TRUE),
     "the reported error-review question sends all 15 lines with complete-correction and explanation-only guidance")
   answer <- tail(state$messages,1L)[[1L]]
   check(!is.null(review_context()) && identical(review_context()$epoch,state$upload_epoch),

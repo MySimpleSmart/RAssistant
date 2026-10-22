@@ -27,6 +27,9 @@ main <- function() {
     history <- store_env$.conversation_store(project=root,directory=history_root)
     knowledge <- store_env$.knowledge_store(project=root,directory=history_root)
     function_source <- c("f <- function(x) {","","  result <- x + 1","","  result","}")
+    patch_source <- c("---","title: Keep","---","# Results","```{r analysis}","#| echo: true",
+      "x <- bad(X)","keep <- 99","# Keep this comment","y <- bad(Y)","print(x)","```",
+      "Keep this paragraph.","```{r other}",'stop("Untouched chunk")',"```")
     if(identical(Sys.getenv("RA_BROWSER_SOURCE_INTENT_ONLY"),"true")) {
       original <- tempfile(fileext=".R");writeLines(function_source,original)
       knowledge$add(original,"test.R");unlink(original)
@@ -70,6 +73,8 @@ main <- function() {
     app$initial <- list(id="fixture",path=file.path(tempdir(),"example.R"),contents="plot(1:3)")
     if(identical(Sys.getenv("RA_BROWSER_SOURCE_INTENT_ONLY"),"true"))
       app$initial <- list(id="fixture",path=file.path(tempdir(),"test.R"),contents=function_source)
+    if(identical(Sys.getenv("RA_BROWSER_SOURCE_PATCH_ONLY"),"true"))
+      app$initial <- list(id="fixture",path=file.path(tempdir(),"analysis.qmd"),contents=patch_source)
     if(standalone)app$initial <- list(id="fixture",path=file.path(tempdir(),"v2.R"),contents=c(
       "library(tidyverse)","","# 1. Read data",'birth_data <- read_csv("BIRTH_reduced.csv")',"",
       "# 2. Select four numeric variables","X_df <- birth_data %>%", "  select(matage, gestage, birthwt, head)","",
@@ -132,6 +137,11 @@ main <- function() {
           paste(sub("x + 1","x + 2",function_source,fixed=TRUE),collapse="\n"),"\n```\n\nUsage:\n\n```r\nf(5)\n```"))
         stopifnot(grepl(paste(function_source,collapse="\n"),prompt,fixed=TRUE))
         return("f adds one to each supplied value.\n\n```r\nf(5)\nf(c(1, 2, 3))\n```")
+      }
+      if(identical(Sys.getenv("RA_BROWSER_SOURCE_PATCH_ONLY"),"true")) {
+        stopifnot(grepl("7 | x <-",prompt,fixed=TRUE),grepl("R chunk analysis: body lines 6-11",prompt,fixed=TRUE),
+          grepl("Dataset: extra_data",prompt,fixed=TRUE),grepl("5432",prompt,fixed=TRUE))
+        return("Correct the undefined calls on lines 7 and 10.\n\n```r-edit-7-7\nx <- dim(X)\n```\n\n```r-edit-10-10\ny <- dim(Y)\n```")
       }
       if(standalone) {
         if(grepl("LATEST USER REQUEST:\nSWITCH_TO_RMD",prompt,fixed=TRUE)) {
@@ -274,6 +284,44 @@ main <- function() {
       "Replace applies the complete correction once and keeps the example calls out of Source")
     check(isTRUE(js('window.aisourceErrors.length===0')),"example and correction rendering completes without JavaScript errors")
     cat(checks,"Source intent browser checks passed\n");return(invisible(NULL))
+  }
+  if(identical(Sys.getenv("RA_BROWSER_SOURCE_PATCH_ONLY"),"true")) {
+    console <- paste("Error: OLD_ERROR_SENTINEL","[End failed Console task; full command may be unavailable]",
+      '[Error condition call] bad(X)',"> {", "+ extra_data", "+ x <- bad(X)", "+ }",
+      "Error: could not find function bad","[End failed Console task; full command may be unavailable]",sep="\n")
+    saveRDS(list(console=console),source_marker)
+    js('var p=document.getElementById("prompt");p.value="Fix these chunk errors";p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click();')
+    wait_js('document.querySelectorAll(".source-hunk").length===2 && !document.getElementById("send").disabled')
+    check(!file.exists(edit_marker) && isTRUE(js('document.getElementById("shiny-modal")===null && Array.from(document.querySelectorAll(".code-type")).every(function(x){return x.textContent==="R";})')),
+      "two minimal Rmd fixes appear inline with unchanged button styling and no Source write")
+    check(isTRUE(js('document.querySelectorAll(".source-hunk .source-proposal-copy").length===2 && document.querySelectorAll(".source-hunk .source-apply").length===2 && document.querySelectorAll(".source-hunk .source-skip").length===2')),
+      "each changed part has its own Copy, Replace and Skip")
+    js('window.copied=null;Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:function(t){window.copied=t;return Promise.resolve();}}});document.querySelector(".source-hunk .source-proposal-copy").click();')
+    wait_js('window.copied!==null')
+    check(identical(js('window.copied'),"x <- dim(X)\n"),"Copy contains only the corrected line, without chunk fences or the rest of Source")
+    screenshot <- Sys.getenv("RA_BROWSER_SOURCE_PATCH_SCREENSHOT")
+    if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+    js('document.querySelector(".source-hunk .source-apply").click();')
+    wait_js('document.querySelectorAll(".source-hunk").length===1 && !document.getElementById("send").disabled')
+    writes <- readRDS(edit_marker);after <- writes[[1L]]$text
+    check(length(writes)==1L && grepl("x <- dim(X)",after,fixed=TRUE) && grepl("y <- bad(Y)",after,fixed=TRUE) &&
+      grepl('stop("Untouched chunk")',after,fixed=TRUE) && grepl("Keep this paragraph.",after,fixed=TRUE),
+      "Replace changes one faulty line while retaining another pending error, other chunks and Markdown")
+    js('window.copied=null;document.querySelector(".source-hunk .source-proposal-copy").click();')
+    wait_js('window.copied!==null')
+    check(identical(js('window.copied'),"y <- dim(Y)\n"),"the remaining Copy contains only its own rebased correction")
+    js('document.querySelector(".source-skip").click();')
+    wait_js('document.getElementById("source-review-card")===null')
+    check(length(readRDS(edit_marker))==1L,"Skip leaves the second faulty line unchanged")
+    js('var p=document.getElementById("prompt");p.value="Fix the remaining error";p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click();')
+    wait_js('document.querySelectorAll(".source-hunk").length===1 && !document.getElementById("send").disabled')
+    manual <- strsplit(after,"\n",fixed=TRUE)[[1L]];manual[[8L]]<-"manual <- 123"
+    saveRDS(list(console=console,contents=manual),source_marker)
+    js('document.querySelector(".source-hunk .source-apply").click();')
+    wait_js('document.getElementById("source-review-card")===null')
+    check(length(readRDS(edit_marker))==1L,"manual edits after review revoke the range proposal before an editor write")
+    check(isTRUE(js('window.aisourceErrors.length===0')),"minimal range edits complete without browser errors")
+    cat(checks,"Source patch browser checks passed\n");return(invisible(NULL))
   }
   if(identical(Sys.getenv("RA_BROWSER_KNOWLEDGE_STRUCTURE_ONLY"),"true")) {
     js('openAction("knowledge");')
@@ -847,8 +895,8 @@ main <- function() {
     "the reported v2.R example automatically marks the actual faulty line 14 in a 15-line file and its exact correction")
   js('window.copied=null;document.querySelector(".source-proposal-copy").click();')
   wait_js('window.copied!==null')
-  check(isTRUE(js('window.copied.startsWith("library(tidyverse)") && window.copied.includes("BIRTH_reduced.csv") && window.copied.includes("dim(X)") && !window.copied.includes("rtrtryydim")')),
-    "the reported example copies the complete corrected file beside Replace")
+  check(identical(js('window.copied'),"dim(X)\n"),
+    "the reported example copies only the corrected line beside Replace")
   if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),sub("\\.png$","-v2.png",screenshot))
   js('document.querySelector(".source-jump.diff-location").click();')
   for(i in 1:100){if(file.exists(navigation_marker))break;Sys.sleep(.05)}

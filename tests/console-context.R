@@ -123,6 +123,28 @@ shiny::testServer(app$server,{
   check(length(calls)==7L && grepl("Capture is enabled, but no completed commands or text have been captured",latest$prompt,fixed=TRUE) &&
     grepl("Retained images are historical uploads",latest$system,fixed=TRUE),
     "an empty enabled capture is explicit even when an earlier image is retained")
+  data_env <- new.env(parent=emptyenv());data_env$live_data <- data.frame(value=c(9842,9843))
+  data_context <- app$workspace_data_context
+  app$workspace_data_context <- function(request,source="",selected=character())data_context(request,source,selected,env=data_env)
+  old_task <- paste("Error: OLD_ERROR_SENTINEL","[End failed Console task; full command may be unavailable]",sep="\n")
+  new_task <- paste("[Completed Console command; no text output captured]","> dplyr::filter(",
+    "+   live_data,", "+   value > 9842)","[End Console task]",sep="\n")
+  text<<-paste(old_task,new_task,sep="\n")
+  session$setInputs(workspace_context=TRUE,chat_submit=list(text="Explain the latest Console command",nonce=10L))
+  latest<-tail(calls,1L)[[1L]]
+  focused <- strsplit(latest$prompt,"LATEST CONSOLE TASK (from the captured tail):\n",fixed=TRUE)[[1L]][[2L]]
+  focused <- strsplit(focused,"\n\nRECENT CHAT:",fixed=TRUE)[[1L]][[1L]]
+  check(grepl("live_data",focused,fixed=TRUE) && !grepl("OLD_ERROR_SENTINEL",focused,fixed=TRUE),
+    "the newest Console task is isolated from historical errors in the captured tail")
+  check(grepl("9843",latest$prompt,fixed=TRUE) && grepl("Dataset: live_data",latest$prompt,fixed=TRUE),
+    "a dataset mentioned only on a Console continuation line supplies its current values")
+  terms <- app$knowledge_console_terms(text)
+  check(grepl("live_data,\n  value",terms$command,fixed=TRUE) && grepl("filter",terms$text,fixed=TRUE),
+    "multiline Console commands retain continuation code for both context and reference search")
+  text<<-paste0(strrep("OLD_LONG_OUTPUT\n",1000L),new_task)
+  session$setInputs(chat_submit=list(text="Latest command?",nonce=11L))
+  check(grepl(new_task,tail(calls,1L)[[1L]]$prompt,fixed=TRUE),
+    "an oversized capture keeps its latest command rather than the beginning of old output")
   session$close()
   check(!enabled,"disconnecting a session stops capture")
 })

@@ -345,6 +345,12 @@ The assistant uses this evidence rather than guessing the originating command
 from the current Source. A plotting command does not include the plot's pixels;
 earlier uploaded images remain historical context, not evidence of the latest plot.
 
+Each request also isolates the latest recorded Console task, retaining multiline
+continuation code. Older failures remain labelled historical context. When output
+exceeds the request limit, the newest tail is kept. Datasets named in the latest
+command can supply fresh values through Workspace context, even when Source does
+not mention them.
+
 Only output produced after enabling is available. This is a bounded excerpt,
 not proof the current Source was executed. Plots, external-process output,
 messages intercepted by other handlers and output hidden by other sinks may be
@@ -378,11 +384,12 @@ Each Send rereads the current Source buffer, including unsaved changes. Chat sho
 the file name and line count actually sent; hovering over the header name shows
 the character count. The current limit is 50,000 characters in one active file.
 
-When an answer contains one correction for the current Source, its comparison
-opens automatically inside the code block. Source and proposed line numbers,
+Corrections propose only the changed Source lines, with global document line
+numbers for R, Rmd, Quarto and Markdown. One or more non-overlapping corrections
+open a comparison inside the code block. Source and proposed line numbers,
 removed/added lines and highlighted characters show the precise changes.
-**Copy** copies the corrected code; **Replace** applies it after your click.
-Each separate changed section has **Apply/Replace** and **Skip**. Applying one
+Each changed section has **Copy**, **Replace** and **Skip**. Copy includes only
+that section's replacement code. Replace applies it after your click. Applying one
 refreshes the remaining comparisons against the new editor contents. **Apply all**
 approves the complete proposal. Skip never writes to Source. Changing Source
 manually invalidates the pending edits. Partial changes remain unsaved if you close
@@ -407,32 +414,41 @@ requests. Unchanged selections do not rebuild the toolbar.
 Syntax errors suggest Fix; valid syntax defaults to Explain without claiming
 the code is free from runtime errors. The current draft can add instructions.
 
-Explain stays read-only. Fix/Improve propose a replacement for the displayed
-target only. Actions reread the selection at click time, so a newly selected
+Explain stays read-only. Fix/Improve propose changes only inside the displayed
+target, without reproducing a whole file or chunk for a small fix. Actions reread the selection at click time, so a newly selected
 range works immediately even before the next check. Losing the selection never
 silently expands a request to the whole file. Once an answer arrives, its proposal remains bound
 to that captured Source snapshot and still needs approval. Selected edits
 preserve their surrounding text; chunk edits preserve YAML, fences, prose and
-other chunks. Only the targeted chunk's R syntax is checked, so unrelated broken
+other chunks. The complete changed chunks' R syntax is checked, so unrelated broken
 chunks do not prevent a local correction. Nothing is saved, run or knitted.
 
 **Workspace On/Off** sits beside Console in the header and starts On. You can
-switch it off there to exclude both metadata and dataset excerpts. When On, Send
+switch it off there to exclude metadata, dataset excerpts and project scanning. When On, Send
 includes up to 30 objects' types, dimensions and column names (up to 40 columns).
-Loaded data.frames and matrices named in the question or current Source also
+Loaded data.frames and matrices named in the question, latest captured Console command or current Source also
 supply actual cell values. The small arrow beside Workspace opens a local dataset
 picker and table preview; select datasets there to prioritize them even when your
 question does not name them. Opening the picker does not call AI.
 
-Each request rereads up to three relevant datasets, with their actual dimensions
+Requested datasets and the latest Console references take priority over other
+automatic Source references. Each request rereads up to three relevant datasets, with their actual dimensions
 and up to the first 20 rows / 20 columns. Cell text is capped at 160 characters;
 excerpts shrink further to fit 5,000 characters per dataset. They are samples,
-not whole-dataset statistical results or proof the current script ran. Active
-bindings, lazy promises, functions, S4 objects and credential-like names are
-skipped. Nested columns and credential-like columns do not supply cell values;
+not whole-dataset statistical results or proof the current script ran. Dataset sampling skips active
+bindings, lazy promises, functions, S4 objects and credential-like names.
+Nested columns and credential-like columns do not supply cell values;
 user-defined print/subset/summary methods are not invoked. New chat clears manual
 selections. Ordinary data.frame/tibble/data.table columns and atomic matrices
 are supported; specialized column classes may be omitted.
+
+Workspace On also reads function signatures and up to three relevant in-memory
+function definitions without calling them. These may differ from unsaved Source.
+Each Send scans the current project root and one directory level for a bounded
+file inventory. Up to three explicitly referenced R/Markdown documents are read
+from disk, within a 10,000-character combined budget. The active editor always
+comes from its unsaved buffer. Hidden folders, dependency trees and links outside
+the project are excluded. The scan does not execute code or load data files.
 
 **... > Code edit history** opens a separate page with time, target, status,
 proposal notes and the exact before/after comparison for approved edits.
@@ -458,15 +474,17 @@ but Undo does not delete a newly created document. These backups contain code
 and are never automatically included in AI requests.
 Multiple alternative code blocks require choosing **Review** on the one you want.
 
-You can also click **Review** beside Copy on an AI R/Rmd code block. Choose **Replace entire
-file**, **Append to file**, or **New document**, then inspect the syntax result and
+You can also click **Review** beside Copy on an AI R/Rmd code block. Exact line
+corrections review only their proposed ranges. Whole-file replacement is available
+for an explicit complete replacement proposal; ordinary examples offer addition
+or a new document. Inspect the syntax result and
 the removed/added lines directly inside the chat code block. **Replace**, **Append**
 or **Create document** is the approval. **Copy** copies the proposed code without
 editing Source; **Cancel** closes the comparison and returns to the code.
 Cancel leaves the editor unchanged. An R snippet appended to Rmd becomes a new R chunk.
 
 When a Source review finds a concrete error, the assistant is instructed to include
-the complete corrected file for these controls, even if you only ask what is wrong.
+only the corrected ranges for these controls, even if you only ask what is wrong.
 Ask for explanation only if you do not want a code proposal.
 
 Checks parse R syntax, R Markdown/Quarto R chunks and inline R without executing

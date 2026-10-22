@@ -1,5 +1,6 @@
 ^AISource\.R$
 ^bkup\.R$
+^test\.(md|pdf)$
 ^REVIEW\.md$
 ^tools$
 ^\.github$

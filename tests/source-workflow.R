@@ -100,4 +100,105 @@ shiny::testServer(app$server,{
   before_calls <- length(editor$calls);editor$ctx$selection <- list();send("fix")
   check(length(editor$calls)==before_calls && !state$busy,"an empty selection makes no API call and restores controls")
 })
+# Minimal line edits are addressed against the exact document, not guessed
+# from matching text or interpreted as whole-file replacements.
+block <- function(text)app$source_code_blocks(as.character(app$render_markdown(text)))[[1L]]
+script <- list(id="patch",path="/tmp/patch.R",contents=c("keep <- 1","x <- bad(X)","keep <- 2","y <- bad(Y)","# Keep final comment"))
+snap <- app$source_snapshot(script)
+first <- block("```r-edit-2-2\nx <- dim(X)\n```")
+second <- block("```r-edit-4-4\ny <- dim(Y)\n```")
+check(first$operation=="edit" && identical(first$lines,c(2L,2L)) && first$kind=="R",
+  "an edit fence carries exact global line numbers while retaining executable R code")
+expected <- "keep <- 1\nx <- dim(X)\nkeep <- 2\ny <- dim(Y)\n# Keep final comment"
+check(identical(app$prepare_source_patches(snap,list(second,first)),expected),
+  "disjoint patches preserve every other line, their order and the absence of a final newline")
+check(inherits(tryCatch(app$prepare_source_patches(snap,list(first,first)),error=identity),"error"),
+  "overlapping corrections cannot be silently combined")
+for(range in c("3-2","9-9")) {
+  bad <- block(paste0("```r-edit-",range,"\nx <- 9\n```"))
+  check(inherits(tryCatch(app$prepare_source_patches(snap,list(bad)),error=identity),"error"),
+    paste("an invalid or out-of-document range is rejected:",range))
+}
+check(!block("```r-edit-0-2\nx <- 9\n```")$reviewable,"zero-based line ranges do not become reviewable edits")
+scope <- app$source_patch_scope(snap,first);scoped <- snap;scoped$scope <- scope
+check(inherits(tryCatch(app$prepare_source_patches(scoped,list(second)),error=identity),"error"),
+  "a patch cannot broaden the user's selected range")
+markdown <- list(id="rmd-patch",path="/tmp/patch.qmd",contents=c("---","title: Keep","---","# Results",
+  "```{r first}","#| label: analysis","x <- sum(","  1, broken(","  2)","print(x)","```","Keep this paragraph.",
+  "```{r unrelated}","z <-","```"))
+md_snap <- app$source_snapshot(markdown)
+repair <- block("```r-edit-8-8\n  1,\n```")
+check(identical(app$source_patch_scope(md_snap,repair)$chunk,"analysis"),
+  "a global Rmd line edit identifies its actual enclosing chunk")
+check(inherits(tryCatch(app$prepare_source_patches(md_snap,list(block("```r-edit-4-5\nx <- 1\n```"))),error=identity),"error"),
+  "an R patch cannot replace prose or swallow an Rmd chunk fence")
+prose <- block("```rmd-edit-12-12\nUpdated paragraph.\n```")
+check(grepl("Updated paragraph.",app$prepare_source_patches(md_snap,list(prose)),fixed=TRUE),
+  "Markdown edits can explicitly target prose without replacing chunks")
+check(app$source_kind("notes.md")=="Rmd" && grepl("analysis: body lines 6-10",app$source_outline(markdown),fixed=TRUE),
+  "Markdown documents and chunk outlines expose their real document structure")
+editor$ctx <- script;app$initial <- script
+reply <- "Two corrections.\n\n```r-edit-2-2\nx <- dim(X)\n```\n\n```r-edit-4-4\ny <- dim(Y)\n```"
+shiny::testServer(app$server,{
+  nonce <- 100L
+  job <- function()get("preview_job",envir=environment(clear_source_review),inherits=FALSE)
+  send <- function(){nonce<<-nonce+1L;session$setInputs(chat_submit=list(text="Fix these errors",nonce=nonce));session$flushReact();if(!is.null(review_context()))invisible(output$source_change_preview)}
+  session$flushReact();count<-length(editor$writes);send()
+  check(identical(job()$after,expected) && length(job()$changes)==2L && length(editor$writes)==count,
+    "multiple minimal blocks combine into separately reviewable changes without writing Source")
+  check(grepl("2 | x <- bad(X)",tail(editor$calls,1L)[[1L]]$prompt,fixed=TRUE) &&
+    grepl("provide ONLY the corrected Source ranges",tail(editor$calls,1L)[[1L]]$system,fixed=TRUE),
+    "Send supplies numbered current Source and requests only the changed ranges")
+  preview <- output$source_change_preview$html
+  check(length(gregexpr('class="source-proposal-text',preview,fixed=TRUE)[[1L]])==2L &&
+    grepl('hidden="hidden">x &lt;- dim(X)',preview,fixed=TRUE) &&
+    !grepl('hidden="hidden">keep',preview,fixed=TRUE),
+    "each hunk has its own Copy containing only corrected code, without unrelated file contents")
+  session$setInputs(apply_source_change=list(token=job()$token,change=1L,nonce=200L));session$flushReact();invisible(output$source_change_preview)
+  check(length(editor$writes)==count+1L && editor$ctx$contents[[2L]]=="x <- dim(X)" &&
+    editor$ctx$contents[[4L]]=="y <- bad(Y)" && length(job()$changes)==1L,
+    "Replace applies one approved range and leaves the other correction pending")
+  session$setInputs(skip_source_change=list(token=job()$token,change=1L,nonce=201L));session$flushReact()
+  check(is.null(job()) && editor$ctx$contents[[4L]]=="y <- bad(Y)","Skip never applies the remaining patch")
+  editor$ctx <- script;reply <<- "```r-edit-2-2\nx <- dim(X)\n```";send();token<-job()$token
+  editor$ctx$contents[[1L]] <- "manual <- 99"
+  session$setInputs(apply_source_change=list(token=token,nonce=202L));session$flushReact()
+  check(is.null(job()) && editor$ctx$contents[[1L]]=="manual <- 99" && editor$ctx$contents[[2L]]=="x <- bad(X)",
+    "a changed baseline revokes line-based proposals before they can write")
+  editor$ctx <- markdown;reply <<- "```r-edit-8-8\n  1,\n```";send()
+  check(job()$syntax$ok && job()$changes[[1L]]$line==8L &&
+    grepl("z <-",job()$after,fixed=TRUE),"a one-line repair checks the complete repaired chunk while leaving another broken chunk alone")
+  session$setInputs(apply_source_change=list(token=job()$token,nonce=203L));session$flushReact()
+  check(editor$ctx$contents[[8L]]=="  1," && editor$ctx$contents[[14L]]=="z <-" && editor$ctx$contents[[12L]]=="Keep this paragraph.",
+    "approving an Rmd line repair preserves prose, fences and unrelated chunk errors")
+  reply <<- "```r-edit-8-8\n  3,\n```\n\n```r-edit-8-9\n  4)\n```";send()
+  check(is.null(review_context()),"conflicting patch blocks do not open a guessed automatic correction")
+  reply <<- "```r-edit-8-8\n  1,\n```";send()
+  check(is.null(review_context()),"an unchanged line patch does not open an empty correction")
+  two <- markdown;two$contents[[14L]] <- "z <- sum("
+  editor$ctx <- two
+  reply <<- "```r-edit-7-9\nx <- sum(\n  1,\n  3)\n```\n\n```r-edit-14-14\nz <- sum(1, 2)\n```";send()
+  check(job()$syntax$ok && length(job()$changes)==2L,
+    "two Rmd chunk repairs can be reviewed together without including complete chunk bodies")
+  session$setInputs(apply_source_change=list(token=job()$token,change=2L,nonce=204L));session$flushReact()
+  if(!is.null(review_context()))invisible(output$source_change_preview)
+  check(editor$ctx$contents[[14L]]=="z <- sum(1, 2)" && !is.null(job()),
+    "one repaired chunk can be applied while another proposed chunk change remains pending")
+})
+editor$ctx <- script;app$initial <- script;runs <- 0L
+app$validate_script <- function(...){runs<<-runs+1L;list(ok=FALSE,logs="Error: could not find function bad",plots=character(),plot_dir=NULL,total_plots=0L)}
+reply <- "```r-edit-2-2\nx <- dim(X)\n```"
+shiny::testServer(app$server,{
+  session$flushReact();count<-length(editor$writes)
+  session$setInputs(chat_submit=list(text="Please run the script",nonce=300L));session$flushReact()
+  check(runs==0L && !is.null(state$pending),"validation still requires approval before any execution")
+  session$setInputs(yes=1L);session$flushReact();invisible(output$source_change_preview)
+  candidate <- get("preview_job",envir=environment(clear_source_review),inherits=FALSE)
+  check(runs==1L && !is.null(candidate) && length(candidate$changes)==1L &&
+    candidate$changes[[1L]]$line==2L && length(editor$writes)==count,
+    "a failed approved run produces a minimal checked correction without editing Source")
+  check(grepl("1 | keep <- 1\n2 | x <- bad(X)",tail(editor$calls,1L)[[1L]]$prompt,fixed=TRUE) &&
+    grepl("r-edit-START-END",tail(editor$calls,1L)[[1L]]$system,fixed=TRUE),
+    "validation analysis gets the full numbered script and the same minimal-edit contract")
+})
 cat(checks,"Source workflow checks passed\n")
