@@ -170,23 +170,28 @@
   })
 }
 
-launch <- function() {
+launch <- function(provider = NULL, model = NULL, base_url = NULL) {
   if (!.in_rstudio()) stop("Open RStudio and run RAssistant::launch() in its Console.", call. = FALSE)
   if (isTRUE(.app_state$update_queued)) {
     stop("An update is in progress. The assistant will reopen when it finishes.", call. = FALSE)
   }
   if (.app_running()) {
+    if (!is.null(provider) || !is.null(model) || !is.null(base_url))
+      stop("Use More actions (...) > API settings to change the running connection.", call. = FALSE)
     .open_viewer(.app_state$handle, reopen = TRUE)
     return(invisible(.app_state$handle))
   }
   if (isTRUE(.app_state$updated)) {
     fresh <- .reload_namespace()
-    return(invisible(get("launch", envir = fresh, inherits = FALSE)()))
+    return(invisible(get("launch", envir = fresh, inherits = FALSE)(provider=provider,model=model,base_url=base_url)))
   }
   launcher <- .load_launcher(file.path(.package_path(), "app", "AISource.R"))
-  key <- .resolve_api_key()
+  profile <- .selected_api_profile(provider, model, base_url)
+  key <- tryCatch(.resolve_api_key(profile$provider, base_url = profile$base_url, prompt = FALSE),
+    error = function(e) {message(conditionMessage(e)); NULL})
   port <- .new_app_port()
   info <- .package_ui_info()
+  info$api <- .new_api_settings(profile, key)
   info$port <- port
   info$viewer_ready <- .viewer_ready
   info$viewer_loading <- .viewer_loading

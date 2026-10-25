@@ -56,7 +56,20 @@ main <- function() {
         if(is.character(fixture$console))fixture$console else "CONSOLE_BROWSER_VALUE_42"
       },
       status=function()list(enabled=console_enabled,ready=TRUE,pending=FALSE,notice="",lines=if(console_enabled)1L else 0L))
+    api <- NULL
+    if(identical(Sys.getenv("RA_BROWSER_API_ONLY"),"true")) {
+      for(file in c("R/credentials.R","R/providers.R"))sys.source(file,store_env)
+      Sys.unsetenv(store_env$.api_key_envvars())
+      keys <- new.env(parent=emptyenv())
+      store_env$.credential_backend <- function()list(name="macos",
+        list=function(service)data.frame(username=if(exists(service,keys,inherits=FALSE))"default"else character()),
+        get=function(service,username)get(service,keys,inherits=FALSE),
+        set_with_value=function(service,username,password)assign(service,password,keys))
+      store_env$.provider_preferences_path <- function()file.path(history_root,"api-settings.rds")
+      api <- store_env$.new_api_settings(store_env$.api_profile())
+    }
     app <- load_assistant(package_info=if(standalone)NULL else list(version="0.1.1",history=history,knowledge=knowledge,
+      api=api,
       console=console,prepare_console=function()invisible(NULL),
       poll_update=function(){
         if(!published && file.exists(available_marker)){
@@ -141,6 +154,8 @@ main <- function() {
     app$ask_ai <- function(system_prompt,prompt,images=character()) {
       count <<- count+1L
       Sys.sleep(.2)
+      if(identical(Sys.getenv("RA_BROWSER_API_ONLY"),"true"))
+        return(paste("Selected connection:",api$get()$provider,api$get()$model))
       if(grepl("SIMULATED_FAILURE",prompt,fixed=TRUE))stop("Simulated API failure")
       if(grepl("SIMULATE_SOURCE_LOSS",prompt,fixed=TRUE))source_unavailable <<- TRUE
       if(identical(Sys.getenv("RA_BROWSER_SOURCE_INTENT_ONLY"),"true")) {
@@ -216,6 +231,10 @@ main <- function() {
     stdout="|",stderr="|",supervise=TRUE)
   worker <- start_worker(port)
   on.exit(worker$kill(),add=TRUE)
+  chrome_profile <- tempfile("ra-browser-profile-")
+  previous_args <- chromote::get_chrome_args()
+  chromote::set_chrome_args(c(previous_args,paste0("--user-data-dir=",chrome_profile)))
+  on.exit({chromote::set_chrome_args(previous_args);unlink(chrome_profile,recursive=TRUE)},add=TRUE)
   browser <- chromote::ChromoteSession$new()
   on.exit(browser$parent$close(),add=TRUE)
   js <- function(expression) {
@@ -235,7 +254,7 @@ main <- function() {
         cat("\nServer:\n",paste(worker$read_error_lines(),collapse="\n"),"\n")
         cat("\nWorker:\n",worker$is_alive(),worker$get_exit_status(),"\n",
           paste(worker$read_output_lines(),collapse="\n"),"\n")
-        cat("\nMessages:\n",js('JSON.stringify(window.receivedMessages||[])'),"\n")
+        cat("\nMessage types:\n",js('JSON.stringify((window.receivedMessages||[]).map(function(x){return Object.keys(x)}))'),"\n")
         cat("\nControls:\n",js('JSON.stringify({send:document.getElementById("send")&&document.getElementById("send").disabled,prompt:document.getElementById("prompt")&&document.getElementById("prompt").value,users:document.querySelectorAll(".msg.user").length,errors:window.aisourceErrors})'),"\n")
         stop("Timed out: ",expression)
       }
@@ -263,6 +282,52 @@ main <- function() {
   wait_js('document.querySelector(".empty")!==null')
   js('window.alerts=[];window.alert=function(x){alerts.push(x);};window.receivedMessages=[];$(document).on("shiny:message",function(e){if(e.message.custom)receivedMessages.push(e.message.custom);});')
   check(isTRUE(js('document.querySelector(".empty")!==null')), "existing Shiny UI connects and renders")
+  if(identical(Sys.getenv("RA_BROWSER_API_ONLY"),"true")) {
+    wait_js('document.getElementById("api_provider")!==null && document.getElementById("api_key_entry")!==null')
+    check(isTRUE(js('document.querySelectorAll("#api_provider option").length===14 && document.getElementById("api_key_entry").type==="password"')),
+      "first launch offers all providers with hidden key input and no OpenAI key requirement")
+    choose <- function(id) {
+      js(paste0('var field=document.getElementById("api_provider");field.value=',jsonlite::toJSON(id,auto_unbox=TRUE),';field.dispatchEvent(new Event("change",{bubbles:true}));'))
+      wait_js(paste0('document.getElementById("api_form_provider")!==null && document.getElementById("api_form_provider").value===',jsonlite::toJSON(id,auto_unbox=TRUE)))
+    }
+    fill <- function(id,value) {
+      js(paste0('var field=document.getElementById(',jsonlite::toJSON(id,auto_unbox=TRUE),');field.value=',jsonlite::toJSON(value,auto_unbox=TRUE),';field.dispatchEvent(new Event("input",{bubbles:true}));field.dispatchEvent(new Event("change",{bubbles:true}));'))
+      input_id <- if(id=="api_key_entry")paste0(id,":shiny.password")else id
+      wait_js(paste0('Shiny.shinyapp.$inputValues[',jsonlite::toJSON(input_id,auto_unbox=TRUE),']===',jsonlite::toJSON(value,auto_unbox=TRUE)))
+    }
+    choose("gemini");fill("api_model","gemini-test");fill("api_key_entry","gemini-browser-key")
+    js('document.getElementById("api_save").click()')
+    wait_js('document.getElementById("shiny-modal")===null')
+    check(TRUE,"Gemini saves and activates directly from the first-launch form")
+    fill("prompt","Keep this draft while switching providers")
+    js('openAction("api_settings")')
+    wait_js('document.getElementById("api_key_entry")!==null && document.getElementById("api_model").value==="gemini-test"')
+    check(isTRUE(js('document.getElementById("api_key_entry").value==="" && document.getElementById("api_model").value==="gemini-test" && document.getElementById("api_provider").value==="gemini"')),
+      "reopening settings remembers the model without returning the saved key to the browser")
+    choose("custom");fill("api_model","custom-test");fill("api_base_url","https://mock.example/v1")
+    js('document.getElementById("api_save").click()')
+    wait_js('document.getElementById("api_notice").textContent.includes("Enter an API key")')
+    check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("Google Gemini") && document.getElementById("prompt").value==="Keep this draft while switching providers"')),
+      "missing Custom credentials preserve the active Gemini connection and draft")
+    fill("api_key_entry","custom-browser-key");js('document.getElementById("api_save").click()')
+    wait_js('document.getElementById("shiny-modal")===null')
+    js('document.getElementById("send").click()')
+    wait_js('document.querySelector(".msg.assistant")!==null && !document.getElementById("send").disabled')
+    check(isTRUE(js('document.querySelector(".msg.assistant").textContent.includes("Selected connection: custom custom-test")')),
+      "the next Send uses the newly selected provider and model")
+    js('openAction("api_settings")')
+    wait_js('document.getElementById("api_provider")!==null');choose("gemini")
+    wait_js('document.getElementById("api_model").value==="gemini-test"')
+    js('document.getElementById("api_save").click()')
+    wait_js('document.getElementById("shiny-modal")===null')
+    fill("prompt","Second provider request");js('document.getElementById("send").click()')
+    wait_js('document.querySelectorAll(".msg.assistant").length===2 && !document.getElementById("send").disabled')
+    check(isTRUE(js('Array.from(document.querySelectorAll(".msg.assistant")).pop().textContent.includes("Selected connection: gemini gemini-test") && document.querySelectorAll(".msg.user").length===2')),
+      "switching back reuses Gemini's saved key and retains the previous chat")
+    check(isTRUE(js('!document.getElementById("messages").textContent.includes("browser-key") && window.aisourceErrors.length===0')),
+      "provider settings do not leak keys into chat or cause JavaScript errors")
+    cat(checks,"API settings browser checks passed\n");return(invisible(NULL))
+  }
   check(isTRUE(js('!document.getElementById("app_menu").open && document.querySelector("#app_menu #history")!==null && document.querySelector("#app_menu #knowledge")!==null && document.getElementById("knowledge").textContent==="Knowledge Base" && document.querySelector("#app_menu #help")!==null && document.querySelector("#app_menu #close")!==null && document.getElementById("check_updates").closest("#app_menu")!==null && document.getElementById("console_context").closest(".toolbar-actions")!==null && document.querySelector(".upload-row #console_context")===null && document.getElementById("workspace_context").closest(".toolbar-actions")!==null && document.querySelector("#app_menu #workspace_context")===null && document.getElementById("workspace_context").checked && document.getElementById("workspace_context_state").textContent==="On"')),
     "Check updates lives in More actions while Console and default-on Workspace share the header")
   check(isTRUE(js('document.getElementById("preview_undo").disabled && document.getElementById("preview_redo").disabled')),
@@ -614,8 +679,8 @@ main <- function() {
     "a newly published version automatically displays its banner without a manual check, lost draft or installation")
   js('document.getElementById("prompt").value="Keep this draft";openAction("help");')
   wait_js('document.querySelector("#shiny-modal .code-copy")!==null')
-  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && document.getElementById("shiny-modal").textContent.includes("RAssistant::set_api_key()") && document.getElementById("shiny-modal").textContent.includes("hidden password prompt") && !document.getElementById("shiny-modal").textContent.includes("Restart R") && document.querySelector("#app_menu #check_updates")!==null && document.querySelector("#shiny-modal #check_updates")===null')),
-    "Help explains launching, hidden key replacement and updates")
+  check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes("RAssistant::launch()") && document.getElementById("shiny-modal").textContent.includes("API settings") && document.getElementById("shiny-modal").textContent.includes("Each provider") && !document.getElementById("shiny-modal").textContent.includes("Restart R") && document.querySelector("#app_menu #check_updates")!==null && document.querySelector("#shiny-modal #check_updates")===null')),
+    "Help explains launching, separate provider settings and updates")
   browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
   wait_js('getComputedStyle(document.getElementById("shiny-modal")).opacity==="1" && document.querySelector("#shiny-modal .modal-dialog").getBoundingClientRect().width>0')
   check(isTRUE(js('document.querySelector("#shiny-modal .modal-dialog").getBoundingClientRect().right<=innerWidth && document.querySelector("#shiny-modal .modal-dialog").getBoundingClientRect().left>=0 && document.getElementById("help").getBoundingClientRect().right<=innerWidth')),
@@ -630,8 +695,8 @@ main <- function() {
   wait_js('window.copied!==null')
   check(identical(js('window.copied'),"RAssistant::launch()\n"),"Help command Copy preserves the exact Console command")
   js('document.querySelectorAll("#shiny-modal .code-copy")[1].click();')
-  check(identical(js('window.copied'),"RAssistant::set_api_key()\nRAssistant::launch()\n"),
-    "the key-replacement instructions copy correctly")
+  check(identical(js('window.copied'),"RAssistant::update_assistant()\n"),
+    "the update instructions copy correctly")
   js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click();')
   wait_js('document.getElementById("shiny-modal")===null')
   js('openAction("check_updates");')

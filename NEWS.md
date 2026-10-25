@@ -1,3 +1,9 @@
+# RAssistant 0.15.0
+
+- Choose OpenAI, Claude, Gemini, DeepSeek, Groq, Mistral, OpenRouter, Perplexity, Hugging Face, xAI, Together AI, Fireworks AI or Cerebras in API settings. Add other services through an HTTPS OpenAI-compatible endpoint and an exact model ID.
+- Keep separate provider keys in the OS credential store and remember non-secret model settings locally. Switch providers without reopening the chat; existing OpenAI keys keep working. First launch can configure any provider without an OpenAI key.
+- Keep credentials out of update checks, validation subprocesses and captured Console context. Keep failed messages and their attachments ready to retry after authentication or model errors.
+
 # RAssistant 0.14.1
 
 - Reopen on a fresh local port after updates so a delayed disconnect from the previous app cannot clear the new Viewer. Open the Viewer after server startup completes and confirm the page's Shiny connection.

@@ -109,7 +109,7 @@ main <- function() {
     "missing package assets report reinstallation guidance")
 
   key_reads <- 0L
-  env$.resolve_api_key <- function() { key_reads <<- key_reads + 1L; "launch-key" }
+  env$.resolve_api_key <- function(...) { key_reads <<- key_reads + 1L; "launch-key" }
   env$.in_rstudio <- function() FALSE
   check(failed(env$launch(), "Open RStudio") && key_reads == 0L,
     "launch outside RStudio does not read credentials")
@@ -158,7 +158,7 @@ main <- function() {
   check(key_reads == 1L && store$writes == 2L && store$deletes == 1L,
     "installation without relaunch never reads, writes or deletes credentials")
   fresh <- new.env(parent = emptyenv())
-  fresh$launch <- function() "fresh-namespace-handle"
+  fresh$launch <- function(...) "fresh-namespace-handle"
   reloads <- 0L
   env$.reload_namespace <- function() { reloads <<- reloads + 1L; fresh }
   result <- withVisible(env$launch())

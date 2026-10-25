@@ -186,12 +186,13 @@ update_assistant <- function(ref = "main", relaunch = TRUE) {
 .new_update_worker <- function() {
   # Passing the reader as an argument retains its helper environment. Startup
   # files can restore environment variables, so clear the key after R starts.
-  callr::r_bg(function(fetch) {
-    Sys.unsetenv("OPENAI_API_KEY")
+  secret_env <- .api_key_envvars()
+  callr::r_bg(function(fetch, secret_env) {
+    Sys.unsetenv(secret_env)
     fetch()
-  }, args = list(fetch = .fetch_update_info), libpath = .libPaths(),
+  }, args = list(fetch = .fetch_update_info, secret_env = secret_env), libpath = .libPaths(),
     user_profile = FALSE, system_profile = FALSE,
-    env = c(callr::rcmd_safe_env(), OPENAI_API_KEY = ""),
+    env = c(callr::rcmd_safe_env(), stats::setNames(rep("",length(secret_env)),secret_env)),
     stdout = "|", stderr = "|", supervise = TRUE)
 }
 

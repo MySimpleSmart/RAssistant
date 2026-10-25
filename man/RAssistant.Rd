@@ -7,27 +7,47 @@
 \description{Open the existing chat assistant in the RStudio Viewer, manage its
 optional OS-stored API credential, or update the installed package from GitHub.}
 \usage{
-launch()
-set_api_key()
-forget_api_key()
+launch(provider = NULL, model = NULL, base_url = NULL)
+set_api_key(provider = "openai", base_url = NULL)
+forget_api_key(provider = "openai", base_url = NULL)
 update_assistant(ref = "main", relaunch = TRUE)
 }
 \arguments{
+\item{provider}{Provider ID: \code{openai}, \code{anthropic}, \code{gemini},
+\code{deepseek}, \code{groq}, \code{mistral}, \code{openrouter}, \code{perplexity},
+\code{huggingface}, \code{xai}, \code{together}, \code{fireworks}, \code{cerebras}
+or \code{custom}. Launch defaults to the last connection saved in API settings.}
+\item{model}{An exact model ID. Native providers can use their ellmer default;
+OpenAI retains its existing default. Compatible endpoints require a model ID.}
+\item{base_url}{HTTPS API base URL for \code{custom}. Its key is scoped to this URL.
+Ignored for named providers, which use their own endpoints.}
 \item{ref}{A GitHub branch, tag or commit reference.}
 \item{relaunch}{Whether to reopen the assistant after a successful update.
 Defaults to \code{TRUE}; only opens the app when running in RStudio.}
 }
 \details{
-Run \code{launch()} in the RStudio Console. An existing
-\env{OPENAI_API_KEY} takes precedence. Otherwise the first launch prompts for a
-key with hidden input and saves it in macOS Keychain, Windows Credential Manager
-or Linux Secret Service. The prompt may be a native password dialog.
+Run \code{launch()} in the RStudio Console. More actions (...) > API settings
+selects a provider, model and key without clearing the chat. If no key is
+configured, this form opens on launch; an OpenAI key is not required.
+Keys are stored separately in the operating system credential store.
+Provider environment variables take precedence over saved keys, for example
+\env{OPENAI_API_KEY}, \env{ANTHROPIC_API_KEY} or \env{GOOGLE_API_KEY}.
+Gemini also accepts \env{GEMINI_API_KEY}; Hugging Face accepts \env{HF_TOKEN}.
+Other provider variables are shown in API settings when set.
 The key is passed directly to the API client; it is not saved in the package,
 project, R history or a startup file. No prompt occurs merely by loading the package.
 
-\code{set_api_key()} replaces the saved credential after prompting.
+\code{set_api_key()} replaces the selected provider's saved credential after
+a hidden password prompt. It defaults to OpenAI for compatibility.
 \code{forget_api_key()} removes only RAssistant's saved credential; it does not
 unset or edit an existing environment variable.
+
+Model preferences and the last selected provider are saved locally without keys.
+Custom endpoints use the OpenAI-compatible Chat Completions protocol, not an
+arbitrary HTTP API. Save does not make a paid API request; authentication and
+model access are checked on Send. Image support depends on the selected model.
+Requests and their enabled Source, Console, Workspace and Knowledge Base context
+go to the selected provider; changing providers does not erase chat history.
 
 The toolbar keeps Console On/Off and New chat visible. More actions contains
 History, Knowledge, Check updates, Help, Close and the installed version. Help has copyable

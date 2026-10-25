@@ -28,7 +28,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     stop("ellmer 0.5.0 or newer is required. Update ellmer and restart R.")
   }
   if (!rstudioapi::isAvailable()) stop("Start this script inside RStudio.")
-  if (!is.character(api_key) || length(api_key) != 1L || is.na(api_key) || !nzchar(trimws(api_key))) {
+  if (is.null(package_info$api) && (!is.character(api_key) || length(api_key) != 1L || is.na(api_key) || !nzchar(trimws(api_key)))) {
     stop("OPENAI_API_KEY is missing. Use RAssistant::launch() for secure setup, or configure your environment.")
   }
   active_doc <- function(id = NULL) rstudioapi::getSourceEditorContext(id = id)
@@ -762,7 +762,15 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   # Chat drafts are inert. Only the reviewed Apply handler can edit Source.
   # For normal chat, optionally pass uploaded images to a vision model.
   # Temp file suffixes preserve MIME guessing used by ellmer.
+  api_settings <- package_info$api
+  api_secrets <- function() unique(c(api_key, if(!is.null(api_settings))api_settings$secrets()))
+  redact_api_secrets <- function(text) {
+    secrets <- api_secrets()
+    for(secret in secrets[!is.na(secrets) & nzchar(secrets)])text <- gsub(secret,"[API key redacted]",text,fixed=TRUE)
+    text
+  }
   create_ai_client <- function(system_prompt) {
+    if(!is.null(api_settings))return(api_settings$client(system_prompt))
     ellmer::chat_openai(
       model = "gpt-6.1-sol", system_prompt = system_prompt,
       credentials = if (is.null(api_key)) NULL else function() api_key
@@ -776,7 +784,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     pieces <- c(list(prompt), lapply(images, function(path) {
       ellmer::content_image_file(path, resize = "none")
     }), list(echo = "none"))
-    response <- paste(as.character(do.call(client$chat, pieces)), collapse = "\n")
+    response <- tryCatch(paste(as.character(do.call(client$chat, pieces)), collapse = "\n"),
+      error=function(e)stop(redact_api_secrets(conditionMessage(e)),call.=FALSE))
     if (!nzchar(trimws(response))) stop("The API returned an empty response. Please retry.")
     response
   }
@@ -1041,9 +1050,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     run_error <- NULL
     result <- tryCatch(
       callr::r(
-        func = function(source_file, wd, format_kind, image_dir) {
+        func = function(source_file, wd, format_kind, image_dir, secret_env) {
           setwd(wd)
-          Sys.unsetenv("OPENAI_API_KEY")
+          Sys.unsetenv(secret_env)
           work <- tempfile(pattern = "rstudio-ai-validation-")
           dir.create(work, recursive = TRUE)
           on.exit(unlink(work, recursive = TRUE, force = TRUE), add = TRUE)
@@ -1094,7 +1103,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           TRUE
         },
         args = list(source_file = src, wd = working_dir,
-                    format_kind = kind, image_dir = plot_dir),
+                    format_kind = kind, image_dir = plot_dir,
+                    secret_env = if(is.null(api_settings))"OPENAI_API_KEY"else unique(unlist(lapply(api_settings$catalog(),`[[`,"env")))),
         stdout = out, stderr = err, show = FALSE,
         timeout = timeout_seconds, libpath = .libPaths(),
         user_profile = FALSE, system_profile = FALSE
@@ -2348,6 +2358,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
                 if(!is.null(package_info$knowledge))shiny::actionButton("knowledge","Knowledge Base",class="ai-btn"))),
             shiny::div(class="menu-group","aria-label"="App",
               shiny::p(class="menu-heading","App"),shiny::div(class="menu-actions",
+                if(!is.null(api_settings))shiny::actionButton("api_settings","API settings",class="ai-btn"),
                 shiny::div(class="menu-button-row",
                   if(!is.null(package_info))shiny::actionButton("check_updates","Check updates",class="ai-btn",title="Check for updates now"),
                   shiny::actionButton("help","Help",class="ai-btn")))),
@@ -2931,6 +2942,67 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         })
       },delay=5)
     },ignoreInit=TRUE)
+    api_notice <- shiny::reactiveVal("")
+    api_revision <- shiny::reactiveVal(0L)
+    open_api_settings <- function() {
+      if(is.null(api_settings) || state$busy || !is.null(state$pending))return()
+      current <- api_settings$get()
+      catalog <- api_settings$catalog()
+      api_notice("")
+      api_revision(api_revision()+1L)
+      shiny::showModal(shiny::modalDialog(title="API settings",easyClose=TRUE,
+        shiny::div(class="assistant-help",
+          shiny::p(if(api_settings$ready())"Current: "else"Not configured: ",catalog[[current$provider]]$label,
+            if(nzchar(current$model))paste0(" / ",current$model)else" / provider default"),
+          shiny::selectInput("api_provider","Provider",choices=stats::setNames(names(catalog),
+            vapply(catalog,`[[`,character(1),"label")),selected=current$provider,selectize=FALSE),
+          shiny::uiOutput("api_fields"),
+          shiny::textOutput("api_notice")),
+        footer=shiny::tagList(shiny::modalButton("Cancel"),
+          shiny::actionButton("api_save","Save & use",class="ai-btn ai-primary"))))
+    }
+    output$api_fields <- shiny::renderUI({
+      if(is.null(api_settings))return(NULL)
+      api_revision()
+      id <- input$api_provider
+      catalog <- api_settings$catalog()
+      if(is.null(id) || !id %in% names(catalog))return(NULL)
+      spec <- catalog[[id]]
+      saved <- api_settings$profiles()[[id]]
+      if(identical(id,api_settings$get()$provider))saved <- api_settings$get()
+      env <- spec$env[nzchar(Sys.getenv(spec$env))]
+      shiny::tagList(
+        shiny::div(style="display:none",shiny::textInput("api_form_provider",NULL,value=id)),
+        shiny::textInput("api_model","Model ID",value=if(is.null(saved))spec$model else saved$model,
+          placeholder=if(spec$factory=="chat_openai_compatible")"Enter the provider's exact model ID"else"Provider default (or enter a model ID)"),
+        if(id=="custom")shiny::textInput("api_base_url","API base URL",value=if(is.null(saved))""else saved$base_url,
+          placeholder="https://api.example.com/v1"),
+        shiny::passwordInput("api_key_entry","API key",value="",placeholder="Leave blank to reuse this provider's key"),
+        shiny::p(if(length(env))paste0(paste(env,collapse=" / ")," is set and takes precedence over a saved key.")
+          else "Keys are stored in your OS credential store, separately for each provider."),
+        shiny::p("Messages and enabled context go to this provider. For Plot and Image, choose a model that supports images."),
+        if(id=="custom")shiny::p("Use an OpenAI-compatible Chat Completions endpoint. Changing the URL requires its own key."))
+    })
+    output$api_notice <- shiny::renderText(api_notice())
+    shiny::observeEvent(input$api_settings,open_api_settings(),ignoreInit=TRUE)
+    shiny::observeEvent(input$api_save,{
+      if(is.null(api_settings) || state$busy || !is.null(state$pending))return()
+      on.exit(shiny::updateTextInput(session,"api_key_entry",value=""),add=TRUE)
+      if(!identical(input$api_provider,input$api_form_provider)) {
+        api_notice("Wait for the selected provider's fields to load, then retry.");return()
+      }
+      result <- tryCatch(api_settings$save(input$api_provider,input$api_model,
+        if(input$api_provider=="custom")input$api_base_url else NULL,
+        key=if(is.null(input$api_key_entry))""else input$api_key_entry),error=function(e)e)
+      if(inherits(result,"error")) {
+        api_notice(redact_api_secrets(conditionMessage(result)));return()
+      }
+      shiny::removeModal()
+      shiny::showNotification(paste("Using",api_settings$catalog()[[result$provider]]$label),duration=4)
+    },ignoreInit=TRUE)
+    shiny::observeEvent(input$ai_client_ready,{
+      if(!is.null(api_settings) && !api_settings$ready())open_api_settings()
+    },ignoreInit=FALSE,once=TRUE)
     shiny::observeEvent(input$help,{
       shiny::showModal(shiny::modalDialog(title="RAssistant Help",
         shiny::div(class="assistant-help",
@@ -2938,13 +3010,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           shiny::tags$strong("Open from the Console"),
           render_markdown(if(is.null(package_info))"~~~r\nsource(\"AISource.R\")\n~~~"
             else "~~~r\nRAssistant::launch()\n~~~"),
-          shiny::tags$strong("API key"),
+          shiny::tags$strong("API connection"),
           if(is.null(package_info)) shiny::p("Set OPENAI_API_KEY in RStudio's environment, restart RStudio, then reopen the script.")
           else shiny::tagList(
-            shiny::p("Close the chat, then run. Enter your key in the hidden password prompt."),
-            render_markdown("~~~r\nRAssistant::set_api_key()\nRAssistant::launch()\n~~~"),
-            shiny::tags$details(shiny::tags$summary("Environment key"),
-              shiny::p("OPENAI_API_KEY overrides the saved key. Remove that environment setting to use the saved replacement."))),
+            shiny::p("More actions (...) > API settings: choose a provider, model and key. Each provider's key stays in the OS credential store."),
+            shiny::p("The selected provider receives the context included with your messages. Image support depends on the model.")),
           shiny::tags$ul(
             shiny::tags$li("Corrections show numbered changes in the code block. Replace edits Source; Save and Run stay separate."),
             if(!is.null(history))shiny::tags$li("Chat history manages saved chats. New chat keeps the previous conversation."),
@@ -3556,7 +3626,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             controls <- shiny::div(class="run-approval",
               "Run the current .R / .Rmd script in a separate R process (45s max)? ",
               "This is not a sandbox: code may access or modify local files. ",
-              "Logs and up to 3 plot images may be shared with OpenAI.",
+              "Logs and up to 3 plot images may be shared with the selected AI provider.",
               shiny::div(class="run-buttons",
                 shiny::actionButton("yes","Yes",class="ai-btn ai-yes"),
                 shiny::actionButton("no","No",class="ai-btn ai-no")))
@@ -3663,6 +3733,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if (as.character(obj$nonce) %in% recent_submissions) return()
       recent_submissions <<- tail(c(recent_submissions, as.character(obj$nonce)), 32L)
       if (!is.character(obj$text) || length(obj$text) != 1L || is.na(obj$text)) return()
+      if(!is.null(api_settings) && !api_settings$ready()) {open_api_settings();return()}
       text <- trimws(obj$text)
       selection_action <- obj$selection_action
       action_scope <- if(identical(obj$scope,"chunk"))"chunk"else"selection"
@@ -3723,7 +3794,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           shiny::showNotification("Wait for Console context to finish starting, or turn it off to send without it.",type="warning")
           return()
         }
-        captured <- tryCatch(console_capture$snapshot(redact=api_key),error=function(e)e)
+        captured <- tryCatch(console_capture$snapshot(redact=api_secrets()),error=function(e)e)
         if(inherits(captured,"error")) {
           shiny::showNotification(paste("Could not read Console context:",conditionMessage(captured)),
             type="error",duration=NULL)

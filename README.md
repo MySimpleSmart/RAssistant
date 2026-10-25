@@ -1,6 +1,6 @@
 # RAssistant
 
-A lightweight AI assistant for RStudio, powered by OpenAI. It opens the existing
+A lightweight AI assistant for RStudio with multiple AI providers. It opens the existing
 `AISource.R` chat in the Viewer, with image uploads, code Copy buttons, contextual
 R help and explicitly approved R/Rmd validation.
 
@@ -69,37 +69,47 @@ and restores the saved chat and draft; RStudio does not need to be restarted.
 - **"Open RStudio and run RAssistant::launch()":** the assistant runs in the
   RStudio Viewer, not RGui or a terminal. Open RStudio and run it there.
 
-## First-launch API key
+## API settings
 
-If `OPENAI_API_KEY` is already configured, it is used as before. Otherwise
-`launch()` asks for a key using a hidden password prompt. Depending on your OS,
-the prompt appears in the terminal or a native password dialog. Paste the key
-there, rather than typing a command containing it into the Console.
+Open **More actions (...) > API settings**, choose a provider, enter its API key
+and optionally a model ID, then **Save & use**. You can switch without restarting
+or clearing the chat. A first launch without a key opens this form automatically.
 
-The saved credential uses service `RAssistant/OpenAI`, account `default`:
+Built-in providers: OpenAI, Anthropic / Claude, Google Gemini, DeepSeek, Groq,
+Mistral, OpenRouter, Perplexity, Hugging Face, xAI / Grok, Together AI, Fireworks AI
+and Cerebras. **Custom (OpenAI-compatible)** accepts another service's HTTPS
+Chat Completions base URL and exact model ID. It does not support arbitrary API
+protocols. Custom, xAI, Together, Fireworks and Cerebras require a model ID from
+the provider's console. Other providers can use their ellmer default or an exact
+model ID. Choose an image-capable model for Plot and Image attachments.
 
-| OS | Credential location |
-| --- | --- |
-| macOS | Keychain |
-| Windows | Credential Manager |
-| Linux desktop | Secret Service, such as GNOME Keyring |
+Keys are stored separately per provider in the OS credential store (macOS
+Keychain). An existing OpenAI key keeps its original `RAssistant/OpenAI` service
+and `default` account. A Custom key is bound to its exact base URL; changing the
+URL cannot reuse another endpoint's saved key. Model preferences and the last
+selected provider are stored locally without keys, outside the project and
+package installation.
 
-The key is not saved in this repository, the package installation, `.Rhistory`,
-`.Renviron` or the project. A hidden file alone would still be plaintext.
-Opening/loading the package does not read or prompt for a key; launching does.
-If the OS store is unavailable or locked, the app gives a recovery message and
-does not silently save a plaintext file. Linux may need `libsecret-1-dev`, a
-running Secret Service and an unlocked login keyring. An existing environment
-variable remains supported on systems without an OS credential store.
+Provider environment variables take precedence over saved keys:
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY` / `GEMINI_API_KEY`,
+`DEEPSEEK_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `OPENROUTER_API_KEY`,
+`PERPLEXITY_API_KEY`, `HF_TOKEN`, `XAI_API_KEY`, `TOGETHER_API_KEY`,
+`FIREWORKS_API_KEY`, `CEREBRAS_API_KEY` and `RASSISTANT_CUSTOM_API_KEY`.
+The form indicates when an environment key overrides a saved key.
+
+Console commands remain available; never paste a key into a Console command:
 
 ```r
-RAssistant::set_api_key()     # Replace the saved key using hidden input
-RAssistant::forget_api_key()  # Remove only RAssistant's saved key
+RAssistant::set_api_key("anthropic")  # Hidden password prompt
+RAssistant::launch(provider = "anthropic")
+RAssistant::forget_api_key("anthropic") # Removes only this saved key
 ```
 
-An existing `OPENAI_API_KEY` takes precedence over a saved key. Saving a key does
-not validate it against the network; authentication is checked on the first Send.
-Close and relaunch the assistant after changing a key to use the new value.
+`set_api_key()` and `forget_api_key()` without arguments still target OpenAI.
+Keys are never stored in preferences, chat history, the package or project.
+Save does not call an AI API; authentication and model access are checked on Send.
+The selected provider receives messages and enabled context, including retained
+chat context. There is no automatic fallback to another provider.
 
 ## Update
 
@@ -124,7 +134,7 @@ bypassing the cache.
 An up-to-date result closes after five seconds. An available update keeps its
 Update now banner until you act on it.
 The update dialog lists the target version's release changes before installation.
-The check does not call OpenAI or transmit the key, Source text or chat history.
+The check does not call an AI provider or transmit the key, Source text or chat history.
 To disable automatic discovery, set `options(RAssistant.check_updates = FALSE)`;
 manual checking and Console updates still work.
 
@@ -217,7 +227,7 @@ choose fewer images.
 Text context is bounded to 32,000 characters, including recent turns and locally
 retrieved older excerpts, plus the assignment and current Source. Saved history
 is larger than the context supplied with each request; recall is not unlimited.
-Restoring and searching local history do not call OpenAI. Sending retained image
+Restoring and searching local history do not call an AI provider. Sending retained image
 pixels consumes image input tokens, as with a new upload.
 
 Storage uses `tools::R_user_dir("RAssistant", "data")`, outside the project and
@@ -335,7 +345,7 @@ or error and press **Send**: the request includes up to 200 recent lines and
 Capture starts on each time you open the Viewer; you can turn it off. To prepare error and warning logging, the app runs
 its own fixed helper in the RStudio Console without switching focus. Finish or
 clear a command already being typed there before enabling capture. The status
-shows On when logging is ready; hover for detailed status. Activation does not call OpenAI.
+shows On when logging is ready; hover for detailed status. Activation does not call an AI provider.
 
 Normal output remains visible, and ordinary uncaught errors, warnings and messages
 are recorded without suppressing them. The temporary capture is cleared when you
@@ -377,7 +387,7 @@ a long-running command can temporarily grow the spool before control returns.
 - Script validation requires **Yes**, executes the entire current R/Rmd file in
   a child process, and may affect files. Only approved output/plots are shared.
 - Current Source text, detected CSV headers, enabled Console/Workspace context and uploaded images are sent to
-  OpenAI when you click **Send**. An API account/key and internet access are needed.
+  your selected AI provider when you click **Send**. An API account/key and internet access are needed.
 - Standalone `source("AISource.R")` remains supported with `OPENAI_API_KEY` set.
 
 ## Review and apply Source changes

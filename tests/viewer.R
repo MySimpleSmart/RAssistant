@@ -89,7 +89,7 @@ main <- function() {
   queue<-list();viewed<-events<-character();key_reads<-0L
   env$.app_state$handle<-NULL
   env$.in_rstudio <- function()TRUE
-  env$.resolve_api_key <- function(){key_reads<<-key_reads+1L;"synthetic-key"}
+  env$.resolve_api_key <- function(...){key_reads<<-key_reads+1L;"synthetic-key"}
   env$.new_app_port <- function()21001L
   env$.package_ui_info <- function()list()
   env$.load_launcher <- function(path)function(api_key,package_info){

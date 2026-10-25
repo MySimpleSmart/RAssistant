@@ -222,7 +222,7 @@ for(info in list(NULL,list(version="test",poll_update=function()list(status="dis
       grepl("OPENAI_API_KEY",modal,fixed=TRUE) && !grepl("RAssistant::",modal,fixed=TRUE) &&
       grepl("replace AISource.R",modal,fixed=TRUE),"standalone Help uses script launch, environment setup and script updates")
     else check(grepl("RAssistant::launch()",modal,fixed=TRUE) &&
-      grepl("RAssistant::set_api_key()",modal,fixed=TRUE) &&
+      grepl("API settings",modal,fixed=TRUE) &&
       grepl("RAssistant::update_assistant()",modal,fixed=TRUE) &&
       !grepl("update_help_status",modal,fixed=TRUE),"package Help retains its commands without a duplicate update status")
   })

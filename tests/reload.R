@@ -45,7 +45,7 @@ main <- function() {
         fresh <- asNamespace("RAssistant")
         patch(fresh, ".in_rstudio", function() TRUE)
         patch(fresh, ".show_viewer", function(url)invisible(NULL))
-        patch(fresh, ".resolve_api_key", function() {
+        patch(fresh, ".resolve_api_key", function(...) {
           stopifnot(!old_state$update_queued)
           key_reads <<- key_reads + 1L
           "synthetic-reload-key"
