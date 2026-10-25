@@ -74,6 +74,12 @@ and restores the saved chat and draft; RStudio does not need to be restarted.
 Open **More actions (...) > API settings**, choose a provider, enter its API key
 and optionally a model ID, then **Save & use**. You can switch without restarting
 or clearing the chat. A first launch without a key opens this form automatically.
+**Active connection** shows the provider, exact model and loaded key source.
+The **Connections** table lists each saved model, whether its key exists in
+Keychain, and any environment override. Defaults show their concrete model ID.
+Keychain status is read from metadata when settings opens; saved secrets are
+not retrieved for this overview. An unavailable store is shown separately from
+a missing key. Unsaved provider selections do not change the active connection.
 
 Built-in providers: OpenAI, Anthropic / Claude, Google Gemini, DeepSeek, Groq,
 Mistral, OpenRouter, Perplexity, Hugging Face, xAI / Grok, Together AI, Fireworks AI

@@ -25,10 +25,15 @@ main <- function() {
   old <- Sys.getenv(vars,unset=NA_character_)
   Sys.unsetenv(vars)
   on.exit({Sys.unsetenv(vars);if(any(!is.na(old)))do.call(Sys.setenv,as.list(old[!is.na(old)]))},add=TRUE)
-  store <- new.env(parent=emptyenv());broken <- FALSE
+  store <- new.env(parent=emptyenv());broken <- FALSE;locked <- FALSE;key_reads <- 0L
   backend <- list(name="macos",
-    list=function(service)data.frame(username=if(exists(service,store,inherits=FALSE))"default"else character()),
-    get=function(service,username)get(service,store,inherits=FALSE),
+    list=function(service=NULL) {
+    if(locked)stop("Keychain locked")
+    services <- ls(store,all.names=TRUE)
+    if(!is.null(service))services <- services[services==service]
+    data.frame(service=services,username=rep("default",length(services)))
+  },
+    get=function(service,username){key_reads <<- key_reads+1L;get(service,store,inherits=FALSE)},
     set_with_value=function(service,username,password) {
       if(broken)stop("store error including synthetic-secret")
       assign(service,password,store)
@@ -79,6 +84,44 @@ main <- function() {
   check(is.null(env$.resolve_api_key("anthropic",prompt=FALSE)) && identical(env$.resolve_api_key(),"openai-synthetic-key"),
     "forgetting Claude leaves the OpenAI key intact")
   check(failed(api$save("anthropic","test"),"Enter an API key"),"missing credentials never fall back to another provider")
+  reads <- key_reads
+  status <- api$status()
+  check(key_reads==reads,"connection overview lists metadata without retrieving saved secrets")
+  custom <- Filter(function(row)row$provider=="custom",status$connections)
+  check(length(custom)==2L && all(vapply(custom,function(row)row$stored=="Saved",logical(1))),
+    "the overview includes keys saved for both current and earlier custom endpoints")
+  active <- Filter(function(row)row$active,status$connections)
+  check(length(active)==1L && active[[1L]]$model=="another-model" && status$active$key_source$type=="keychain",
+    "exactly one connection is active with its exact model and loaded Keychain source")
+  text <- jsonlite::toJSON(status,auto_unbox=TRUE)
+  check(!grepl("openai-synthetic-key|claude-new-key|one-key|two-key",text),"connection metadata never includes key values")
+  api$save("gemini","",key="gemini-store-key")
+  status <- api$status()
+  expected <- suppressMessages(env$.api_client(env$.api_profile("gemini"),"preview",NULL)$get_model())
+  check(identical(status$active$model,expected) && status$active$model_default && nzchar(expected),
+    "provider defaults display the same concrete model ID used by the real client")
+  Sys.setenv(GEMINI_API_KEY="new-env-key")
+  status <- api$status()
+  row <- Filter(function(row)row$provider=="gemini",status$connections)[[1L]]
+  check(status$active$key_source$type=="keychain" && row$stored=="Saved" && row$environment=="GEMINI_API_KEY",
+    "a new environment override does not falsely relabel the already loaded Keychain credential")
+  api$save("gemini","")
+  check(api$status()$active$key_source$name=="GEMINI_API_KEY" && api$status()$active$key_source$type=="environment",
+    "Save and use identifies the environment key actually loaded into the connection")
+  Sys.setenv(GEMINI_API_KEY="invalid key")
+  row <- Filter(function(row)row$provider=="gemini",api$status()$connections)[[1L]]
+  check(!row$environment_valid && api$ready(),"an invalid replacement environment value is marked without changing the running key")
+  Sys.unsetenv("GEMINI_API_KEY")
+  locked <- TRUE
+  status <- api$status()
+  check(!status$store_available && all(vapply(status$connections,function(row)row$stored=="Unavailable",logical(1))) && status$active$ready,
+    "unavailable Keychain metadata is distinct from a missing key and does not stop the active connection")
+  locked <- FALSE
+  Sys.setenv(GROQ_API_KEY="groq-env-only-key")
+  row <- Filter(function(row)row$provider=="groq",api$status()$connections)[[1L]]
+  check(row$environment=="GROQ_API_KEY" && row$stored=="Not saved" && !row$active,
+    "environment-only providers appear with no false saved-key or active status")
+  Sys.unsetenv("GROQ_API_KEY")
   for(id in names(env$.api_providers())) {
     p <- env$.api_profile(id,"test-model",if(id=="custom")"https://mock.example/v1"else NULL)
     client <- env$.api_client(p,"synthetic-transport-key","System context")

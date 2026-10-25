@@ -1,3 +1,9 @@
+# RAssistant 0.15.1
+
+- Use the same button component for Cancel and Close across dialogs; API settings now follows the existing button styles.
+- Show the active provider, exact model and loaded key source. List configured models, saved Keychain keys and environment overrides without exposing key values or reading other saved secrets.
+- Resolve provider-default model names locally and distinguish missing keys from unavailable Keychain status. Include keys saved for earlier custom endpoints. Fresh settings forms keep cached inputs from overwriting new model choices.
+
 # RAssistant 0.15.0
 
 - Choose OpenAI, Claude, Gemini, DeepSeek, Groq, Mistral, OpenRouter, Perplexity, Hugging Face, xAI, Together AI, Fireworks AI or Cerebras in API settings. Add other services through an HTTPS OpenAI-compatible endpoint and an exact model ID.

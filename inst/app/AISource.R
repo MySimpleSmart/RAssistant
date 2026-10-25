@@ -1615,6 +1615,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     })
   }
 
+  modal_button <- function(label)htmltools::tagAppendAttributes(shiny::modalButton(label),class="ai-btn")
   styles <- '
   :root{--bg:#fff;--panel:#f7f8fa;--text:#222;--muted:#6d737c;--border:#d7dce1;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
@@ -1659,6 +1660,26 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     padding:8px;margin:0;overflow:auto;white-space:pre;font:11px var(--mono)}
   .assistant-help p{margin:0 0 9px}
   .assistant-help details>summary{display:list-item;cursor:pointer;margin-left:14px}
+  .api-active{border:1px solid var(--border);border-radius:3px;background:#f5f6f7;padding:8px;margin-bottom:12px}
+  .api-active p{margin:0 0 4px}.api-active p:last-child{margin:0}
+  .api-connections{width:100%;table-layout:fixed;border-collapse:collapse;margin:5px 0 12px;font-size:11px}
+  .api-connections th,.api-connections td{padding:5px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top;overflow-wrap:anywhere}
+  .api-connections th:nth-child(1){width:25%}.api-connections th:nth-child(2){width:32%}
+  .api-connections th:nth-child(3){width:16%}.api-connections th:nth-child(4){width:27%}
+  .api-connections code,.api-active code{font:10px var(--mono);color:inherit;background:transparent;padding:0;white-space:normal;overflow-wrap:anywhere}
+  .api-connections small,.api-endpoint{display:block;color:var(--muted);font-size:10px;overflow-wrap:anywhere}
+  .api-selected-status{color:var(--muted);font-size:11px;margin-bottom:9px}
+  @media(max-width:480px){
+    .api-connections,.api-connections tbody{display:block}
+    .api-connections thead{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+    .api-connections tbody tr{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border);padding:6px 0}
+    .api-connections td{border:0;min-width:0;padding:2px 5px}
+    .api-connections td:nth-child(1),.api-connections td:nth-child(2){grid-column:1/-1}
+    .api-connections td:first-child{font-weight:600}
+    .api-connections td[data-label]::before{content:attr(data-label) ": ";font-weight:600}
+    .api-connections small{display:inline;margin-left:5px;font-weight:400}
+    .api-connections .api-endpoint{font-weight:400}
+  }
   .btn.ai-btn{margin:0;border:1px solid #ccd2d9;border-radius:3px;box-shadow:none;
     color:#29323c;background:white;font-size:11px;line-height:1.3;padding:4px 9px}
   .btn.ai-btn:hover{background:#edf0f3}
@@ -2701,7 +2722,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           if(length(chats))shiny::actionButton("history_rename","Rename",class="ai-btn"),
           if(length(chats))shiny::actionButton("history_delete","Delete",class="ai-btn"),
           if(length(chats))shiny::actionButton("history_restore","Restore",class="ai-btn"),
-          htmltools::tagAppendAttributes(shiny::modalButton("Close"),class="ai-btn")),easyClose=TRUE))
+          modal_button("Close")),easyClose=TRUE))
     }
     shiny::observeEvent(input$history,{
       if(is.null(history) || state$busy || !is.null(state$pending))return()
@@ -2730,7 +2751,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       shiny::showModal(shiny::modalDialog(title="Rename chat",
         shiny::div(class="chat-history",shiny::textInput("history_name","Name",value=saved$title)),
         footer=shiny::div(class="history-actions",
-          htmltools::tagAppendAttributes(shiny::modalButton("Cancel"),class="ai-btn"),
+          modal_button("Cancel"),
           shiny::actionButton("history_save_name","Save",class="ai-btn"))))
     })
     shiny::observeEvent(input$history_save_name,{
@@ -2757,7 +2778,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       shiny::showModal(shiny::modalDialog(title="Delete chat?",
         shiny::p("This removes the selected local conversation. This cannot be undone."),
         footer=shiny::div(class="history-actions",
-          htmltools::tagAppendAttributes(shiny::modalButton("Cancel"),class="ai-btn"),
+          modal_button("Cancel"),
           shiny::actionButton("history_confirm_delete","Delete",class="ai-btn"))))
     })
     shiny::observeEvent(input$history_confirm_delete,{
@@ -2807,7 +2828,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         footer=shiny::div(class="history-actions",
           if(length(docs))shiny::actionButton("knowledge_remove","Remove selected",class="ai-btn"),
           shiny::actionButton("knowledge_save","Save instructions",class="ai-btn"),
-          htmltools::tagAppendAttributes(shiny::modalButton("Close"),class="ai-btn")),easyClose=TRUE))
+          modal_button("Close")),easyClose=TRUE))
     }
     shiny::observeEvent(input$knowledge,{
       if(is.null(knowledge) || state$busy)return()
@@ -2944,61 +2965,110 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     },ignoreInit=TRUE)
     api_notice <- shiny::reactiveVal("")
     api_revision <- shiny::reactiveVal(0L)
+    api_fields_id <- shiny::reactiveVal(NULL)
+    api_status <- shiny::reactiveVal(NULL)
     open_api_settings <- function() {
       if(is.null(api_settings) || state$busy || !is.null(state$pending))return()
       current <- api_settings$get()
       catalog <- api_settings$catalog()
       api_notice("")
+      api_status(api_settings$status())
       api_revision(api_revision()+1L)
+      previous_fields <- api_fields_id()
+      if(!is.null(previous_fields))output[[previous_fields]] <- NULL
+      fields_id <- paste0("api_fields_",api_revision())
+      api_fields_id(fields_id)
+      revision <- api_revision()
+      output[[fields_id]] <- shiny::renderUI({
+        api_fields_ui(input$api_provider,revision)
+      })
       shiny::showModal(shiny::modalDialog(title="API settings",easyClose=TRUE,
         shiny::div(class="assistant-help",
-          shiny::p(if(api_settings$ready())"Current: "else"Not configured: ",catalog[[current$provider]]$label,
-            if(nzchar(current$model))paste0(" / ",current$model)else" / provider default"),
+          shiny::uiOutput("api_overview"),
           shiny::selectInput("api_provider","Provider",choices=stats::setNames(names(catalog),
             vapply(catalog,`[[`,character(1),"label")),selected=current$provider,selectize=FALSE),
-          shiny::uiOutput("api_fields"),
+          shiny::uiOutput(fields_id),
           shiny::textOutput("api_notice")),
-        footer=shiny::tagList(shiny::modalButton("Cancel"),
-          shiny::actionButton("api_save","Save & use",class="ai-btn ai-primary"))))
+        footer=shiny::tagList(modal_button("Cancel"),
+          shiny::actionButton("api_save","Save & use",class="ai-btn ai-send"))))
     }
-    output$api_fields <- shiny::renderUI({
+    output$api_overview <- shiny::renderUI({
+      status <- api_status()
+      if(is.null(status))return(NULL)
+      active <- status$active
+      source <- active$key_source
+      key_label <- if(source$type=="environment")paste0("Environment / ",source$name," (loaded)")
+        else if(source$type=="keychain")"Keychain (loaded)"else"Not configured"
+      shiny::tagList(
+        shiny::div(class="api-active",
+          shiny::p(shiny::strong(if(active$ready)"Active connection"else"No active connection")),
+          shiny::p(shiny::strong(active$label)," / ",shiny::tags$code(active$model),
+            if(active$model_default)" (default)"),
+          if(active$provider=="custom")shiny::p(class="api-endpoint",active$base_url),
+          shiny::p(class="api-key-in-use","Key in use: ",key_label)),
+        shiny::strong("Connections"),
+        shiny::tags$table(class="api-connections","aria-label"="API keys and model settings",
+          shiny::tags$thead(shiny::tags$tr(lapply(c("Provider","Model","Keychain","Environment"),shiny::tags$th))),
+          shiny::tags$tbody(lapply(status$connections,function(row)shiny::tags$tr(
+            "data-provider"=row$provider,"data-endpoint"=row$base_url,"data-active"=tolower(as.character(row$active)),
+            shiny::tags$td(row$label,if(row$active)shiny::tags$small(if(active$ready)"Active"else"Selected"),
+              if(row$provider=="custom")shiny::span(class="api-endpoint",row$base_url)),
+            shiny::tags$td("data-label"="Model",shiny::tags$code(row$model),if(row$model_default)shiny::tags$small("Default")),
+            shiny::tags$td("data-label"="Keychain",row$stored),shiny::tags$td("data-label"="Environment",if(nzchar(row$environment))
+              paste0(row$environment,if(!row$environment_valid)" (invalid)"else"")else"Not set"))))),
+        if(!status$store_available)shiny::p("Keychain status unavailable. Unlock it and reopen API settings."))
+    })
+    api_fields_ui <- function(id,revision) {
       if(is.null(api_settings))return(NULL)
-      api_revision()
-      id <- input$api_provider
       catalog <- api_settings$catalog()
       if(is.null(id) || !id %in% names(catalog))return(NULL)
       spec <- catalog[[id]]
       saved <- api_settings$profiles()[[id]]
       if(identical(id,api_settings$get()$provider))saved <- api_settings$get()
-      env <- spec$env[nzchar(Sys.getenv(spec$env))]
       shiny::tagList(
-        shiny::div(style="display:none",shiny::textInput("api_form_provider",NULL,value=id)),
+        shiny::div(style="display:none",shiny::textInput("api_form_provider",NULL,value=id),
+          shiny::textInput("api_form_revision",NULL,value=as.character(revision))),
         shiny::textInput("api_model","Model ID",value=if(is.null(saved))spec$model else saved$model,
           placeholder=if(spec$factory=="chat_openai_compatible")"Enter the provider's exact model ID"else"Provider default (or enter a model ID)"),
         if(id=="custom")shiny::textInput("api_base_url","API base URL",value=if(is.null(saved))""else saved$base_url,
           placeholder="https://api.example.com/v1"),
         shiny::passwordInput("api_key_entry","API key",value="",placeholder="Leave blank to reuse this provider's key"),
-        shiny::p(if(length(env))paste0(paste(env,collapse=" / ")," is set and takes precedence over a saved key.")
-          else "Keys are stored in your OS credential store, separately for each provider."),
+        shiny::uiOutput("api_selected_status"),
         shiny::p("Messages and enabled context go to this provider. For Plot and Image, choose a model that supports images."),
         if(id=="custom")shiny::p("Use an OpenAI-compatible Chat Completions endpoint. Changing the URL requires its own key."))
+    }
+    output$api_selected_status <- shiny::renderUI({
+      status <- api_status();id <- input$api_provider
+      if(is.null(status) || is.null(id) || !id %in% names(api_settings$catalog()))return(NULL)
+      endpoint <- if(id=="custom")sub("/+$","",trimws(chat_text(input$api_base_url)))else""
+      match <- Filter(function(row)identical(row$provider,id) &&
+        (id!="custom" || identical(row$base_url,endpoint)),status$connections)
+      stored <- if(!status$store_available)"Unavailable"else if(length(match))match[[1L]]$stored else"Not saved"
+      vars <- api_settings$catalog()[[id]]$env
+      present <- vars[nzchar(Sys.getenv(vars))]
+      shiny::div(class="api-selected-status","Keychain: ",stored,". ",
+        if(length(present))paste0(present[[1L]]," overrides the saved key.")
+        else "No environment key. Leave blank to use the saved key.")
     })
     output$api_notice <- shiny::renderText(api_notice())
     shiny::observeEvent(input$api_settings,open_api_settings(),ignoreInit=TRUE)
     shiny::observeEvent(input$api_save,{
       if(is.null(api_settings) || state$busy || !is.null(state$pending))return()
       on.exit(shiny::updateTextInput(session,"api_key_entry",value=""),add=TRUE)
-      if(!identical(input$api_provider,input$api_form_provider)) {
+      if(!identical(input$api_provider,input$api_form_provider) ||
+          !identical(chat_text(input$api_form_revision),as.character(api_revision()))) {
         api_notice("Wait for the selected provider's fields to load, then retry.");return()
       }
       result <- tryCatch(api_settings$save(input$api_provider,input$api_model,
         if(input$api_provider=="custom")input$api_base_url else NULL,
         key=if(is.null(input$api_key_entry))""else input$api_key_entry),error=function(e)e)
       if(inherits(result,"error")) {
+        api_status(api_settings$status())
         api_notice(redact_api_secrets(conditionMessage(result)));return()
       }
+      api_status(api_settings$status())
       shiny::removeModal()
-      shiny::showNotification(paste("Using",api_settings$catalog()[[result$provider]]$label),duration=4)
+      shiny::showNotification(paste("Using",api_status()$active$label,"/",api_status()$active$model),duration=4)
     },ignoreInit=TRUE)
     shiny::observeEvent(input$ai_client_ready,{
       if(!is.null(api_settings) && !api_settings$ready())open_api_settings()
@@ -3029,7 +3099,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
               render_markdown("~~~r\nRAssistant::update_assistant()\n~~~")))
         ),
         footer=shiny::tagList(
-          htmltools::tagAppendAttributes(shiny::modalButton("Close"),class="ai-btn")
+          modal_button("Close")
         ),easyClose=TRUE))
     })
     shiny::observeEvent(input$check_updates,{
@@ -3054,7 +3124,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             target="_blank",rel="noopener noreferrer","View release notes"),
           shiny::p(if(is.null(history))"Updating ends this unsaved chat."
             else "Chat saved. Reopens after updating.")),
-        footer=shiny::tagList(htmltools::tagAppendAttributes(shiny::modalButton("Cancel"),class="ai-btn"),
+        footer=shiny::tagList(modal_button("Cancel"),
           shiny::actionButton("confirm_update","Update now",class="ai-btn ai-send"))))
     })
     shiny::observeEvent(input$confirm_update,{

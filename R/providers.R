@@ -95,15 +95,91 @@
   }
   do.call(.api_factory(spec$factory), args)
 }
+.api_key_source <- function(profile, key) {
+  if (!.valid_key(key)) return(list(type="none", name="Not configured"))
+  vars <- .api_providers()[[profile$provider]]$env
+  values <- Sys.getenv(vars)
+  first <- which(nzchar(values))
+  if (length(first) && identical(unname(values[[first[[1L]]]]), key))
+    return(list(type="environment", name=vars[[first[[1L]]]]))
+  list(type="keychain", name="Keychain")
+}
+.api_key_inventory <- function() {
+  # List metadata once when settings opens; never retrieve other providers' keys.
+  tryCatch({
+    backend <- .credential_backend()
+    entries <- suppressWarnings(backend$list())
+    if (!is.data.frame(entries) || !all(c("service","username") %in% names(entries)))
+      stop("Credential metadata unavailable")
+    services <- as.character(entries$service[!is.na(entries$username) & entries$username==.key_account])
+    list(available=TRUE, services=unique(services[!is.na(services) & startsWith(services,"RAssistant/")]))
+  }, error=function(e) list(available=FALSE, services=character()))
+}
+.api_model_info <- function(profile) {
+  if (nzchar(profile$model)) return(list(name=profile$model, default=FALSE))
+  if (.api_providers()[[profile$provider]]$factory=="chat_openai_compatible")
+    return(list(name="Not set", default=FALSE))
+  # Resolve ellmer's actual default locally, without authentication or HTTP.
+  model <- tryCatch(suppressMessages(.api_client(profile,"model-preview",NULL)$get_model()),
+    error=function(e)NULL)
+  list(name=if(.api_text(model) && nzchar(model))model else "Default unavailable", default=TRUE)
+}
+.api_connection_status <- function(current, key, source) {
+  catalog <- .api_providers()
+  prefs <- .read_api_preferences()$profiles
+  inventory <- .api_key_inventory()
+  active_model <- .api_model_info(current)
+  rows <- list()
+  add <- function(profile, remembered=TRUE) {
+    id <- profile$provider
+    active <- identical(profile$provider,current$provider) &&
+      (id!="custom" || identical(profile$base_url,current$base_url))
+    model <- if(active)active_model else if(remembered).api_model_info(profile)
+      else list(name="Not saved",default=FALSE)
+    vars <- catalog[[id]]$env
+    values <- Sys.getenv(vars)
+    present <- which(nzchar(values))
+    env <- if(length(present))vars[[present[[1L]]]]else ""
+    env_valid <- if(length(present)).valid_key(unname(values[[present[[1L]]]]))else FALSE
+    saved <- .api_service(profile) %in% inventory$services
+    if(!active && !remembered && !saved && !nzchar(env))return(invisible(NULL))
+    rows[[length(rows)+1L]] <<- list(provider=id,label=catalog[[id]]$label,base_url=profile$base_url,
+      active=active,model=model$name,model_default=model$default,
+      stored=if(!inventory$available)"Unavailable"else if(saved)"Saved"else"Not saved",
+      environment=env,environment_valid=env_valid)
+  }
+  for(id in setdiff(names(catalog),"custom")) {
+    profile <- if(id==current$provider)current else prefs[[id]]
+    remembered <- !is.null(profile)
+    if(is.null(profile))profile <- list(provider=id,model=catalog[[id]]$model,base_url=catalog[[id]]$base_url)
+    add(profile,remembered)
+  }
+  custom_urls <- unique(c(if(current$provider=="custom")current$base_url,prefs$custom$base_url,
+    substring(inventory$services[startsWith(inventory$services,"RAssistant/custom/")],nchar("RAssistant/custom/")+1L)))
+  for(url in custom_urls) {
+    profile <- tryCatch(.credential_profile("custom",url),error=function(e)NULL)
+    if(is.null(profile))next
+    remembered <- !is.null(prefs$custom) && identical(url,prefs$custom$base_url)
+    if(remembered)profile <- prefs$custom
+    add(profile,remembered)
+  }
+  if(!length(custom_urls) && any(nzchar(Sys.getenv(catalog$custom$env))))
+    add(list(provider="custom",model="",base_url=""),remembered=FALSE)
+  list(active=list(provider=current$provider,label=catalog[[current$provider]]$label,
+    model=active_model$name,model_default=active_model$default,base_url=current$base_url,
+    ready=.valid_key(key),key_source=source),connections=rows,store_available=inventory$available)
+}
 .new_api_settings <- function(profile, key = NULL) {
   current <- profile
   secret <- key
+  key_source <- .api_key_source(profile, key)
   seen <- if (.valid_key(key)) key else character()
   list(
     get = function() current,
     ready = function() .valid_key(secret),
     profiles = function() .read_api_preferences()$profiles,
     catalog = .api_providers,
+    status = function() .api_connection_status(current, secret, key_source),
     secrets = function() unique(c(seen, Sys.getenv(.api_key_envvars(), unset = ""))),
     save = function(provider, model, base_url = NULL, key = "") {
       next_profile <- .api_profile(provider, model, base_url)
@@ -120,6 +196,7 @@
       .write_api_preferences(prefs)
       current <<- next_profile
       secret <<- next_key
+      key_source <<- .api_key_source(next_profile, next_key)
       seen <<- unique(c(seen, key[nzchar(key)], next_key))
       invisible(current)
     },

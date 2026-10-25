@@ -62,7 +62,11 @@ main <- function() {
       Sys.unsetenv(store_env$.api_key_envvars())
       keys <- new.env(parent=emptyenv())
       store_env$.credential_backend <- function()list(name="macos",
-        list=function(service)data.frame(username=if(exists(service,keys,inherits=FALSE))"default"else character()),
+        list=function(service=NULL) {
+    services <- ls(keys,all.names=TRUE)
+    if(!is.null(service))services <- services[services==service]
+    data.frame(service=services,username=rep("default",length(services)))
+  },
         get=function(service,username)get(service,keys,inherits=FALSE),
         set_with_value=function(service,username,password)assign(service,password,keys))
       store_env$.provider_preferences_path <- function()file.path(history_root,"api-settings.rds")
@@ -286,6 +290,11 @@ main <- function() {
     wait_js('document.getElementById("api_provider")!==null && document.getElementById("api_key_entry")!==null')
     check(isTRUE(js('document.querySelectorAll("#api_provider option").length===14 && document.getElementById("api_key_entry").type==="password"')),
       "first launch offers all providers with hidden key input and no OpenAI key requirement")
+    wait_js('document.querySelector("#api_overview .api-active")!==null')
+    check(isTRUE(js('var cancel=document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]"),base=document.getElementById("new_chat");var a=getComputedStyle(cancel),b=getComputedStyle(base);cancel.classList.contains("ai-btn") && ["fontSize","paddingTop","paddingBottom","paddingLeft","paddingRight","borderRadius","lineHeight"].every(function(k){return a[k]===b[k]}) && document.getElementById("api_save").classList.contains("ai-send")')),
+      "Cancel uses the same button component and computed style as the app toolbar")
+    check(isTRUE(js('document.querySelector(".api-active").textContent.includes("No active connection") && document.querySelector(".api-key-in-use").textContent.includes("Not configured")')),
+      "the overview distinguishes an unconfigured selection from an active connection")
     choose <- function(id) {
       js(paste0('var field=document.getElementById("api_provider");field.value=',jsonlite::toJSON(id,auto_unbox=TRUE),';field.dispatchEvent(new Event("change",{bubbles:true}));'))
       wait_js(paste0('document.getElementById("api_form_provider")!==null && document.getElementById("api_form_provider").value===',jsonlite::toJSON(id,auto_unbox=TRUE)))
@@ -304,6 +313,8 @@ main <- function() {
     wait_js('document.getElementById("api_key_entry")!==null && document.getElementById("api_model").value==="gemini-test"')
     check(isTRUE(js('document.getElementById("api_key_entry").value==="" && document.getElementById("api_model").value==="gemini-test" && document.getElementById("api_provider").value==="gemini"')),
       "reopening settings remembers the model without returning the saved key to the browser")
+    check(isTRUE(js('var row=document.querySelector(".api-connections tr[data-provider=gemini]");row.dataset.active==="true" && row.children[1].textContent.includes("gemini-test") && row.children[2].textContent==="Saved" && row.children[3].textContent==="Not set" && document.querySelector(".api-key-in-use").textContent.includes("Keychain (loaded)")')),
+      "the overview clearly identifies the active model, saved key and actual loaded key source")
     choose("custom");fill("api_model","custom-test");fill("api_base_url","https://mock.example/v1")
     js('document.getElementById("api_save").click()')
     wait_js('document.getElementById("api_notice").textContent.includes("Enter an API key")')
@@ -326,6 +337,27 @@ main <- function() {
       "switching back reuses Gemini's saved key and retains the previous chat")
     check(isTRUE(js('!document.getElementById("messages").textContent.includes("browser-key") && window.aisourceErrors.length===0')),
       "provider settings do not leak keys into chat or cause JavaScript errors")
+    js('openAction("api_settings")');wait_js('document.getElementById("api_model")!==null')
+    fill("api_model","");js('document.getElementById("api_save").click()')
+    wait_js('document.getElementById("shiny-modal")===null')
+    js('openAction("api_settings")')
+    wait_js('document.querySelector(".api-active code")!==null && document.getElementById("api_model")!==null && document.getElementById("api_model").value===""')
+    check(isTRUE(js('var code=document.querySelector(".api-active code").textContent;code.length>0 && code!=="Default unavailable" && document.querySelector(".api-active").textContent.includes("(default)")')),
+      "default model selections show their concrete runtime model ID")
+    choose("openai")
+    check(isTRUE(js('document.querySelector(".api-active").textContent.includes("Google Gemini") && document.querySelector("tr[data-provider=gemini]").dataset.active==="true"')),
+      "editing another provider does not falsely mark it as active before Save and use")
+    browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
+    check(isTRUE(js('var table=document.querySelector(".api-connections").getBoundingClientRect(),dialog=document.querySelector(".modal-dialog").getBoundingClientRect();table.right<=innerWidth && table.left>=0 && dialog.right<=innerWidth && dialog.left>=0')),
+      "provider, model and key status columns fit a narrow Viewer without horizontal clipping")
+    screenshot <- Sys.getenv("RA_BROWSER_API_SCREENSHOT")
+    if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+    browser$Emulation$clearDeviceMetricsOverride()
+    js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click()')
+    wait_js('document.getElementById("shiny-modal")===null')
+    js('openAction("api_settings")');wait_js('document.getElementById("api_provider")!==null')
+    check(isTRUE(js('document.getElementById("api_provider").value==="gemini" && !document.getElementById("shiny-modal").textContent.includes("browser-key")')),
+      "Cancel preserves the active provider and key values never enter the overview")
     cat(checks,"API settings browser checks passed\n");return(invisible(NULL))
   }
   check(isTRUE(js('!document.getElementById("app_menu").open && document.querySelector("#app_menu #history")!==null && document.querySelector("#app_menu #knowledge")!==null && document.getElementById("knowledge").textContent==="Knowledge Base" && document.querySelector("#app_menu #help")!==null && document.querySelector("#app_menu #close")!==null && document.getElementById("check_updates").closest("#app_menu")!==null && document.getElementById("console_context").closest(".toolbar-actions")!==null && document.querySelector(".upload-row #console_context")===null && document.getElementById("workspace_context").closest(".toolbar-actions")!==null && document.querySelector("#app_menu #workspace_context")===null && document.getElementById("workspace_context").checked && document.getElementById("workspace_context_state").textContent==="On"')),

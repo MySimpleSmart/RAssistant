@@ -43,6 +43,10 @@ a hidden password prompt. It defaults to OpenAI for compatibility.
 unset or edit an existing environment variable.
 
 Model preferences and the last selected provider are saved locally without keys.
+API settings shows the exact active model and loaded credential source, with
+separate Keychain and environment status for saved connections. Default model
+IDs are resolved locally; the overview neither calls an AI API nor retrieves
+other saved secrets. An unavailable store is distinct from an absent key.
 Custom endpoints use the OpenAI-compatible Chat Completions protocol, not an
 arbitrary HTTP API. Save does not make a paid API request; authentication and
 model access are checked on Send. Image support depends on the selected model.

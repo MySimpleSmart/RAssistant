@@ -10,7 +10,11 @@ on.exit({Sys.unsetenv(vars);if(any(!is.na(old)))do.call(Sys.setenv,as.list(old[!
 config$.provider_preferences_path <- function()file.path(root,"settings.rds")
 store <- new.env(parent=emptyenv())
 config$.credential_backend <- function()list(name="macos",
-  list=function(service)data.frame(username=if(exists(service,store,inherits=FALSE))"default"else character()),
+  list=function(service=NULL) {
+    services <- ls(store,all.names=TRUE)
+    if(!is.null(service))services <- services[services==service]
+    data.frame(service=services,username=rep("default",length(services)))
+  },
   get=function(service,username)get(service,store,inherits=FALSE),
   set_with_value=function(service,username,password)assign(service,password,store))
 calls <- list();api_failure <- FALSE
@@ -34,9 +38,12 @@ shiny::testServer(app$server,{
   session$setInputs(chat_submit=list(text="First message",nonce=1L))
   check(!length(calls) && !length(state$messages),"missing credentials open settings without sending or recording a failed chat")
   session$setInputs(prompt="Keep this draft",api_provider="anthropic",api_model="claude-test",api_form_provider="openai",
-    api_key_entry="claude-context-key",api_save=1L)
+    api_key_entry="claude-context-key",api_form_revision="1",api_save=1L)
   check(!api$ready() && grepl("fields to load",api_notice(),fixed=TRUE),"a stale provider form cannot save a key under another provider")
-  session$setInputs(api_form_provider="anthropic",api_save=2L)
+  session$setInputs(api_form_provider="anthropic",api_form_revision="0",api_save=2L)
+  check(!api$ready() && grepl("fields to load",api_notice(),fixed=TRUE),
+    "an earlier opening's cached fields cannot activate a connection")
+  session$setInputs(api_form_revision="1",api_save=3L)
   check(api$ready() && identical(api$get()$provider,"anthropic") && identical(input$prompt,"Keep this draft"),
     "saving a provider retains the current draft")
   session$setInputs(chat_submit=list(text="Explain x",nonce=2L))
@@ -46,7 +53,7 @@ shiny::testServer(app$server,{
   check(grepl("CURRENT EDITOR",calls[[1L]]$pieces[[1L]],fixed=TRUE) && grepl("1 | x <- 1",calls[[1L]]$pieces[[1L]],fixed=TRUE),
     "switching providers preserves fresh numbered Source context")
   session$setInputs(api_provider="gemini",api_form_provider="gemini",api_model="gemini-test",
-    api_key_entry="gemini-context-key",api_save=3L)
+    api_key_entry="gemini-context-key",api_save=4L)
   api_failure <<- TRUE
   session$setInputs(chat_submit=list(text="Explain x again",nonce=3L))
   last <- tail(state$messages,1L)[[1L]]$text
@@ -58,7 +65,7 @@ shiny::testServer(app$server,{
   check(length(Filter(function(m)m$role=="You",state$messages))==3L,
     "switching providers keeps the prior conversation and its retry")
   session$setInputs(api_provider="deepseek",api_form_provider="deepseek",api_model="deepseek-chat",
-    api_key_entry="deepseek-context-key",api_save=4L)
+    api_key_entry="deepseek-context-key",api_save=5L)
   fixture <- tempfile(fileext=".png")
   grDevices::png(fixture,width=80,height=80);par(mar=rep(0,4));plot.new();points(.5,.5);invisible(grDevices::dev.off())
   app$ask_ai("system","prompt",images=fixture)
