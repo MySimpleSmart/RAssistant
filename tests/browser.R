@@ -297,7 +297,7 @@ main <- function() {
     'window.addEventListener("message",function(event){if(event.data==="disconnected" && window.location.href.indexOf(event.origin)===0)window.location.replace("about:blank");},true);')
   browser$Page$addScriptToEvaluateOnNewDocument(source=page_setup)
   browser$Page$navigate(url)
-  wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled')
+  wait_js('!!document.getElementById("send") && !document.getElementById("send").disabled',timeout=30)
   wait_js('document.querySelector(".empty")!==null')
   js('window.alerts=[];window.alert=function(x){alerts.push(x);};window.receivedMessages=[];$(document).on("shiny:message",function(e){if(e.message.custom)receivedMessages.push(e.message.custom);});')
   check(isTRUE(js('document.querySelector(".empty")!==null')), "existing Shiny UI connects and renders")
@@ -310,6 +310,14 @@ main <- function() {
       "Cancel uses the same button component and computed style as the app toolbar")
     check(isTRUE(js('document.querySelector(".api-active").textContent.includes("No active connection") && document.querySelector(".api-key-in-use").textContent.includes("Not configured")')),
       "the overview distinguishes an unconfigured selection from an active connection")
+    js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click()')
+    wait_js('document.getElementById("shiny-modal")===null && document.getElementById("change_model")!==null')
+    js('document.getElementById("change_model").click()')
+    wait_js('document.getElementById("api_current_connection")!==null')
+    check(isTRUE(js('document.getElementById("api_current_connection").textContent==="No active connection"')),
+      "the provider picker never claims an unconfigured model is already in use")
+    js('document.getElementById("api_more_settings").click()')
+    wait_js('document.getElementById("api_key_entry")!==null && document.querySelector(".modal-title").textContent==="API settings"')
     choose <- function(id) {
       js(paste0('var field=document.getElementById("api_provider");field.value=',jsonlite::toJSON(id,auto_unbox=TRUE),';field.dispatchEvent(new Event("change",{bubbles:true}));'))
       wait_js(paste0('document.getElementById("api_form_provider")!==null && document.getElementById("api_form_provider").value===',jsonlite::toJSON(id,auto_unbox=TRUE)))
@@ -404,12 +412,14 @@ main <- function() {
       "Use OpenAI switches the actual connection in one click without a repeated key, chat request or lost draft")
     js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click()')
     wait_js('document.getElementById("shiny-modal")===null && document.getElementById("change_model")!==null')
-    check(isTRUE(js('var button=document.getElementById("change_model");button.textContent.includes("OpenAI") && button.textContent.includes(document.querySelector("#change_model").title.split(" · ")[1].replace(" ▾","")) && button.closest(".send-controls")===document.getElementById("send").parentElement')),
-      "the exact active provider and model appear beside Send")
+    check(isTRUE(js('var button=document.getElementById("change_model");button.title.includes("OpenAI") && button.querySelector(".model-name").textContent===button.title.split(" · ")[1] && button.closest(".send-controls")===document.getElementById("send").parentElement')),
+      "the composer shows only the model name and keeps the full provider and model in its tooltip")
     js('document.getElementById("change_model").click()')
     wait_js('document.getElementById("api_model")!==null && document.getElementById("api_provider").value==="openai"')
-    check(isTRUE(js('document.querySelector(".modal-title").textContent==="Change model" && document.querySelector(".api-overview")===null && document.getElementById("api_key_entry")===null && document.getElementById("api_more_settings")!==null')),
+    check(isTRUE(js('document.querySelector(".modal-title").textContent==="Provider & model" && document.querySelector(".api-overview")===null && document.getElementById("api_key_entry")===null && document.getElementById("api_more_settings")!==null')),
       "the composer opens a compact picker with an API settings link and no repeated key entry")
+    check(isTRUE(js('document.getElementById("api_current_connection").textContent.includes("OpenAI") && document.getElementById("api_save").textContent==="Apply" && Array.from(document.getElementById("api_provider").options).find(function(o){return o.value==="gemini";}).textContent.includes("key available") && Array.from(document.getElementById("api_provider").options).find(function(o){return o.value==="xai";}).textContent.includes("add key")')),
+      "the picker explicitly supports provider changes, shows the current connection and marks available keys")
     wait_js('document.getElementById("api_model").selectize.options["openai-only-model"]!==undefined && !document.getElementById("api_load_models").disabled')
     check(isTRUE(js('var p=document.getElementById("api_model").selectize;p.options["openai-only-model"].group==="reported" && p.options["gemini-only-model"]===undefined && document.getElementById("api_model_notice").textContent.includes("models returned")')),
       "opening the composer picker automatically shows only the selected provider's freshly reported catalog")
@@ -431,18 +441,19 @@ main <- function() {
     check(isTRUE(js('document.getElementById("api_model").selectize.options["openai-only-model"]===undefined')),
       "changing providers refreshes availability automatically without keeping another provider's models")
     js('document.getElementById("api_save").click()')
-    wait_js('document.getElementById("shiny-modal")===null && document.getElementById("change_model").textContent.includes("Google Gemini")')
+    wait_js('document.getElementById("shiny-modal")===null && document.getElementById("change_model").title.includes("Google Gemini")')
     js('document.getElementById("change_model").click()');wait_js('document.getElementById("api_model")!==null')
     choose("xai");fill("api_model","missing-key-model");js('document.getElementById("api_save").click()')
     wait_js('document.getElementById("api_notice").textContent.includes("Open API settings")')
-    check(isTRUE(js('document.getElementById("change_model").textContent.includes("Google Gemini") && document.getElementById("prompt").value==="Draft kept while selecting Gemini"')),
+    check(isTRUE(js('document.getElementById("change_model").title.includes("Google Gemini") && document.getElementById("prompt").value==="Draft kept while selecting Gemini"')),
       "a missing provider key preserves the active model and explains how to add its key")
     js('document.getElementById("api_more_settings").click()')
     wait_js('document.querySelector(".modal-title").textContent==="API settings" && document.getElementById("api_key_entry")!==null')
-    check(TRUE,"the compact picker links directly to full API settings for credentials")
+    check(isTRUE(js('document.getElementById("api_provider").value==="xai" && document.getElementById("api_model").value==="missing-key-model"')),
+      "adding a provider key keeps the selected provider and model in full API settings")
     fill("api_key_entry","catalog-failure-browser-key")
     wait_js('document.getElementById("api_model_notice").textContent.includes("Could not load available models") && !document.getElementById("api_load_models").disabled')
-    check(isTRUE(js('Object.values(document.getElementById("api_model").selectize.options).every(function(x){return x.group!=="reported";}) && !document.getElementById("api_model_notice").textContent.includes("catalog-failure-browser-key") && document.getElementById("change_model").textContent.includes("Google Gemini")')),
+    check(isTRUE(js('Object.values(document.getElementById("api_model").selectize.options).every(function(x){return x.group!=="reported";}) && !document.getElementById("api_model_notice").textContent.includes("catalog-failure-browser-key") && document.getElementById("change_model").title.includes("Google Gemini")')),
       "failed discovery removes earlier available options, redacts the key and leaves the active connection unchanged")
     js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click()')
     wait_js('document.getElementById("shiny-modal")===null')
@@ -451,8 +462,10 @@ main <- function() {
     js('document.getElementById("api_save").click()')
     wait_js('document.getElementById("shiny-modal")===null && document.getElementById("change_model").textContent.includes("model-xxxxx")')
     browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
-    check(isTRUE(js('var model=document.getElementById("change_model").getBoundingClientRect(),send=document.getElementById("send").getBoundingClientRect();model.left>=0 && send.right<=innerWidth && model.right<=send.left && Math.abs((model.top+model.bottom)/2-(send.top+send.bottom)/2)<2 && document.documentElement.scrollWidth<=innerWidth')),
-      "a long model ID remains beside Send and wraps inside a narrow Viewer")
+    check(isTRUE(js('var model=document.getElementById("change_model").getBoundingClientRect(),send=document.getElementById("send").getBoundingClientRect();model.left>=0 && model.width<=110 && model.height<=send.height+1 && send.right<=innerWidth && model.right<=send.left && Math.abs((model.top+model.bottom)/2-(send.top+send.bottom)/2)<2 && document.documentElement.scrollWidth<=innerWidth && getComputedStyle(document.querySelector("#change_model .model-name")).textOverflow==="ellipsis"')),
+      "a long model ID uses one compact line beside Send, with an ellipsis instead of extra rows")
+    check(isTRUE(js('document.getElementById("change_model").title.includes("Google Gemini") && document.getElementById("change_model").title.length>190 && Math.abs(document.getElementById("image_picker").getBoundingClientRect().top-document.getElementById("send").getBoundingClientRect().top)<2')),
+      "the complete connection remains accessible while Image, Plot, undo, redo and Send fit one row")
     screenshot <- Sys.getenv("RA_BROWSER_COMPOSER_SCREENSHOT")
     if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
     browser$Emulation$clearDeviceMetricsOverride()

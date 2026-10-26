@@ -119,6 +119,16 @@ shiny::testServer(app$server,{
   session$setInputs(change_model=2L)
   check(identical(api_revision(),old_revision),"a busy request cannot open the model picker or change its target")
   state$busy <- FALSE
+  open_api_settings(compact=TRUE)
+  session$setInputs(api_provider="xai",api_form_provider="xai",api_form_revision=as.character(api_revision()),
+    api_model="xai-chosen-model",api_more_settings=1L)
+  check(!api_compact() && grepl("xai-chosen-model",output[[api_fields_id()]]$html,fixed=TRUE) &&
+    grepl("api_key_entry",output[[api_fields_id()]]$html,fixed=TRUE),
+    "opening key management preserves the pending provider and model instead of reverting to the active provider")
+  session$setInputs(api_form_revision=as.character(api_revision()),api_key_entry="xai-provider-key",api_save=7L)
+  check(api$get()$provider=="xai" && api$get()$model=="xai-chosen-model" && get("RAssistant/OpenAI",store)=="openai-context-key" &&
+    grepl("xAI / Grok",output$compose_model_status$html,fixed=TRUE),
+    "the chosen provider and model activate with their own key and update the compact composer tooltip")
   session$close()
 })
 # Validation children must not inherit any supported provider's environment key.

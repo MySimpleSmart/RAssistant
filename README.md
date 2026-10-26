@@ -81,10 +81,13 @@ Keychain, and any environment override. Defaults show their concrete model ID.
 Keychain status is read from metadata when settings opens; saved secrets are
 not retrieved for this overview. An unavailable store is shown separately from
 a missing key. Unsaved provider selections do not change the active connection.
-**The provider and exact model appear beside Send.** Click that label to open a
-compact picker, choose a provider/model and click **Use model**. It reuses saved
-keys and preserves the chat and draft. **API settings** in the picker opens key
-management. Switching is disabled while a request or run approval is active.
+**A compact model name appears beside Send.** Long names use an ellipsis; hover
+shows the complete provider and model. Click it to open **Provider & model**,
+select a **Provider**, choose its **Model**, then click **Apply**. Providers with
+a saved or environment key are marked. The picker shows the full current
+connection and reuses saved keys while preserving the chat and draft.
+**API settings** opens key management and keeps your pending provider/model
+selection, including a custom endpoint. Switching is disabled while a request or run approval is active.
 
 Click **Use OpenAI** (or another saved provider's **Use** button) to switch in
 one step without entering its key again. The model picker automatically fetches model IDs

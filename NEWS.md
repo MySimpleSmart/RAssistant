@@ -1,3 +1,9 @@
+# RAssistant 0.16.5
+
+- Keep the model button beside Send on one compact line. Show the model name with an ellipsis when needed; retain the complete provider and model in its tooltip and inside the picker.
+- Label the picker Provider & model and its confirmation Apply. Show the current connection and indicate which providers already have a key.
+- Preserve the selected provider, model and custom endpoint when opening API settings to add a key, instead of reverting to the active connection. Automatic model discovery stays enabled.
+
 # RAssistant 0.16.4
 
 - Automatically load the selected provider's model catalog when opening the picker, changing providers, or entering a key. Refresh models retries discovery without making a chat request.

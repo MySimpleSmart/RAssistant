@@ -1790,8 +1790,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .upload-row{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:5px}
   .upload-row>.attach-plot,.send-controls>#send{flex:0 0 auto}
   .send-controls{display:flex;align-items:center;justify-content:flex-end;gap:5px;margin-left:auto;min-width:0;max-width:100%}
-  .model-status{min-width:0;max-width:240px}
-  .btn.model-picker{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:left}
+  .model-status{min-width:0;max-width:140px}
+  .btn.model-picker{display:inline-flex;align-items:center;gap:4px;max-width:100%;white-space:nowrap;text-align:left}
+  .model-picker .model-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .model-picker .model-caret{flex:0 0 auto}
+  .api-current{margin-bottom:10px;overflow-wrap:anywhere}
+  .api-current code{font:11px var(--mono);color:inherit;background:transparent;padding:0}
+  @media(max-width:420px){.model-status{max-width:110px}}
   .attach-plot{display:inline-flex;align-items:center;justify-content:center;
     border:1px solid #ccd2d9;background:white;color:#29323c;cursor:pointer;
     font:11px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -3102,17 +3107,25 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       api_status()
       active <- api_settings$active()
       label <- if(active$ready)paste(active$label,active$model,sep=" · ")else"Choose model"
-      shiny::actionButton("change_model",paste0(label," \u25be"),class="ai-btn model-picker",
-        title=paste("Change model:",label),"aria-label"=paste("Change model:",label),
+      shiny::actionButton("change_model",shiny::tagList(
+        shiny::span(class="model-name",if(active$ready)active$model else"Choose model"),
+        shiny::span(class="model-caret","aria-hidden"="true","\u25be")),class="ai-btn model-picker",
+        title=paste("Change provider or model:",label),"aria-label"=paste("Change provider or model:",label),
         disabled=if(state$busy || !is.null(state$pending))"disabled"else NULL)
     })
-    open_api_settings <- function(compact=FALSE) {
+    open_api_settings <- function(compact=FALSE,selection=NULL) {
       if(is.null(api_settings) || state$busy || !is.null(state$pending))return()
       current <- api_settings$get()
       catalog <- api_settings$catalog()
       api_compact(isTRUE(compact))
       api_notice("")
       api_status(api_settings$status())
+      selected_provider <- if(is.list(selection) && chat_text(selection$provider) %in% names(catalog))selection$provider else current$provider
+      provider_labels <- vapply(names(catalog),function(id){
+        rows <- Filter(function(row)identical(row$provider,id),api_status()$connections)
+        has_key <- any(vapply(rows,function(row)if(nzchar(row$environment))row$environment_valid else row$stored=="Saved",logical(1)))
+        paste0(catalog[[id]]$label,if(id==current$provider && api_settings$ready())" · current"else if(has_key)" · key available"else" · add key")
+      },character(1))
       api_revision(api_revision()+1L)
       previous_fields <- api_fields_id()
       if(!is.null(previous_fields)) {
@@ -3123,20 +3136,23 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       api_fields_id(fields_id)
       revision <- api_revision()
       output[[fields_id]] <- shiny::renderUI({
-        api_fields_ui(input$api_provider,revision,compact=compact)
+        api_fields_ui(input$api_provider,revision,compact=compact,selection=selection)
       })
       overview_id <- paste0("api_overview_",revision)
       output[[overview_id]] <- shiny::renderUI(api_overview_ui())
-      shiny::showModal(shiny::modalDialog(title=if(compact)"Change model"else"API settings",easyClose=TRUE,
+      shiny::showModal(shiny::modalDialog(title=if(compact)"Provider & model"else"API settings",easyClose=TRUE,
         shiny::div(class="assistant-help",
-          if(!compact)shiny::uiOutput(overview_id,class="api-overview"),
-          shiny::selectInput("api_provider","Provider",choices=stats::setNames(names(catalog),
-            vapply(catalog,`[[`,character(1),"label")),selected=current$provider,selectize=FALSE),
+          if(!compact)shiny::uiOutput(overview_id,class="api-overview")else if(api_settings$ready())
+            shiny::div(id="api_current_connection",class="api-current",shiny::strong("Using: "),
+              api_settings$active()$label," / ",shiny::tags$code(api_settings$active()$model))else
+            shiny::div(id="api_current_connection",class="api-current","No active connection"),
+          shiny::selectInput("api_provider","Provider",choices=stats::setNames(names(catalog),provider_labels),
+            selected=selected_provider,selectize=FALSE),
           shiny::uiOutput(fields_id),
           shiny::textOutput("api_notice")),
         footer=shiny::tagList(
           if(compact)shiny::actionButton("api_more_settings","API settings",class="ai-btn"),
-          modal_button("Cancel"),shiny::actionButton("api_save","Use model",class="ai-btn ai-send"))))
+          modal_button("Cancel"),shiny::actionButton("api_save",if(compact)"Apply"else"Use model",class="ai-btn ai-send"))))
     }
     api_overview_ui <- function() {
       status <- api_status()
@@ -3166,12 +3182,14 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
               paste0(row$environment,if(!row$environment_valid)" (invalid)"else"")else"Not set"))}))),
         if(!status$store_available)shiny::p("Keychain status unavailable. Unlock it and reopen API settings."))
     }
-    api_fields_ui <- function(id,revision,compact=FALSE) {
+    api_fields_ui <- function(id,revision,compact=FALSE,selection=NULL) {
       if(is.null(api_settings))return(NULL)
       catalog <- api_settings$catalog()
       if(is.null(id) || !id %in% names(catalog))return(NULL)
       saved <- api_settings$profiles()[[id]]
       if(identical(id,api_settings$get()$provider))saved <- api_settings$get()
+      if(is.list(selection) && identical(chat_text(selection$provider),id))saved <- list(provider=id,
+        model=chat_text(selection$model),base_url=chat_text(selection$base_url))
       selected <- if(is.null(saved))""else saved$model
       if(!nzchar(selected) && identical(id,api_settings$get()$provider) && api_settings$ready())selected <- api_settings$active()$model
       choices <- if(nzchar(selected))stats::setNames(selected,paste0(selected," (configured; not checked)"))else character()
@@ -3245,7 +3263,12 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     output$api_notice <- shiny::renderText(api_notice())
     shiny::observeEvent(input$api_settings,open_api_settings(),ignoreInit=TRUE)
     shiny::observeEvent(input$change_model,open_api_settings(compact=TRUE),ignoreInit=TRUE)
-    shiny::observeEvent(input$api_more_settings,open_api_settings(),ignoreInit=TRUE)
+    shiny::observeEvent(input$api_more_settings,{
+      selection <- if(identical(input$api_provider,input$api_form_provider) &&
+        identical(chat_text(input$api_form_revision),as.character(api_revision())))list(
+          provider=input$api_provider,model=chat_text(input$api_model),base_url=chat_text(input$api_base_url))else NULL
+      open_api_settings(selection=selection)
+    },ignoreInit=TRUE)
     shiny::observeEvent(input$api_save,{
       if(is.null(api_settings) || state$busy || !is.null(state$pending))return()
       on.exit(shiny::updateTextInput(session,"api_key_entry",value=""),add=TRUE)

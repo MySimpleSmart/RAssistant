@@ -47,9 +47,12 @@ API settings shows the exact active model and loaded credential source, with
 separate Keychain and environment status for saved connections. Default model
 IDs are resolved locally; the overview neither calls an AI API nor retrieves
 other saved secrets. An unavailable store is distinct from an absent key.
-The active provider and exact model appear beside Send. Clicking the label
-opens a compact model/provider picker that reuses saved keys and preserves the
-conversation and draft; its API settings button opens key management. Switching
+A compact model name appears beside Send, with an ellipsis for long names.
+The tooltip and picker retain the complete provider and model. Clicking the
+label opens Provider & model: choose a Provider, choose its Model, then Apply.
+The picker marks available keys and reuses saved keys while preserving the
+conversation and draft. API settings opens key management without discarding
+the pending provider, model or custom endpoint. Switching
 is blocked during a request or pending run approval. Composer metadata is read
 locally without credential lookups.
 Saved providers offer a direct Use button. The model picker automatically requests the selected
