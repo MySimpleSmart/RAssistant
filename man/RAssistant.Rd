@@ -47,6 +47,10 @@ API settings shows the exact active model and loaded credential source, with
 separate Keychain and environment status for saved connections. Default model
 IDs are resolved locally; the overview neither calls an AI API nor retrieves
 other saved secrets. An unavailable store is distinct from an absent key.
+Saved providers offer a direct Use button. The model picker fills in a concrete
+default and accepts custom IDs. Load available models requests the selected
+provider's model catalog without sending a chat, saving a key or changing the
+active connection. Use model applies the selected model and connection.
 Custom endpoints use the OpenAI-compatible Chat Completions protocol, not an
 arbitrary HTTP API. Save does not make a paid API request; authentication and
 model access are checked on Send. Image support depends on the selected model.

@@ -122,12 +122,46 @@ main <- function() {
   check(row$environment=="GROQ_API_KEY" && row$stored=="Not saved" && !row$active,
     "environment-only providers appear with no false saved-key or active status")
   Sys.unsetenv("GROQ_API_KEY")
+  choices <- api$model_choices("deepseek")
+  check(nzchar(choices$selected) && choices$selected %in% unname(choices$choices),
+    "a provider's concrete default model is selectable before its first request")
+  before <- api$get();prefs_before <- env$.read_api_preferences()
+  discovery <- list();reader <- env$.api_models_factory
+  env$.api_models_factory <- function(name)function(credentials,base_url=NULL) {
+    discovery[[length(discovery)+1L]] <<- list(reader=name,key=credentials(),url=base_url)
+    data.frame(id=c("model-beta","model-alpha","bad model","model-alpha"))
+  }
+  models <- api$models("anthropic",key="discovery-only-key")
+  check(identical(models,c("model-alpha","model-beta")) && identical(tail(discovery,1L)[[1L]]$key,"discovery-only-key"),
+    "model discovery uses the selected unsaved key and filters duplicate or invalid IDs")
+  check(identical(api$get(),before) && identical(env$.read_api_preferences(),prefs_before) &&
+    is.null(env$.resolve_api_key("anthropic",prompt=FALSE)),
+    "loading a catalog neither activates a provider nor persists its entered key")
+  Sys.setenv(OPENAI_API_KEY="openai-env-switch-key")
+  api$models("openai",key="ignored-new-key")
+  check(tail(discovery,1L)[[1L]]$key=="openai-env-switch-key","catalog lookup follows the same environment-key precedence as chat")
+  api$use("openai")
+  check(api$get()$provider=="openai" && api$status()$active$key_source$name=="OPENAI_API_KEY",
+    "one-click Use OpenAI loads the environment credential without requiring key entry")
+  Sys.unsetenv("OPENAI_API_KEY")
+  active_before <- api$get()
+  check(failed(api$use("custom","https://one.example/v1"),"Choose a model") && identical(api$get(),active_before),
+    "an earlier custom endpoint cannot silently reuse another endpoint's model")
+  env$.api_models_factory <- reader
   for(id in names(env$.api_providers())) {
     p <- env$.api_profile(id,"test-model",if(id=="custom")"https://mock.example/v1"else NULL)
     client <- env$.api_client(p,"synthetic-transport-key","System context")
     check(inherits(client,"Chat") && identical(client$get_model(),"test-model"),paste(id,"constructs the requested model without a network call"))
   }
   if(requireNamespace("httr2",quietly=TRUE)) {
+    metadata_request <- NULL
+    model_ids <- httr2::with_mocked_responses(function(req) {
+      metadata_request <<- req
+      httr2::response(status_code=200L,url=req$url,headers=list(`content-type`="application/json"),
+        body=charToRaw('{"data":[{"id":"deepseek-first","object":"model","owned_by":"deepseek"},{"id":"deepseek-second","object":"model","owned_by":"deepseek"}]}'))
+    },env$.api_fetch_models(env$.credential_profile("deepseek"),"metadata-test-key"))
+    check(identical(model_ids,c("deepseek-first","deepseek-second")) && endsWith(metadata_request$url,"/models") && is.null(metadata_request$body),
+      "real ellmer discovery sends a metadata request and reads the provider's actual model IDs")
     image_file <- file.path(root,"plot.png")
     grDevices::png(image_file,width=80,height=80)
     graphics::par(mar=rep(0,4));graphics::plot.new();graphics::points(.5,.5)

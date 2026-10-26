@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.15.1
+Version: 0.16.0
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -31,6 +31,6 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Use the same button component for Cancel and Close across dialogs; API settings now follows the existing button styles.
-    Show the active provider, exact model and loaded key source. List configured models, saved Keychain keys and environment overrides without exposing key values or reading other saved secrets.
-    Resolve provider-default model names locally and distinguish missing keys from unavailable Keychain status. Include keys saved for earlier custom endpoints. Fresh settings forms keep cached inputs from overwriting new model choices.
+Config/RAssistant/Changes: Switch to a saved provider with a single Use button, including environment-configured OpenAI keys. Keep the chat and draft while switching; highlight the active provider and model.
+    Select a model from a searchable picker with its concrete default already filled in. Load available models from the selected provider, or enter another model ID; loading a list does not send a chat or switch the active connection.
+    Keep provider keys separate during model discovery and reject stale settings actions. Clarify when an environment key is available without a Keychain copy.

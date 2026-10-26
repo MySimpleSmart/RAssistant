@@ -70,6 +70,10 @@ main <- function() {
         get=function(service,username)get(service,keys,inherits=FALSE),
         set_with_value=function(service,username,password)assign(service,password,keys))
       store_env$.provider_preferences_path <- function()file.path(history_root,"api-settings.rds")
+      store_env$.api_models_factory <- function(name)function(credentials,base_url=NULL) {
+        stopifnot(grepl("browser-key$",credentials()))
+        data.frame(id=c("catalog-model-alpha","catalog-model-beta"))
+      }
       api <- store_env$.new_api_settings(store_env$.api_profile())
     }
     app <- load_assistant(package_info=if(standalone)NULL else list(version="0.1.1",history=history,knowledge=knowledge,
@@ -290,7 +294,7 @@ main <- function() {
     wait_js('document.getElementById("api_provider")!==null && document.getElementById("api_key_entry")!==null')
     check(isTRUE(js('document.querySelectorAll("#api_provider option").length===14 && document.getElementById("api_key_entry").type==="password"')),
       "first launch offers all providers with hidden key input and no OpenAI key requirement")
-    wait_js('document.querySelector("#api_overview .api-active")!==null')
+    wait_js('document.querySelector(".api-overview .api-active")!==null')
     check(isTRUE(js('var cancel=document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]"),base=document.getElementById("new_chat");var a=getComputedStyle(cancel),b=getComputedStyle(base);cancel.classList.contains("ai-btn") && ["fontSize","paddingTop","paddingBottom","paddingLeft","paddingRight","borderRadius","lineHeight"].every(function(k){return a[k]===b[k]}) && document.getElementById("api_save").classList.contains("ai-send")')),
       "Cancel uses the same button component and computed style as the app toolbar")
     check(isTRUE(js('document.querySelector(".api-active").textContent.includes("No active connection") && document.querySelector(".api-key-in-use").textContent.includes("Not configured")')),
@@ -300,11 +304,16 @@ main <- function() {
       wait_js(paste0('document.getElementById("api_form_provider")!==null && document.getElementById("api_form_provider").value===',jsonlite::toJSON(id,auto_unbox=TRUE)))
     }
     fill <- function(id,value) {
-      js(paste0('var field=document.getElementById(',jsonlite::toJSON(id,auto_unbox=TRUE),');field.value=',jsonlite::toJSON(value,auto_unbox=TRUE),';field.dispatchEvent(new Event("input",{bubbles:true}));field.dispatchEvent(new Event("change",{bubbles:true}));'))
+      if(id=="api_model")wait_js('document.getElementById("api_model")!==null && !!document.getElementById("api_model").selectize')
+      js(paste0('var field=document.getElementById(',jsonlite::toJSON(id,auto_unbox=TRUE),');if(field.selectize){var value=',jsonlite::toJSON(value,auto_unbox=TRUE),';if(value&&!field.selectize.options[value])field.selectize.addOption({value:value,label:value});field.selectize.setValue(value);}else{field.value=',jsonlite::toJSON(value,auto_unbox=TRUE),';field.dispatchEvent(new Event("input",{bubbles:true}));field.dispatchEvent(new Event("change",{bubbles:true}));}'))
       input_id <- if(id=="api_key_entry")paste0(id,":shiny.password")else id
       wait_js(paste0('Shiny.shinyapp.$inputValues[',jsonlite::toJSON(input_id,auto_unbox=TRUE),']===',jsonlite::toJSON(value,auto_unbox=TRUE)))
     }
-    choose("gemini");fill("api_model","gemini-test");fill("api_key_entry","gemini-browser-key")
+    choose("gemini")
+    wait_js('!!document.getElementById("api_model").selectize')
+    check(isTRUE(js('document.getElementById("api_model").value.length>0')),
+      "a new provider starts with its detected default model already selected")
+    fill("api_model","gemini-test");fill("api_key_entry","gemini-browser-key")
     js('document.getElementById("api_save").click()')
     wait_js('document.getElementById("shiny-modal")===null')
     check(TRUE,"Gemini saves and activates directly from the first-launch form")
@@ -338,11 +347,16 @@ main <- function() {
     check(isTRUE(js('!document.getElementById("messages").textContent.includes("browser-key") && window.aisourceErrors.length===0')),
       "provider settings do not leak keys into chat or cause JavaScript errors")
     js('openAction("api_settings")');wait_js('document.getElementById("api_model")!==null')
-    fill("api_model","");js('document.getElementById("api_save").click()')
+    js('document.getElementById("api_load_models").click()')
+    wait_js('document.getElementById("api_model").selectize.options["catalog-model-alpha"]!==undefined && !document.getElementById("api_load_models").disabled')
+    check(isTRUE(js('document.getElementById("api_model").value==="gemini-test" && document.querySelector(".api-active").textContent.includes("gemini-test")')),
+      "loading models adds real choices while preserving the selected model and active connection")
+    default_model <- js('var picker=document.getElementById("api_model").selectize;Object.keys(picker.options).find(function(id){return picker.options[id].label.includes("(default)");})')
+    fill("api_model",default_model);js('document.getElementById("api_save").click()')
     wait_js('document.getElementById("shiny-modal")===null')
     js('openAction("api_settings")')
-    wait_js('document.querySelector(".api-active code")!==null && document.getElementById("api_model")!==null && document.getElementById("api_model").value===""')
-    check(isTRUE(js('var code=document.querySelector(".api-active code").textContent;code.length>0 && code!=="Default unavailable" && document.querySelector(".api-active").textContent.includes("(default)")')),
+    wait_js('document.querySelector(".api-active code")!==null && document.getElementById("api_model")!==null && document.getElementById("api_model").value!==""')
+    check(isTRUE(js('var code=document.querySelector(".api-active code").textContent;code.length>0 && code!=="Default unavailable" && document.getElementById("api_model").value===code')),
       "default model selections show their concrete runtime model ID")
     choose("openai")
     check(isTRUE(js('document.querySelector(".api-active").textContent.includes("Google Gemini") && document.querySelector("tr[data-provider=gemini]").dataset.active==="true"')),
@@ -358,6 +372,22 @@ main <- function() {
     js('openAction("api_settings")');wait_js('document.getElementById("api_provider")!==null')
     check(isTRUE(js('document.getElementById("api_provider").value==="gemini" && !document.getElementById("shiny-modal").textContent.includes("browser-key")')),
       "Cancel preserves the active provider and key values never enter the overview")
+    # An environment-configured OpenAI connection can be used without entering a key.
+    # Synthetic fixture credentials only; no inference request is made by Use.
+    choose("openai");fill("api_key_entry","openai-browser-key");js('document.getElementById("api_save").click()')
+    wait_js('document.getElementById("shiny-modal")===null')
+    js('openAction("api_settings")');wait_js('document.querySelector("tr[data-provider=gemini] .api-use-connection")!==null')
+    js('document.querySelector("tr[data-provider=gemini] .api-use-connection").click()')
+    wait_js('document.getElementById("shiny-modal")===null')
+    fill("prompt","Keep this draft for OpenAI")
+    js('openAction("api_settings")');wait_js('document.querySelector("tr[data-provider=openai] .api-use-connection")!==null')
+    check(isTRUE(js('document.querySelector("tr[data-provider=openai] .api-use-connection").textContent==="Use OpenAI"')),
+      "saved providers expose a clearly named one-click Use button")
+    js('document.querySelector("tr[data-provider=openai] .api-use-connection").click()')
+    wait_js('document.getElementById("shiny-modal")===null')
+    js('openAction("api_settings")');wait_js('document.querySelector("tr[data-provider=openai][data-active=true]")!==null')
+    check(isTRUE(js('document.querySelector(".api-active").textContent.includes("OpenAI") && document.getElementById("prompt").value==="Keep this draft for OpenAI" && document.querySelectorAll(".msg.user").length===2')),
+      "Use OpenAI switches the actual connection in one click without a repeated key, chat request or lost draft")
     cat(checks,"API settings browser checks passed\n");return(invisible(NULL))
   }
   check(isTRUE(js('!document.getElementById("app_menu").open && document.querySelector("#app_menu #history")!==null && document.querySelector("#app_menu #knowledge")!==null && document.getElementById("knowledge").textContent==="Knowledge Base" && document.querySelector("#app_menu #help")!==null && document.querySelector("#app_menu #close")!==null && document.getElementById("check_updates").closest("#app_menu")!==null && document.getElementById("console_context").closest(".toolbar-actions")!==null && document.querySelector(".upload-row #console_context")===null && document.getElementById("workspace_context").closest(".toolbar-actions")!==null && document.querySelector("#app_menu #workspace_context")===null && document.getElementById("workspace_context").checked && document.getElementById("workspace_context_state").textContent==="On"')),

@@ -18,6 +18,11 @@ config$.credential_backend <- function()list(name="macos",
   get=function(service,username)get(service,store,inherits=FALSE),
   set_with_value=function(service,username,password)assign(service,password,store))
 calls <- list();api_failure <- FALSE
+model_calls <- list()
+config$.api_models_factory <- function(name)function(credentials,base_url=NULL) {
+  model_calls[[length(model_calls)+1L]] <<- list(reader=name,key=credentials())
+  data.frame(id=c("first-model","second-model"))
+}
 config$.api_factory <- function(name)function(system_prompt,credentials,echo,model=NULL,...)list(
   chat=function(...) {
     calls[[length(calls)+1L]] <<- list(factory=name,key=credentials(),model=model,pieces=list(...))
@@ -75,6 +80,21 @@ shiny::testServer(app$server,{
     "image requests keep image content when switching providers instead of silently sending text alone")
   redacted <- app$redact_api_secrets("claude-context-key gemini-context-key deepseek-context-key")
   check(!grepl("context-key",redacted,fixed=TRUE),"redaction covers earlier providers after switching")
+  assign("RAssistant/OpenAI","openai-context-key",store)
+  open_api_settings()
+  revision <- as.character(api_revision())
+  before <- length(calls)
+  session$setInputs(api_provider="deepseek",api_form_provider="deepseek",api_form_revision=revision,
+    api_load_models=1L)
+  check(length(model_calls)==1L && model_calls[[1L]]$key=="deepseek-context-key" &&
+    api$get()$provider=="deepseek" && length(calls)==before,
+    "Load models uses only the chosen key without a chat or provider switch")
+  i <- which(vapply(api_status()$connections,function(row)row$provider=="openai",logical(1)))
+  session$setInputs(prompt="Draft when returning to OpenAI",api_use_connection=list(index=i,revision="0",nonce=1L))
+  check(api$get()$provider=="deepseek","cached Use buttons cannot switch a newer settings dialog")
+  session$setInputs(api_use_connection=list(index=i,revision=revision,nonce=2L))
+  check(api$get()$provider=="openai" && identical(input$prompt,"Draft when returning to OpenAI") && length(calls)==before,
+    "Use OpenAI loads the existing key in one action and preserves chat and draft without inference")
   session$close()
 })
 # Validation children must not inherit any supported provider's environment key.

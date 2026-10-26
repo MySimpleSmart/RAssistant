@@ -80,6 +80,11 @@ Keychain, and any environment override. Defaults show their concrete model ID.
 Keychain status is read from metadata when settings opens; saved secrets are
 not retrieved for this overview. An unavailable store is shown separately from
 a missing key. Unsaved provider selections do not change the active connection.
+Click **Use OpenAI** (or another saved provider's **Use** button) to switch in
+one step without entering its key again. The model picker fills in the provider's
+concrete default on first selection. **Load available models** fetches model IDs
+using only the selected provider's key; choose one or type a custom ID, then
+click **Use model**. Loading models does not send a chat or activate the provider.
 
 Built-in providers: OpenAI, Anthropic / Claude, Google Gemini, DeepSeek, Groq,
 Mistral, OpenRouter, Perplexity, Hugging Face, xAI / Grok, Together AI, Fireworks AI

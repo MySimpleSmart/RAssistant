@@ -1,3 +1,9 @@
+# RAssistant 0.16.0
+
+- Switch to a saved provider with a single Use button, including environment-configured OpenAI keys. Keep the chat and draft while switching; highlight the active provider and model.
+- Select a model from a searchable picker with its concrete default already filled in. Load available models from the selected provider, or enter another model ID; loading a list does not send a chat or switch the active connection.
+- Keep provider keys separate during model discovery and reject stale settings actions. Clarify when an environment key is available without a Keychain copy.
+
 # RAssistant 0.15.1
 
 - Use the same button component for Cancel and Close across dialogs; API settings now follows the existing button styles.

@@ -124,6 +124,42 @@
     error=function(e)NULL)
   list(name=if(.api_text(model) && nzchar(model))model else "Default unavailable", default=TRUE)
 }
+.api_model_choices <- function(provider, profile=NULL) {
+  spec <- .api_providers()[[provider]]
+  if(is.null(spec))stop("Choose a supported API provider.",call.=FALSE)
+  base <- list(provider=provider,model=spec$model,base_url=spec$base_url)
+  default <- .api_model_info(base)$name
+  if(default %in% c("Not set","Default unavailable"))default <- ""
+  saved <- if(is.null(profile))""else if(nzchar(profile$model))profile$model else .api_model_info(profile)$name
+  values <- unique(c(saved,default));values <- values[nzchar(values) & !values %in% c("Not set","Default unavailable")]
+  labels <- ifelse(values==default,paste0(values," (default)"),values)
+  list(choices=stats::setNames(values,labels),selected=if(length(values))values[[1L]]else "")
+}
+.api_models_factory <- function(name)getExportedValue("ellmer",name)
+.api_fetch_models <- function(profile,key) {
+  reader <- switch(profile$provider,anthropic="models_claude",gemini="models_google_gemini",
+    deepseek="models_deepseek",groq="models_groq",mistral="models_mistral","models_openai")
+  fn <- .api_models_factory(reader)
+  args <- if("credentials" %in% names(formals(fn)))list(credentials=function()key)else list(api_key=key)
+  if(reader=="models_openai" && profile$provider!="openai") {
+    url <- switch(profile$provider,openrouter="https://openrouter.ai/api/v1",
+      huggingface="https://router.huggingface.co/v1",perplexity="https://api.perplexity.ai",profile$base_url)
+    if(!nzchar(url))stop("This provider does not expose a model list. Enter a model ID.",call.=FALSE)
+    args$base_url <- url
+  }
+  old <- options(ellmer_timeout_s=10,ellmer_max_tries=1L)
+  on.exit(options(old),add=TRUE)
+  result <- do.call(fn,args)
+  ids <- if(is.data.frame(result)) {
+    field <- intersect(c("id","name","model"),names(result))
+    if(length(field))result[[field[[1L]]]]else character()
+  } else if(is.character(result))result else character()
+  ids <- unique(as.character(ids))
+  if(profile$provider=="gemini")ids <- sub("^models/","",ids)
+  ids <- sort(ids[!is.na(ids) & nzchar(ids) & nchar(ids)<=200L & !grepl("[[:space:][:cntrl:]]",ids)])
+  if(!length(ids))stop("No model IDs returned. You can still enter a model ID.",call.=FALSE)
+  utils::head(ids,500L)
+}
 .api_connection_status <- function(current, key, source) {
   catalog <- .api_providers()
   prefs <- .read_api_preferences()$profiles
@@ -134,7 +170,7 @@
     id <- profile$provider
     active <- identical(profile$provider,current$provider) &&
       (id!="custom" || identical(profile$base_url,current$base_url))
-    model <- if(active)active_model else if(remembered).api_model_info(profile)
+    model <- if(active)active_model else if(remembered || id!="custom").api_model_info(profile)
       else list(name="Not saved",default=FALSE)
     vars <- catalog[[id]]$env
     values <- Sys.getenv(vars)
@@ -142,9 +178,13 @@
     env <- if(length(present))vars[[present[[1L]]]]else ""
     env_valid <- if(length(present)).valid_key(unname(values[[present[[1L]]]]))else FALSE
     saved <- .api_service(profile) %in% inventory$services
+    configured_model <- if(active)current$model else if(remembered)profile$model else catalog[[id]]$model
+    ready_model <- nzchar(configured_model) || catalog[[id]]$factory!="chat_openai_compatible"
     if(!active && !remembered && !saved && !nzchar(env))return(invisible(NULL))
     rows[[length(rows)+1L]] <<- list(provider=id,label=catalog[[id]]$label,base_url=profile$base_url,
       active=active,model=model$name,model_default=model$default,
+      configured_model=configured_model,can_use=ready_model &&
+        (if(nzchar(env))env_valid else saved),
       stored=if(!inventory$available)"Unavailable"else if(saved)"Saved"else"Not saved",
       environment=env,environment_valid=env_valid)
   }
@@ -174,12 +214,28 @@
   secret <- key
   key_source <- .api_key_source(profile, key)
   seen <- if (.valid_key(key)) key else character()
-  list(
+  api <- list(
     get = function() current,
     ready = function() .valid_key(secret),
     profiles = function() .read_api_preferences()$profiles,
     catalog = .api_providers,
     status = function() .api_connection_status(current, secret, key_source),
+    model_choices = function(provider) {
+      profile <- if(provider==current$provider)current else .read_api_preferences()$profiles[[provider]]
+      .api_model_choices(provider,profile)
+    },
+    models = function(provider,base_url=NULL,key="") {
+      profile <- .credential_profile(provider,base_url)
+      if(!.api_text(key))stop("Enter an API key.",call.=FALSE)
+      key <- trimws(key)
+      if(nzchar(key) && !.valid_key(key))stop("The API key must not contain whitespace.",call.=FALSE)
+      env <- .api_providers()[[provider]]$env
+      resolved <- if(any(nzchar(Sys.getenv(env))) || !nzchar(key))
+        .resolve_api_key(provider,base_url=profile$base_url,prompt=FALSE)else key
+      if(!.valid_key(resolved))stop("Enter an API key or choose a provider with a saved key first.",call.=FALSE)
+      seen <<- unique(c(seen,resolved,key[nzchar(key)]))
+      .api_fetch_models(profile,resolved)
+    },
     secrets = function() unique(c(seen, Sys.getenv(.api_key_envvars(), unset = ""))),
     save = function(provider, model, base_url = NULL, key = "") {
       next_profile <- .api_profile(provider, model, base_url)
@@ -202,4 +258,11 @@
     },
     client = function(system_prompt) .api_client(current, secret, system_prompt)
   )
+  api$use <- function(provider,base_url=NULL) {
+    profile <- .selected_api_profile(provider,base_url=base_url)
+    if(provider=="custom" && !identical(profile$base_url,.read_api_preferences()$profiles$custom$base_url))
+      stop("Choose a model for this endpoint below, then click Use model.",call.=FALSE)
+    api$save(profile$provider,profile$model,profile$base_url)
+  }
+  api
 }
