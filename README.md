@@ -31,8 +31,9 @@ Selecting text in Source automatically shows Explain/Fix/Improve above the
 composer. Placing the cursor in an Rmd/Quarto R chunk shows the same toolbar;
 there is no dropdown activation step. Fix/Improve show changes in chat; Replace still
 requires approval. **Code edit history** records code changes; **Chat history**
-opens conversations. **Knowledge Base** holds reference files and instructions.
-Check updates and Help share one row; Close is separated below them, red,
+opens a separate page with local conversations, a read-only preview and
+**Back to chat**. **Knowledge Base** holds reference files and instructions.
+Check updates and Help each have their own full-width menu row; Close is separated below them, red,
 full-width and centered.
 App also shows the installed version.
 Help contains launch, API-key and update instructions with Copy buttons.
@@ -208,8 +209,10 @@ modify other users' installations; they run the update command.
 ## Conversations and History
 
 From 0.2.0, chats auto-save locally per RStudio project. **New chat** starts a
-separate conversation and keeps the previous one. **History** lists saved chats
-and offers **Rename**, **Delete** and **Restore**. Delete asks for confirmation.
+separate conversation and keeps the previous one. **Chat history** opens a
+separate page with saved chats, a read-only preview, **Rename**, **Delete** and
+**Open chat**. **Back to chat** returns without changing the conversation or
+draft. Delete asks for confirmation.
 The most recently used chat reopens on the next `RAssistant::launch()`, including
 after restarting RStudio or updating the package. Opening RStudio alone does not
 automatically launch the assistant. Previously closed pre-0.2.0 chats cannot be recovered.
@@ -268,8 +271,8 @@ project: PDFs, notes (`.txt`, `.md`) and R code examples (`.R`, `.Rmd`,
 the assistant should always follow for your work, such as preferred packages,
 functions or coding conventions.
 
-For every request, RAssistant matches your message and pasted task against this
-material on your computer. Search also considers functions and package names
+When files are selected for this chat, RAssistant matches your message and
+pasted task against those files on your computer. Search also considers functions and package names
 in the current Source, conditions and command names from the latest completed
 Console task, and column names of relevant Global Environment datasets. A
 dataset is relevant when referenced in the question, Source or captured command,
@@ -293,8 +296,9 @@ name the source it used. Answers that received reference material list it under
 
 In **Knowledge Base**, check up to five files under **Use in this chat** to
 restrict the reference material. Each selected file contributes a short excerpt,
-even for a follow-up such as “explain this.” Uncheck all files for automatic
-search. Selected filenames appear above the message box; click **×** to stop
+even for a follow-up such as “explain this.” With no files checked, no document
+search or excerpts are sent. Saved custom instructions still apply.
+Selected filenames appear above the message box; click **×** to stop
 using one. Selection is saved with that chat and resets for a new chat.
 
 Expand the **Knowledge Base** line under your message to see the exact excerpts

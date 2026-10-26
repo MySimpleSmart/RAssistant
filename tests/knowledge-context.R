@@ -43,6 +43,14 @@ shiny::testServer(app$server, {
   session$setInputs(knowledge_instructions=instructions,knowledge_save=1L)
   check(identical(knowledge$profile()$instructions,instructions),"the Knowledge dialog saves custom instructions")
 
+  session$setInputs(chat_submit=list(text="How should I choose k for kmeans clustering?",nonce=20L))
+  unselected <- tail(calls,1L)[[1L]]
+  check(!grepl("KNOWLEDGE BASE EXCERPTS",unselected$prompt,fixed=TRUE) &&
+    !length(tail(state$messages,1L)[[1L]]$references) &&
+    identical(tail(state$messages,2L)[[1L]]$knowledge_read$mode,"instructions"),
+    "matching library files stay unused with no selection; only saved instructions are supplied")
+  doc <- knowledge$list()[[1L]]$id
+  session$setInputs(knowledge_pin_change=list(ids=list(doc),epoch=state$upload_epoch,nonce=21L))
   session$setInputs(chat_submit=list(text="How should I choose k for kmeans clustering?",nonce=2L))
   request <- tail(calls,1L)[[1L]]
   check(grepl("CUSTOM INSTRUCTIONS",request$system,fixed=TRUE) &&
@@ -64,14 +72,16 @@ shiny::testServer(app$server, {
   check(grepl("<details",markup,fixed=TRUE) && grepl("Knowledge Base",markup,fixed=TRUE) &&
     grepl("fviz_nbclust",markup,fixed=TRUE),"the exact receipt is collapsed and expandable in chat")
 
+  session$setInputs(knowledge_unpin=list(id=doc,epoch=state$upload_epoch,nonce=22L))
   session$setInputs(chat_submit=list(text="Translate hello into French",nonce=3L))
   unrelated <- tail(calls,1L)[[1L]]
   check(grepl("CUSTOM INSTRUCTIONS",unrelated$system,fixed=TRUE) &&
     !grepl("KNOWLEDGE BASE EXCERPTS",unrelated$prompt,fixed=TRUE) && !length(tail(state$messages,1L)[[1L]]$references),
     "unrelated requests send custom instructions but no course excerpts")
-  check(identical(tail(state$messages,2L)[[1L]]$knowledge_read$status,"none") &&
+  check(identical(tail(state$messages,2L)[[1L]]$knowledge_read$status,"disabled") &&
     !nzchar(tail(state$messages,2L)[[1L]]$knowledge_read$text),"no-match receipts do not imply a document was sent")
 
+  session$setInputs(knowledge_pin_change=list(ids=list(doc),epoch=state$upload_epoch,nonce=23L))
   session$setInputs(chat_submit=list(text="Run my kmeans clustering script and interpret it",nonce=4L))
   check(is.list(state$pending$course) && grepl("fviz_nbclust",state$pending$course$text,fixed=TRUE),
     "a run request keeps the course context for the later analysis")
@@ -82,7 +92,7 @@ shiny::testServer(app$server, {
   check(grepl("KNOWLEDGE BASE EXCERPTS",analysis$prompt,fixed=TRUE) && grepl("CUSTOM INSTRUCTIONS",analysis$system,fixed=TRUE) &&
     identical(tail(state$messages,1L)[[1L]]$references[[1L]]$name,"week4.md"),
     "execution analysis uses course material and records its sources")
-  check(identical(Filter(function(m)identical(m$role,"You"),state$messages)[[4L]]$knowledge_read$delivery,"sent"),
+  check(identical(tail(Filter(function(m)identical(m$role,"You"),state$messages),1L)[[1L]]$knowledge_read$delivery,"sent"),
     "approved validation marks its original user receipt as delivered")
 
   saved <- history$load(state$chat$id)
@@ -113,9 +123,12 @@ shiny::testServer(app$server, {
   session$setInputs(knowledge_pin_change=list(ids=list(other_id),epoch=state$upload_epoch-1L,nonce=13L))
   check(identical(state$knowledge_files[[1L]]$id,doc),"stale page events cannot change this chat's document selection")
   session$setInputs(knowledge_unpin=list(id=doc,epoch=state$upload_epoch,nonce=14L))
-  check(!length(state$knowledge_files),"removing a scope chip returns the chat to automatic retrieval")
+  check(!length(state$knowledge_files),"removing the last scope chip stops document retrieval")
   session$setInputs(chat_submit=list(text="Explain regression coefficients",nonce=15L))
-  check(grepl("[K1] other.md",tail(calls,1L)[[1L]]$prompt,fixed=TRUE),"automatic retrieval resumes after unpinning")
+  check(!grepl("KNOWLEDGE BASE EXCERPTS",tail(calls,1L)[[1L]]$prompt,fixed=TRUE) &&
+    !length(tail(state$messages,1L)[[1L]]$references) &&
+    grepl("Do not attribute this answer",tail(calls,1L)[[1L]]$system,fixed=TRUE),
+    "unpinning does not fall back to another matching file or reuse earlier citations")
 
   session$setInputs(knowledge_pin_change=list(ids=list(doc),epoch=state$upload_epoch,nonce=16L))
   old_receipt <- receipt$text

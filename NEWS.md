@@ -1,3 +1,9 @@
+# RAssistant 0.16.1
+
+- Put Check updates and Help on separate full-width menu rows, keeping existing button styles.
+- Open Chat history on a separate page like Code edit history, with a read-only preview, Rename, Delete, Open chat and Back to chat. Preserve the current conversation and draft while browsing.
+- Use Knowledge Base documents only when selected for this chat. Clearing the last selection stops retrieval and new source labels; saved instructions and historical source receipts remain available.
+
 # RAssistant 0.16.0
 
 - Switch to a saved provider with a single Use button, including environment-configured OpenAI keys. Keep the chat and draft while switching; highlight the active provider and model.

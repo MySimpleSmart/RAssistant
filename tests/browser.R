@@ -581,38 +581,36 @@ main <- function() {
     wait_js('document.getElementById("shiny-modal")===null')
     submit <- function(text,turn){
       js(paste0('var p=document.getElementById("prompt");p.value=',jsonlite::toJSON(text,auto_unbox=TRUE),';p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click();'))
-      wait_js(paste0('document.querySelectorAll(".msg.user").length===',turn,' && !document.getElementById("send").disabled && Array.from(document.querySelectorAll(".knowledge-read>summary")).pop().textContent.includes("Sent")'))
+      wait_js(paste0('document.querySelectorAll("#messages .msg.user").length===',turn,' && !document.getElementById("send").disabled'))
     }
-    last_receipt <- function()js('Array.from(document.querySelectorAll(".knowledge-read")).pop().textContent')
     saveRDS(list(contents="library(ggplot2)"),source_marker)
-    js('document.getElementById("console_context").click();document.getElementById("workspace_context").click();')
-    wait_js('document.getElementById("console_context_state").textContent==="Off" && document.getElementById("workspace_context_state").textContent==="Off"')
     submit("Explain my code",1L)
-    check(grepl("graphics.md",last_receipt(),fixed=TRUE) && !grepl("birth.md",last_receipt(),fixed=TRUE),
-      "a generic browser request retrieves a guide from the current Source package alone")
+    check(isTRUE(js('document.querySelectorAll(".knowledge-read,.knowledge-sources").length===0')),
+      "matching Source package names do not search unselected library files")
     saveRDS(list(contents="identity(birth_data)"),source_marker)
-    js('document.getElementById("workspace_context").click();')
-    wait_js('document.getElementById("workspace_context_state").textContent==="On"')
     submit("Explain these columns",2L)
-    check(grepl("birth.md",last_receipt(),fixed=TRUE),"Workspace column names connect the browser request to its data dictionary")
+    check(isTRUE(js('document.querySelectorAll(".knowledge-read,.knowledge-sources").length===0')),
+      "matching Workspace columns do not silently enable Knowledge Base")
     diagnostic <- "Error in arithmetic(): non-numeric argument to binary operator\n[End failed Console task; full command may be unavailable]"
     saveRDS(list(contents="",console=diagnostic),source_marker)
-    js('document.getElementById("console_context").click();')
-    wait_js('document.getElementById("console_context_state").textContent==="On"')
     submit("Энэ алдааг тайлбарла",3L)
-    check(grepl("arithmetic.md",last_receipt(),fixed=TRUE),"the enabled Console error supplies the topic for a short Mongolian browser question")
-    js('document.getElementById("console_context").click();')
-    wait_js('document.getElementById("console_context_state").textContent==="Off"')
-    submit("Fix this error",4L)
-    check(grepl("No matching excerpts",last_receipt(),fixed=TRUE),"Console Off removes the diagnostic from browser retrieval")
-    saveRDS(list(contents=c("library(ggplot2)","identity(birth_data)"),console=diagnostic),source_marker)
-    js('document.getElementById("console_context").click();')
-    wait_js('document.getElementById("console_context_state").textContent==="On"')
-    submit("Explain linear regression",5L)
-    check(grepl("regression.md",last_receipt(),fixed=TRUE) && !grepl("graphics.md|birth.md|arithmetic.md",last_receipt()),
-      "a specifically requested new topic overrides unrelated Source, Console and Workspace hints in the browser")
+    check(isTRUE(js('document.querySelectorAll(".knowledge-read,.knowledge-sources").length===0')),
+      "Console errors remain independent of unselected reference files")
+    submit("Explain linear regression",4L)
+    check(isTRUE(js('document.querySelectorAll(".knowledge-read,.knowledge-sources").length===0')),
+      "even an exact topic match does not use an unselected reference")
+    js('openAction("knowledge");')
+    wait_js('document.querySelectorAll("#knowledge_selected input").length===4')
+    js('Array.from(document.querySelectorAll("#knowledge_selected label")).find(function(x){return x.textContent.includes("graphics.md");}).querySelector("input").click();')
+    wait_js('document.querySelector(".knowledge-unpin")!==null')
+    js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
+    wait_js('document.getElementById("shiny-modal")===null')
+    submit("Explain this",5L)
+    wait_js('document.querySelector(".knowledge-read summary")!==null')
+    check(isTRUE(js('document.querySelector(".knowledge-read").textContent.includes("graphics.md") && document.querySelector(".knowledge-sources").textContent.includes("graphics.md")')),
+      "explicit selection activates only the chosen reference file")
     check(isTRUE(js('Array.from(document.querySelectorAll(".msg.assistant .content")).pop().textContent.includes("Response 5") && window.aisourceErrors.length===0')),
-      "five sends make five model requests with no extra translation call or JavaScript error")
+      "five sends make five model requests without extra search requests or JavaScript errors")
     cat(checks,"work-aware Knowledge Base browser checks passed\n");return(invisible(NULL))
   }
   if(identical(Sys.getenv("RA_BROWSER_KNOWLEDGE_ONLY"),"true")) {
@@ -620,8 +618,8 @@ main <- function() {
     wait_js('document.getElementById("knowledge_files")!==null')
     js('var dt=new DataTransfer();dt.items.add(new File(["Kmeans clustering uses the elbow method and fviz_nbclust. <script>window.kbInjected=true</script>"],"clustering.md",{type:"text/markdown"}));dt.items.add(new File(["Linear regression coefficients are estimated with lm and examined with summary."],"regression.md",{type:"text/markdown"}));var input=document.getElementById("knowledge_files");input.files=dt.files;input.dispatchEvent(new Event("change",{bubbles:true}));')
     wait_js('document.querySelectorAll("#knowledge_selected input").length===2',timeout=30)
-    check(isTRUE(js('document.querySelectorAll("#knowledge_selected input:checked").length===0 && document.getElementById("shiny-modal").textContent.includes("Leave unchecked for automatic search")')),
-      "Knowledge Base starts with automatic search and a short explanation")
+    check(isTRUE(js('document.querySelectorAll("#knowledge_selected input:checked").length===0 && document.getElementById("shiny-modal").textContent.includes("No selection means no files are sent.")')),
+      "Knowledge Base starts unselected and explains that no files will be sent")
     js('document.querySelector("#knowledge_selected input").click();$("#knowledge_instructions").val("Prefer <ggplot2> & explain briefly.").trigger("change");document.getElementById("knowledge_save").click();')
     wait_js('document.querySelector(".knowledge-unpin")!==null')
     js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
@@ -646,12 +644,12 @@ main <- function() {
       "reopening the Viewer restores selected files and exact historical receipts")
     js('document.querySelector(".knowledge-unpin").click();')
     wait_js('document.querySelector(".knowledge-unpin")===null')
-    js('var p=document.getElementById("prompt");p.value="Translate hello into French";p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click();')
+    js('var p=document.getElementById("prompt");p.value="Explain linear regression";p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click();')
     wait_js('document.querySelectorAll(".knowledge-read").length===2 && !document.getElementById("send").disabled')
-    check(isTRUE(js('Array.from(document.querySelectorAll(".knowledge-read")).pop().textContent.includes("Automatic search") && document.querySelector(".knowledge-unpin")===null')),
-      "unpinning a document returns to automatic search")
-    check(isTRUE(js('Array.from(document.querySelectorAll(".knowledge-read>summary")).pop().textContent.includes("No matching excerpts")')),
-      "an unrelated question explicitly reports no matching material")
+    check(isTRUE(js('Array.from(document.querySelectorAll(".knowledge-read")).pop().textContent.includes("No files selected") && document.querySelector(".knowledge-unpin")===null && Array.from(document.querySelectorAll("#messages .msg.assistant")).pop().querySelector(".knowledge-sources")===null')),
+      "unpinning the last document disables file retrieval")
+    check(isTRUE(js('Array.from(document.querySelectorAll(".knowledge-read>summary")).pop().textContent.includes("No files selected")')),
+      "an unselected matching document does not create a new source label")
     js('openAction("knowledge");')
     wait_js('document.querySelectorAll("#knowledge_selected input").length===2')
     js('document.querySelector("#knowledge_selected input").click();')
@@ -692,8 +690,8 @@ main <- function() {
   js('document.querySelector("#app_menu>summary").click();')
   check(isTRUE(js('Array.from(document.querySelectorAll(".menu-heading")).map(function(e){return e.textContent;}).join("|")==="Code|Chat|App" && document.getElementById("history").textContent==="Chat history" && document.getElementById("edit_history").textContent==="Code edit history" && document.querySelectorAll(".selection-menu").length===0 && document.getElementById("code_actions")===null')),
     "Code tools no longer require a Code actions entry or either old scope menu")
-  check(isTRUE(js('var update=document.getElementById("check_updates").getBoundingClientRect(),help=document.getElementById("help").getBoundingClientRect(),close=document.getElementById("close").getBoundingClientRect();Math.abs(update.top-help.top)<2 && close.top>=help.bottom && close.width>=document.querySelector("#close").parentElement.getBoundingClientRect().width-2 && document.getElementById("close").closest(".menu-close")!==null && document.getElementById("close").closest(".menu-group")===null && getComputedStyle(document.getElementById("close")).textAlign==="center" && getComputedStyle(document.getElementById("close")).color==="rgb(255, 255, 255)" && getComputedStyle(document.getElementById("close")).backgroundColor!=="rgb(255, 255, 255)"')),
-    "Check updates and Help share a row; Close is isolated, centered and red")
+  check(isTRUE(js('var update=document.getElementById("check_updates").getBoundingClientRect(),help=document.getElementById("help").getBoundingClientRect(),close=document.getElementById("close").getBoundingClientRect();help.top>=update.bottom && Math.abs(update.width-help.width)<2 && close.top>=help.bottom && close.width>=document.querySelector("#close").parentElement.getBoundingClientRect().width-2 && document.getElementById("close").closest(".menu-close")!==null && document.getElementById("close").closest(".menu-group")===null && getComputedStyle(document.getElementById("close")).textAlign==="center" && getComputedStyle(document.getElementById("close")).color==="rgb(255, 255, 255)" && getComputedStyle(document.getElementById("close")).backgroundColor!=="rgb(255, 255, 255)"')),
+    "Check updates and Help each fill their own row; Close stays isolated, centered and red")
   js('document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));')
   check(isTRUE(js('!document.getElementById("app_menu").open && document.activeElement===document.querySelector("#app_menu>summary")')),
     "Escape closes the actions menu and restores keyboard focus")
@@ -709,11 +707,11 @@ main <- function() {
   js('document.getElementById("new_chat").click();')
   wait_js('document.querySelector(".empty")!==null')
   js('openAction("history");')
-  wait_js('document.getElementById("shiny-modal")!==null')
-  check(isTRUE(js('document.getElementById("history_selected")===null && document.getElementById("shiny-modal").textContent.includes("No saved chats yet.")')),
-    "opening History after New chat does not list an empty conversation")
-  js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
-  wait_js('document.getElementById("shiny-modal")===null')
+  wait_js('document.querySelector(".chat-history-panel")!==null && getComputedStyle(document.getElementById("chat_history_page")).display!=="none"')
+  check(isTRUE(js('document.getElementById("history_selected")===null && document.getElementById("chat_history_page").textContent.includes("No saved chats yet.") && document.getElementById("shiny-modal")===null')),
+    "opening History after New chat uses a separate page without listing an empty conversation")
+  js('document.getElementById("history_close").click();')
+  wait_js('getComputedStyle(document.getElementById("chat_history_page")).display==="none"')
   saveRDS(list(mode="selection",row=1L),source_marker)
   wait_js('document.querySelector(".code-target-toolbar")!==null')
   check(isTRUE(js('document.querySelector(".code-target-label").textContent.includes("example.R") && document.querySelector(".code-target-label").textContent.includes("Selected line 1") && document.getElementById("smart_explain").getClientRects().length>0 && document.getElementById("smart_fix").getClientRects().length>0 && document.getElementById("smart_improve").getClientRects().length>0 && document.querySelectorAll(".msg.user").length===0 && !document.getElementById("app_menu").open')),
@@ -894,15 +892,24 @@ main <- function() {
     "a reviewed new-document proposal needs its own explicit approval")
   js('openAction("history");')
   wait_js('document.getElementById("history_selected")!==null')
-  check(isTRUE(js('document.getElementById("history_selected").options.length===1 && document.querySelectorAll("#shiny-modal .modal-footer .ai-btn").length===4')),
+  check(isTRUE(js('document.getElementById("history_selected").options.length===1 && document.querySelectorAll("#chat_history_page .ai-btn").length===4 && document.getElementById("shiny-modal")===null')),
     "History lists the current auto-saved chat with consistent controls")
+  wait_js('document.querySelector(".chat-history-preview")!==null && getComputedStyle(document.getElementById("chat_stream")).display==="none"')
+  check(isTRUE(js('getComputedStyle(document.querySelector(".compose")).display==="none" && document.querySelector("#chat_stream .chat-history-panel")===null && document.querySelector(".chat-history-preview .source-review")===null')),
+    "Chat history uses a separate read-only page without mixing preview messages into chat")
+  browser$Emulation$setDeviceMetricsOverride(width=380,height=700,deviceScaleFactor=1,mobile=FALSE)
+  check(isTRUE(js('document.getElementById("chat_history_page").getBoundingClientRect().bottom<=innerHeight && document.getElementById("history_close").getBoundingClientRect().right<=innerWidth')),
+    "Chat history and Back to chat fit a narrow Viewer")
+  screenshot <- Sys.getenv("RA_BROWSER_HISTORY_SCREENSHOT")
+  if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+  browser$Emulation$clearDeviceMetricsOverride()
   js('window.firstChatId=document.getElementById("history_selected").value;document.getElementById("history_rename").click();')
   wait_js('document.getElementById("history_name")!==null')
   js('$("#history_name").val("Saved screenshot assignment").trigger("change");document.getElementById("history_save_name").click();')
   wait_js('document.getElementById("history_selected")!==null && document.getElementById("history_selected").textContent.includes("Saved screenshot assignment")')
   check(TRUE,"Rename persists the chosen chat title")
-  js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
-  wait_js('document.getElementById("shiny-modal")===null')
+  js('document.getElementById("history_close").click();')
+  wait_js('getComputedStyle(document.getElementById("chat_history_page")).display==="none"')
   js('document.getElementById("new_chat").click();')
   wait_js('document.querySelector(".empty")!==null')
   js('document.getElementById("prompt").value="A separate history conversation";document.getElementById("send").click();')
@@ -928,8 +935,8 @@ main <- function() {
   js('document.getElementById("history_confirm_delete").click();')
   wait_js('document.getElementById("history_selected")!==null && document.getElementById("history_selected").options.length===1')
   check(TRUE,"Delete removes the selected saved chat while retaining the active chat")
-  js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
-  wait_js('document.getElementById("shiny-modal")===null')
+  js('document.getElementById("history_close").click();')
+  wait_js('getComputedStyle(document.getElementById("chat_history_page")).display==="none"')
   js('window.canvas=document.createElement("canvas");canvas.width=12;canvas.height=12;canvas.getContext("2d").fillRect(0,0,12,12);window.imageData=canvas.toDataURL("image/png");window.imageBytes=Uint8Array.from(atob(imageData.split(",")[1]),function(c){return c.charCodeAt(0);});window.stage=function(files){var dt=new DataTransfer();files.forEach(function(f){dt.items.add(f);});var input=document.getElementById("plot_upload_native");input.files=dt.files;input.dispatchEvent(new Event("change",{bubbles:true}));};stage([new File([imageBytes],"plot.PNG",{type:""})]);')
   wait_js('document.querySelectorAll(".attachment-item").length===1 && !document.getElementById("send").disabled')
   check(isTRUE(js('document.querySelector(".attachment-item img").complete && document.querySelector(".attachment-item img").naturalWidth>0')), "an image with missing MIME type uploads and previews")

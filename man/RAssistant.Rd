@@ -107,7 +107,9 @@ cache immediately; \code{options(RAssistant.check_updates = FALSE)}
 disables automatic checks while retaining explicit manual checks.
 
 New chat keeps the previous conversation in History, which offers Rename, Delete
-and Restore. Chats auto-save locally per project, outside the package installation,
+and Open chat on a separate page, with a read-only preview and Back to chat.
+Browsing preserves the active conversation and draft. Chats auto-save locally per
+project, outside the package installation,
 using \code{tools::R_user_dir("RAssistant", "data")}. The most recently used chat
 is restored by \code{launch()} after closing, restarting RStudio or updating.
 Opening RStudio does not automatically launch the assistant. Outside a project,
@@ -124,7 +126,9 @@ location, or \code{options(RAssistant.save_history = FALSE)} to disable persiste
 Already-closed conversations from versions before 0.2.0 cannot be recovered.
 
 Knowledge Base stores reference PDFs, notes, R code examples and optional custom instructions locally per
-project, separately from History. Each request is matched locally, and only a
+project, separately from History. Only files selected for this chat are searched;
+no selection sends no document excerpts. Saved custom instructions still apply.
+Each request is matched locally, and only a
 bounded set of relevant excerpts, labelled by file and page or lines, is sent.
 Set \code{options(RAssistant.knowledge_dir = "...")} before launch to change its
 location, or \code{options(RAssistant.knowledge_chars = 6000)} to change the

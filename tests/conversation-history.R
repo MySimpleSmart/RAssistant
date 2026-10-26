@@ -42,6 +42,22 @@ main <- function() {
     first <<- state$chat$id
     check(identical(history$load(first)$messages[[1L]]$text,"Remember the value 42"),
       "successful turns auto-save the current chat")
+    before_calls <- calls
+    session$setInputs(prompt="Draft kept while browsing",history=1L)
+    check(state$history_panel && !state$edit_panel && identical(state$chat$id,first) &&
+      identical(state$draft,"Draft kept while browsing") && calls==before_calls &&
+      grepl("Back to chat",output$chat_history_panel$html,fixed=TRUE),
+      "Chat history opens its own page without changing the chat, draft or model calls")
+    session$setInputs(history_selected=first)
+    check(grepl("Remember the value 42",output$chat_history_preview$html,fixed=TRUE) &&
+      !grepl("source-review",output$chat_history_preview$html,fixed=TRUE),
+      "history previews stored messages without Source editing controls")
+    session$setInputs(edit_history=1L)
+    check(state$edit_panel && !state$history_panel,"Code edit history and Chat history never overlap")
+    session$setInputs(history=2L,history_close=1L)
+    check(!state$history_panel && !state$edit_panel && identical(state$draft,"Draft kept while browsing"),
+      "Back to chat retains the existing draft")
+    session$setInputs(prompt="")
     session$setInputs(new_chat=3L)
     second <<- state$chat$id
     check(!identical(first,second) && length(history$list())==1L && !length(state$messages) && is.null(history$load(second)),
