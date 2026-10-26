@@ -398,6 +398,50 @@ main <- function() {
     js('openAction("api_settings")');wait_js('document.querySelector("tr[data-provider=openai][data-active=true]")!==null')
     check(isTRUE(js('document.querySelector(".api-active").textContent.includes("OpenAI") && document.getElementById("prompt").value==="Keep this draft for OpenAI" && document.querySelectorAll(".msg.user").length===2')),
       "Use OpenAI switches the actual connection in one click without a repeated key, chat request or lost draft")
+    js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click()')
+    wait_js('document.getElementById("shiny-modal")===null && document.getElementById("change_model")!==null')
+    check(isTRUE(js('var button=document.getElementById("change_model");button.textContent.includes("OpenAI") && button.textContent.includes(document.querySelector("#change_model").title.split(" · ")[1].replace(" ▾","")) && button.closest(".send-controls")===document.getElementById("send").parentElement')),
+      "the exact active provider and model appear beside Send")
+    js('document.getElementById("change_model").click()')
+    wait_js('document.getElementById("api_model")!==null && document.getElementById("api_provider").value==="openai"')
+    check(isTRUE(js('document.querySelector(".modal-title").textContent==="Change model" && document.querySelector(".api-overview")===null && document.getElementById("api_key_entry")===null && document.getElementById("api_more_settings")!==null')),
+      "the composer opens a compact picker with an API settings link and no repeated key entry")
+    js('document.getElementById("api_load_models").click()')
+    wait_js('document.getElementById("api_model").selectize.options["catalog-model-alpha"]!==undefined && !document.getElementById("api_load_models").disabled')
+    fill("api_model","catalog-model-alpha");js('document.getElementById("api_save").click()')
+    wait_js('document.getElementById("shiny-modal")===null && document.getElementById("change_model").textContent.includes("catalog-model-alpha")')
+    check(isTRUE(js('document.getElementById("prompt").value==="Keep this draft for OpenAI" && document.querySelectorAll(".msg.user").length===2')),
+      "choosing a composer model updates its label without a request or lost draft")
+    js('document.getElementById("send").click();window.modelLockedDuringSend=document.getElementById("change_model").disabled;')
+    wait_js('document.querySelectorAll(".msg.assistant").length===3 && !document.getElementById("send").disabled')
+    check(isTRUE(js('modelLockedDuringSend && Array.from(document.querySelectorAll(".msg.assistant")).pop().textContent.includes("Selected connection: openai catalog-model-alpha")')),
+      "Send uses the composer-selected model and prevents switching during the request")
+    fill("prompt","Draft kept while selecting Gemini")
+    js('document.getElementById("change_model").click()');wait_js('document.getElementById("api_model")!==null')
+    choose("gemini");js('document.getElementById("api_save").click()')
+    wait_js('document.getElementById("shiny-modal")===null && document.getElementById("change_model").textContent.includes("Google Gemini")')
+    js('document.getElementById("change_model").click()');wait_js('document.getElementById("api_model")!==null')
+    choose("xai");fill("api_model","missing-key-model");js('document.getElementById("api_save").click()')
+    wait_js('document.getElementById("api_notice").textContent.includes("Open API settings")')
+    check(isTRUE(js('document.getElementById("change_model").textContent.includes("Google Gemini") && document.getElementById("prompt").value==="Draft kept while selecting Gemini"')),
+      "a missing provider key preserves the active model and explains how to add its key")
+    js('document.getElementById("api_more_settings").click()')
+    wait_js('document.querySelector(".modal-title").textContent==="API settings" && document.getElementById("api_key_entry")!==null')
+    check(TRUE,"the compact picker links directly to full API settings for credentials")
+    js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click()')
+    wait_js('document.getElementById("shiny-modal")===null')
+    js('document.getElementById("change_model").click()');wait_js('document.getElementById("api_model")!==null')
+    long_model <- paste0("model-",strrep("x",190L));fill("api_model",long_model)
+    js('document.getElementById("api_save").click()')
+    wait_js('document.getElementById("shiny-modal")===null && document.getElementById("change_model").textContent.includes("model-xxxxx")')
+    browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
+    check(isTRUE(js('var model=document.getElementById("change_model").getBoundingClientRect(),send=document.getElementById("send").getBoundingClientRect();model.left>=0 && send.right<=innerWidth && model.right<=send.left && Math.abs((model.top+model.bottom)/2-(send.top+send.bottom)/2)<2 && document.documentElement.scrollWidth<=innerWidth')),
+      "a long model ID remains beside Send and wraps inside a narrow Viewer")
+    screenshot <- Sys.getenv("RA_BROWSER_COMPOSER_SCREENSHOT")
+    if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+    browser$Emulation$clearDeviceMetricsOverride()
+    check(isTRUE(js('!document.getElementById("change_model").textContent.includes("browser-key") && window.aisourceErrors.length===0')),
+      "the composer never exposes API keys and model switching has no JavaScript errors")
     cat(checks,"API settings browser checks passed\n");return(invisible(NULL))
   }
   check(isTRUE(js('!document.getElementById("app_menu").open && document.querySelector("#app_menu #history")!==null && document.querySelector("#app_menu #knowledge")!==null && document.getElementById("knowledge").textContent==="Knowledge Base" && document.querySelector("#app_menu #help")!==null && document.querySelector("#app_menu #close")!==null && document.getElementById("check_updates").closest("#app_menu")!==null && document.getElementById("console_context").closest(".toolbar-actions")!==null && document.querySelector(".upload-row #console_context")===null && document.getElementById("workspace_context").closest(".toolbar-actions")!==null && document.querySelector("#app_menu #workspace_context")===null && document.getElementById("workspace_context").checked && document.getElementById("workspace_context_state").textContent==="On"')),

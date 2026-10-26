@@ -95,6 +95,26 @@ shiny::testServer(app$server,{
   session$setInputs(api_use_connection=list(index=i,revision=revision,nonce=2L))
   check(api$get()$provider=="openai" && identical(input$prompt,"Draft when returning to OpenAI") && length(calls)==before,
     "Use OpenAI loads the existing key in one action and preserves chat and draft without inference")
+  check(grepl("OpenAI",output$compose_model_status$html,fixed=TRUE) &&
+    grepl(api$get()$model,output$compose_model_status$html,fixed=TRUE),
+    "composer displays the exact active provider and model")
+  session$setInputs(change_model=1L)
+  revision <- as.character(api_revision())
+  check(api_compact(),"composer opens the compact model picker")
+  session$setInputs(api_provider="openai",api_form_provider="openai",api_form_revision=revision,
+    api_key_entry="stale-other-provider-key",api_model="first-model",api_load_models=2L)
+  check(tail(model_calls,1L)[[1L]]$key=="openai-context-key", "compact model discovery ignores cached key input and uses the selected provider's key")
+  session$setInputs(api_save=6L)
+  check(api$get()$model=="first-model" && get("RAssistant/OpenAI",store)=="openai-context-key" && length(calls)==before &&
+    grepl("first-model",output$compose_model_status$html,fixed=TRUE) && identical(input$prompt,"Draft when returning to OpenAI"),
+    "compact switching updates the active model and composer without writing a cached key, sending chat or losing the draft")
+  session$setInputs(chat_submit=list(text="Use the composer model",nonce=5L))
+  check(tail(calls,1L)[[1L]]$model=="first-model" && tail(calls,1L)[[1L]]$key=="openai-context-key",
+    "the next Send uses the model selected beside Send")
+  old_revision <- api_revision();state$busy <- TRUE
+  session$setInputs(change_model=2L)
+  check(identical(api_revision(),old_revision),"a busy request cannot open the model picker or change its target")
+  state$busy <- FALSE
   session$close()
 })
 # Validation children must not inherit any supported provider's environment key.

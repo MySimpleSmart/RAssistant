@@ -1,3 +1,9 @@
+# RAssistant 0.16.3
+
+- Show the active provider and exact model beside Send. Keep the label up to date after model or provider changes, with long IDs wrapping inside narrow Viewers.
+- Click the model label to choose a model or provider in a compact picker. Reuse its saved key, load available model IDs on request, and keep the conversation and draft. API settings remains available for managing keys.
+- Block model changes while a request or run approval is active. Read composer model metadata locally without credential lookups, and never use cached key fields from another settings form.
+
 # RAssistant 0.16.2
 
 - Use the same scrollable button list for conversations and Code edit history. Keep the list position when selecting another conversation.

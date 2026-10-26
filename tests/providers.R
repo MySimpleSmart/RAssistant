@@ -68,6 +68,13 @@ main <- function() {
     identical(api$get()$base_url,"https://one.example/v1"),"a changed endpoint cannot reuse the previous endpoint's key")
   api$save("custom","another-model","https://two.example/v1",key="two-key")
   check(identical(env$.resolve_api_key("custom","https://one.example/v1"),"one-key"),"different custom endpoints retain separate keys")
+  reads <- key_reads
+  saved_backend <- env$.credential_backend
+  env$.credential_backend <- function()stop("Composer must not query Keychain")
+  active <- api$active()
+  env$.credential_backend <- saved_backend
+  check(active$provider=="custom" && active$model=="another-model" && active$ready && key_reads==reads,
+    "composer model metadata is accurate without reading any credential or Keychain inventory")
   snapshot <- api$get()
   for(url in c("http://example.com/v1","https://user:password@example.com/v1","https://example.com/v1?key=secret",
                "https://example.com/v1#fragment","https://example.com/@other","https://example.com\\evil"))

@@ -1787,9 +1787,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .knowledge .input-group-btn{display:block;width:auto;margin:0}
   .knowledge .input-group-btn>.btn.ai-btn{border-radius:3px!important;margin:0}
   .knowledge-hint{font:10px var(--mono);color:var(--muted);min-width:0;overflow-wrap:anywhere}
-  .upload-row{display:flex;align-items:center;gap:5px;margin-top:5px}
-  .upload-row>.attach-plot,.upload-row>#send{flex:0 0 auto}
-  .upload-row>#send{margin-left:auto}
+  .upload-row{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:5px}
+  .upload-row>.attach-plot,.send-controls>#send{flex:0 0 auto}
+  .send-controls{display:flex;align-items:center;justify-content:flex-end;gap:5px;margin-left:auto;min-width:0;max-width:100%}
+  .model-status{min-width:0;max-width:240px}
+  .btn.model-picker{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:left}
   .attach-plot{display:inline-flex;align-items:center;justify-content:center;
     border:1px solid #ccd2d9;background:white;color:#29323c;cursor:pointer;
     font:11px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -1957,6 +1959,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       var plot=document.getElementById("attach_current_plot");if(plot)plot.disabled=busy || readyCount>=3;
       var prompt=document.getElementById("prompt");if(prompt)prompt.disabled=working || pending || !connected;
       var fresh=document.getElementById("new_chat");if(fresh)fresh.disabled=working || !connected;
+      var model=document.getElementById("change_model");if(model)model.disabled=busy;
       var history=document.getElementById("history");if(history)history.disabled=busy;
       var knowledge=document.getElementById("knowledge");if(knowledge)knowledge.disabled=busy;
       var clear=document.getElementById("clear_images");if(clear)clear.disabled=working;
@@ -2289,7 +2292,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(window.jQuery){
         window.jQuery(document).on("input change","#prompt",resizePrompt);
         window.jQuery(document).on("shiny:value",function(e){
-          if(e.name==="edit_history_panel")window.requestAnimationFrame(updateSendState);
+          if(e.name==="edit_history_panel" || e.name==="compose_model_status")window.requestAnimationFrame(updateSendState);
           if(e.name==="code_actions_toolbar")window.requestAnimationFrame(function(){targetRefreshing=false;updateSendState();});
           if(e.name==="filename")window.requestAnimationFrame(function(){
             var source=document.getElementById("source_context");if(source)source.title=sourceReadDetail||source.textContent.trim();
@@ -2450,7 +2453,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             shiny::span(id="plot_preview_status","Move here to preview the current plot"))),
         shiny::actionButton("preview_undo",restore_icon(),class="ai-btn icon-button",disabled="disabled",title="Undo last AI edit","aria-label"="Undo last AI edit"),
         shiny::actionButton("preview_redo",restore_icon(TRUE),class="ai-btn icon-button",disabled="disabled",title="Redo last undone AI edit","aria-label"="Redo last undone AI edit"),
-        shiny::actionButton("send","Send",class="ai-btn ai-send")
+        shiny::div(class="send-controls",
+          shiny::uiOutput("compose_model_status",class="model-status",inline=TRUE),
+          shiny::actionButton("send","Send",class="ai-btn ai-send"))
       ),
       shiny::div(id="compose_status",class="compose-status",hidden="hidden",
         shiny::span(id="uploading_indicator",class="uploading-indicator",role="status"),
@@ -3058,10 +3063,21 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     api_revision <- shiny::reactiveVal(0L)
     api_fields_id <- shiny::reactiveVal(NULL)
     api_status <- shiny::reactiveVal(NULL)
-    open_api_settings <- function() {
+    api_compact <- shiny::reactiveVal(FALSE)
+    output$compose_model_status <- shiny::renderUI({
+      if(is.null(api_settings))return(NULL)
+      api_status()
+      active <- api_settings$active()
+      label <- if(active$ready)paste(active$label,active$model,sep=" · ")else"Choose model"
+      shiny::actionButton("change_model",paste0(label," \u25be"),class="ai-btn model-picker",
+        title=paste("Change model:",label),"aria-label"=paste("Change model:",label),
+        disabled=if(state$busy || !is.null(state$pending))"disabled"else NULL)
+    })
+    open_api_settings <- function(compact=FALSE) {
       if(is.null(api_settings) || state$busy || !is.null(state$pending))return()
       current <- api_settings$get()
       catalog <- api_settings$catalog()
+      api_compact(isTRUE(compact))
       api_notice("")
       api_status(api_settings$status())
       api_revision(api_revision()+1L)
@@ -3074,19 +3090,20 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       api_fields_id(fields_id)
       revision <- api_revision()
       output[[fields_id]] <- shiny::renderUI({
-        api_fields_ui(input$api_provider,revision)
+        api_fields_ui(input$api_provider,revision,compact=compact)
       })
       overview_id <- paste0("api_overview_",revision)
       output[[overview_id]] <- shiny::renderUI(api_overview_ui())
-      shiny::showModal(shiny::modalDialog(title="API settings",easyClose=TRUE,
+      shiny::showModal(shiny::modalDialog(title=if(compact)"Change model"else"API settings",easyClose=TRUE,
         shiny::div(class="assistant-help",
-          shiny::uiOutput(overview_id,class="api-overview"),
+          if(!compact)shiny::uiOutput(overview_id,class="api-overview"),
           shiny::selectInput("api_provider","Provider",choices=stats::setNames(names(catalog),
             vapply(catalog,`[[`,character(1),"label")),selected=current$provider,selectize=FALSE),
           shiny::uiOutput(fields_id),
           shiny::textOutput("api_notice")),
-        footer=shiny::tagList(modal_button("Cancel"),
-          shiny::actionButton("api_save","Use model",class="ai-btn ai-send"))))
+        footer=shiny::tagList(
+          if(compact)shiny::actionButton("api_more_settings","API settings",class="ai-btn"),
+          modal_button("Cancel"),shiny::actionButton("api_save","Use model",class="ai-btn ai-send"))))
     }
     api_overview_ui <- function() {
       status <- api_status()
@@ -3116,7 +3133,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
               paste0(row$environment,if(!row$environment_valid)" (invalid)"else"")else"Not set"))}))),
         if(!status$store_available)shiny::p("Keychain status unavailable. Unlock it and reopen API settings."))
     }
-    api_fields_ui <- function(id,revision) {
+    api_fields_ui <- function(id,revision,compact=FALSE) {
       if(is.null(api_settings))return(NULL)
       catalog <- api_settings$catalog()
       if(is.null(id) || !id %in% names(catalog))return(NULL)
@@ -3133,10 +3150,10 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         shiny::p(class="api-model-notice",shiny::textOutput("api_model_notice",inline=TRUE)),
         if(id=="custom")shiny::textInput("api_base_url","API base URL",value=if(is.null(saved))""else saved$base_url,
           placeholder="https://api.example.com/v1"),
-        shiny::passwordInput("api_key_entry","API key",value="",placeholder="Leave blank to reuse this provider's key"),
+        if(!compact)shiny::passwordInput("api_key_entry","API key",value="",placeholder="Leave blank to reuse this provider's key"),
         shiny::uiOutput("api_selected_status"),
-        shiny::p("Messages and enabled context go to this provider. For Plot and Image, choose a model that supports images."),
-        if(id=="custom")shiny::p("Use an OpenAI-compatible Chat Completions endpoint. Changing the URL requires its own key."))
+        if(!compact)shiny::p("Messages and enabled context go to this provider. For Plot and Image, choose a model that supports images."),
+        if(!compact && id=="custom")shiny::p("Use an OpenAI-compatible Chat Completions endpoint. Changing the URL requires its own key."))
     }
     output$api_selected_status <- shiny::renderUI({
       status <- api_status();id <- input$api_provider
@@ -3163,7 +3180,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           !identical(chat_text(input$api_form_revision),as.character(api_revision())))return()
       result <- tryCatch(api_settings$models(input$api_provider,
         if(input$api_provider=="custom")input$api_base_url else NULL,
-        key=chat_text(input$api_key_entry)),error=function(e)e)
+        key=if(api_compact())""else chat_text(input$api_key_entry)),error=function(e)e)
       if(inherits(result,"error")) {
         api_model_notice(paste("Could not load models:",redact_api_secrets(conditionMessage(result)),"You can type a model ID."));return()
       }
@@ -3184,10 +3201,12 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(inherits(result,"error")){api_notice(redact_api_secrets(conditionMessage(result)));return()}
       api_status(api_settings$status())
       shiny::removeModal()
-      shiny::showNotification(paste("Using",api_status()$active$label,"/",api_status()$active$model),duration=4)
+      if(!api_compact())shiny::showNotification(paste("Using",api_status()$active$label,"/",api_status()$active$model),duration=4)
     },ignoreInit=TRUE)
     output$api_notice <- shiny::renderText(api_notice())
     shiny::observeEvent(input$api_settings,open_api_settings(),ignoreInit=TRUE)
+    shiny::observeEvent(input$change_model,open_api_settings(compact=TRUE),ignoreInit=TRUE)
+    shiny::observeEvent(input$api_more_settings,open_api_settings(),ignoreInit=TRUE)
     shiny::observeEvent(input$api_save,{
       if(is.null(api_settings) || state$busy || !is.null(state$pending))return()
       on.exit(shiny::updateTextInput(session,"api_key_entry",value=""),add=TRUE)
@@ -3197,14 +3216,14 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       }
       result <- tryCatch(api_settings$save(input$api_provider,chat_text(input$api_model),
         if(input$api_provider=="custom")input$api_base_url else NULL,
-        key=if(is.null(input$api_key_entry))""else input$api_key_entry),error=function(e)e)
+        key=if(api_compact() || is.null(input$api_key_entry))""else input$api_key_entry),error=function(e)e)
       if(inherits(result,"error")) {
         api_status(api_settings$status())
-        api_notice(redact_api_secrets(conditionMessage(result)));return()
+        api_notice(paste(redact_api_secrets(conditionMessage(result)),if(api_compact())"Open API settings to add or update its key."else""));return()
       }
       api_status(api_settings$status())
       shiny::removeModal()
-      shiny::showNotification(paste("Using",api_status()$active$label,"/",api_status()$active$model),duration=4)
+      if(!api_compact())shiny::showNotification(paste("Using",api_status()$active$label,"/",api_status()$active$model),duration=4)
     },ignoreInit=TRUE)
     shiny::observeEvent(input$ai_client_ready,{
       if(!is.null(api_settings) && !api_settings$ready())open_api_settings()

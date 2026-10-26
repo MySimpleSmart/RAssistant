@@ -219,6 +219,11 @@
     ready = function() .valid_key(secret),
     profiles = function() .read_api_preferences()$profiles,
     catalog = .api_providers,
+    active = function() {
+      model <- .api_model_info(current)
+      list(provider=current$provider,label=.api_providers()[[current$provider]]$label,
+        model=model$name,ready=.valid_key(secret))
+    },
     status = function() .api_connection_status(current, secret, key_source),
     model_choices = function(provider) {
       profile <- if(provider==current$provider)current else .read_api_preferences()$profiles[[provider]]

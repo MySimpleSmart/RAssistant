@@ -47,6 +47,11 @@ API settings shows the exact active model and loaded credential source, with
 separate Keychain and environment status for saved connections. Default model
 IDs are resolved locally; the overview neither calls an AI API nor retrieves
 other saved secrets. An unavailable store is distinct from an absent key.
+The active provider and exact model appear beside Send. Clicking the label
+opens a compact model/provider picker that reuses saved keys and preserves the
+conversation and draft; its API settings button opens key management. Switching
+is blocked during a request or pending run approval. Composer metadata is read
+locally without credential lookups.
 Saved providers offer a direct Use button. The model picker fills in a concrete
 default and accepts custom IDs. Load available models requests the selected
 provider's model catalog without sending a chat, saving a key or changing the
