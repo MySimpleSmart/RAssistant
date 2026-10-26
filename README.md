@@ -36,7 +36,8 @@ opens a separate page with local conversations, a read-only preview and
 Check updates and Help each have their own full-width menu row; Close is separated below them, red,
 full-width and centered.
 Send has a send icon that becomes a spinner while working, using a fixed icon
-slot so the button does not change width.
+slot so the button does not change width. The send symbol is centered with its
+label.
 App also shows the installed version.
 Help contains launch, API-key and update instructions with Copy buttons.
 Advanced commands are expandable; manual update results appear below the header.
@@ -83,7 +84,9 @@ current status and key source. **Using now** marks the active connection;
 **Key available** marks another configured provider ready to select. Missing or
 unavailable keys have an explicit action label. Environment keys are shown by
 variable name without a misleading missing-Keychain warning. Settings controls
-fill the page width and model options scroll. Defaults show their concrete model ID.
+fill the page width. Provider and Model use the same scrollable selected-row
+buttons as Conversation; models can be filtered locally with Search models.
+**Enter model ID** remains a collapsed fallback for endpoints without a catalog. Defaults show their concrete model ID.
 Keychain status is read from metadata when settings opens; saved secrets are
 not retrieved for this overview. An unavailable store is shown separately from
 a missing key. Unsaved provider selections do not change the active connection.
@@ -510,7 +513,9 @@ separately from chats under the project's hash in the local RAssistant data
 directory, with private permissions. The latest 100 records are retained.
 `options(RAssistant.edits_dir = "/chosen/directory")` changes the location;
 setting it to `NULL` keeps edits in memory only. Log failure prevents an
-unrecorded edit. Uncertain API failures are logged and cannot be retried blindly.
+unrecorded edit. Uncertain API failures are logged and cannot be retried blindly. Full comparisons include the entire saved script, with
+horizontal and vertical scrolling for long lines and files. The selected row is
+highlighted and its list position is preserved.
 
 The **Undo** and **Redo** arrow icons are disabled when the current Source has no
 available AI change. They remain visible beside Image and Plot, with

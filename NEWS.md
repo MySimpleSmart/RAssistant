@@ -1,3 +1,9 @@
+# RAssistant 0.16.7
+
+- Use Conversation-style full-width button lists for provider and model selection, with selected rows, model search and the existing automatic catalog lookup. Keep manual IDs available in a collapsed advanced control.
+- Center the Send icon with its label and use a vertically balanced send symbol; preserve the fixed spinner slot while loading.
+- Show complete code edit history comparisons, including unchanged file edges. Keep long code lines and their formatting inside a preview with horizontal and vertical scrolling; preserve list position and highlight the selected edit.
+
 # RAssistant 0.16.6
 
 - Make Provider, Model, API key and custom endpoint fields fill the settings page width. Model options use a bounded scrolling list.

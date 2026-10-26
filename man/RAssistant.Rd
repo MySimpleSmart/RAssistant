@@ -46,7 +46,8 @@ Model preferences and the last selected provider are saved locally without keys.
 API settings shows the exact active model and loaded credential source, with
 clear Using now and Key available indicators for configured providers, with
 explicit labels for missing or unavailable keys and the key source below each
-status. Settings controls fill the page width and model options scroll. Default model
+status. Settings controls fill the page width. Provider and Model use Conversation-style
+scrollable selection buttons, with model search and a collapsed manual-ID fallback. Default model
 IDs are resolved locally; the overview neither calls an AI API nor retrieves
 other saved secrets. An unavailable store is distinct from an absent key.
 A compact model name appears beside Send, with an ellipsis for long names.
@@ -57,7 +58,7 @@ conversation and draft. API settings opens key management without discarding
 the pending provider, model or custom endpoint. Switching
 is blocked during a request or pending run approval. Composer metadata is read
 locally without credential lookups. Send shows a send icon that is replaced by a
-spinner while working, without changing button width; reduced-motion settings
+spinner while working, centered with its label and without changing button width; reduced-motion settings
 are respected.
 Saved providers offer a direct Use button. The model picker automatically requests the selected
 provider's model catalog on open, provider change and key entry. Refresh models
@@ -86,7 +87,9 @@ line. Selecting Source text or placing the cursor inside an R chunk automaticall
 shows Explain, Fix and Improve, without menu activation. Local selection checks
 make no AI request. Actions reread Source on click. Edits require explicit approval.
 Spacing-only proposals are separated from code corrections. A separate Code edit
-history page stores up to 100 local before/after backups. Visible Undo and Redo
+history page stores up to 100 local before/after backups. Comparisons include
+the full saved script and preserve formatting, with both scroll directions
+available for long code. Visible Undo and Redo
 controls require a comparison and confirmation and refuse to overwrite manual
 changes. They are disabled when no AI edit is available for the current Source.
 A new AI edit ends the older Redo branch. Workspace context includes types,

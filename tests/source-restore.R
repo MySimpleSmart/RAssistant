@@ -98,5 +98,11 @@ undo <- entry;undo$operation <- "undo";undo$original_id <- oldest
 id <- bounded$begin(undo);bounded$finish(id,"applied");bounded$finish(oldest,"undone")
 check(length(bounded$list())==100L && bounded$get(oldest)$status=="undone",
   "retention keeps the original backup while committing an Undo at the 100-record boundary")
+before <- paste(c("# PREFIX_SENTINEL",paste0("x",1:80," <- 1"),"# SUFFIX_SENTINEL"),collapse="\n")
+after <- sub("x40 <- 1","x40 <- 2",before,fixed=TRUE)
+check(!grepl("PREFIX_SENTINEL",app$source_diff_display(before,after)$html,fixed=TRUE) &&
+  grepl("PREFIX_SENTINEL",app$source_diff_display(before,after,full=TRUE)$html,fixed=TRUE) &&
+  grepl("SUFFIX_SENTINEL",app$source_diff_display(before,after,full=TRUE)$html,fixed=TRUE),
+  "full history comparisons include unchanged file edges without changing inline edit diff context")
 unlink(directory,recursive=TRUE)
 cat(checks,"Source restore checks passed\n")

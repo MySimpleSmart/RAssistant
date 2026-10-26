@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.16.6
+Version: 0.16.7
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -31,6 +31,6 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Make Provider, Model, API key and custom endpoint fields fill the settings page width. Model options use a bounded scrolling list.
-    Identify providers with Using now, Key available, Add key or an actionable key-status label. Show the credential source without implying an environment-configured key is missing from Keychain.
-    Add a send icon to Send and replace it with a spinner while working. Keep the icon slot and button width stable, with the existing button styles and reduced-motion support.
+Config/RAssistant/Changes: Use Conversation-style full-width button lists for provider and model selection, with selected rows, model search and the existing automatic catalog lookup. Keep manual IDs available in a collapsed advanced control.
+    Center the Send icon with its label and use a vertically balanced send symbol; preserve the fixed spinner slot while loading.
+    Show complete code edit history comparisons, including unchanged file edges. Keep long code lines and their formatting inside a preview with horizontal and vertical scrolling; preserve list position and highlight the selected edit.

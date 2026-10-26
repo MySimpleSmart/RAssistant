@@ -179,7 +179,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   send_icon <- function()shiny::span(class="send-icon","aria-hidden"="true",
     shiny::tags$svg(class="send-plane",viewBox="0 0 24 24",width="14",height="14",focusable="false",
       fill="none",stroke="currentColor","stroke-width"="1.8","stroke-linecap"="round","stroke-linejoin"="round",
-      shiny::tags$path(d="m22 2-7 20-4-9-9-4Z"),shiny::tags$path(d="M22 2 11 13")),
+      shiny::tags$path(d="m22 12-20-10 5 10-5 10Z"),shiny::tags$path(d="M22 12H7")),
     shiny::tags$svg(class="send-spinner",viewBox="0 0 24 24",width="14",height="14",focusable="false",
       fill="none",stroke="currentColor","stroke-width"="2","stroke-linecap"="round",
       shiny::tags$circle(cx="12",cy="12",r="9","stroke-dasharray"="42 15")))
@@ -597,12 +597,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     list(before=before,after=after,kind=kind,mode=mode,creating=creating,syntax=syntax,
       target=if(creating)if(kind=="Rmd")"New R Markdown document"else"New R script" else snapshot$name)
   }
-  source_diff <- function(before,after) {
+  source_diff <- function(before,after,full=FALSE) {
     files <- c(tempfile(),tempfile());on.exit(unlink(files),add=TRUE)
     for(i in 1:2){writeBin(charToRaw(enc2utf8(c(before,after)[[i]])),files[[i]]);Sys.chmod(files[[i]],"0600")}
     tool <- Sys.which("diff")
     if(nzchar(tool)) {
-      result <- suppressWarnings(system2(tool,c("-u",shQuote(files)),stdout=TRUE,stderr=TRUE,timeout=5))
+      context <- if(full)c("-U",as.character(max(c(1L,length(strsplit(before,"\n",fixed=TRUE)[[1L]]),length(strsplit(after,"\n",fixed=TRUE)[[1L]])))))else"-u"
+      result <- suppressWarnings(system2(tool,c(context,shQuote(files)),stdout=TRUE,stderr=TRUE,timeout=5))
       status <- attr(result,"status")
       if(is.null(status) || identical(status,1L)) {
         if(length(result)>=2L)result[1:2] <- c("--- Current","+++ Proposed")
@@ -613,8 +614,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(nzchar(after))paste0("+",strsplit(after,"\n",fixed=TRUE)[[1L]]))
   }
 
-  source_diff_rows <- function(before,after) {
-    lines <- source_diff(before,after);old <- 1L;new <- 1L
+  source_diff_rows <- function(before,after,full=FALSE) {
+    lines <- source_diff(before,after,full=full);old <- 1L;new <- 1L
     lapply(seq_along(lines),function(i) {
       line <- lines[[i]]
       hunk <- regmatches(line,regexec("^@@ -([0-9]+)(?:,[0-9]+)? \\+([0-9]+)(?:,[0-9]+)? @@",line,perl=TRUE))[[1L]]
@@ -707,8 +708,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     meaningful <- Filter(function(change)!source_blank_change(before,apply_source_changes(before,list(change)),kind),changes)
     apply_source_changes(before,meaningful)
   }
-  source_diff_display <- function(before,after,token=NULL) {
-    rows <- source_diff_rows(before,after)
+  source_diff_display <- function(before,after,token=NULL,full=FALSE) {
+    rows <- source_diff_rows(before,after,full=full)
     escaped <- vapply(rows,function(row)as.character(htmltools::htmlEscape(row$text)),character(1))
     # Highlight the precise changed characters within paired old/new lines.
     groups <- split(seq_along(rows),cumsum(vapply(rows,function(row)row$kind=="context" || startsWith(row$text,"@@"),logical(1))))
@@ -1763,7 +1764,20 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .code-target-buttons{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
   .code-target-buttons .code-target-close{margin-left:auto}
   .chat-history-panel,.edit-history-panel{border:1px solid var(--border);padding:9px;margin:8px 0;font-size:11px}
-  .chat-history-page,.edit-history-page{flex:1 1 auto;min-height:0;overflow:auto;padding:8px}
+  .chat-history-page,.edit-history-page{flex:1 1 auto;min-width:0;min-height:0;overflow:auto;padding:8px}
+  .edit-history-preview{min-width:0;max-width:100%;margin-top:8px;border-top:1px solid var(--border);padding-top:8px}
+  .edit-history-preview pre.source-diff{width:100%;max-width:100%;max-height:min(55vh,520px);min-height:100px;margin:0;white-space:pre;word-break:normal;overflow-wrap:normal;overflow:auto}
+  .edit-history-preview .diff-canvas{display:block;width:max-content;min-width:100%;font:inherit;color:inherit;background:transparent;padding:0;white-space:pre;word-break:normal;overflow-wrap:normal}
+  .edit-history-preview .diff-row{white-space:pre}
+  .edit-proposal-notes{margin:6px 0}
+  .edit-proposal-notes>summary{cursor:pointer;color:var(--muted)}
+  .api-selection-label{display:block;font-weight:600;margin-bottom:4px}
+  .api-model-group{display:flex;flex-direction:column;gap:4px}
+  .api-model-buttons [hidden]{display:none}
+  .api-selection-list .btn{width:100%}
+  .api-selection-adapter{display:none}
+  .api-manual-model{margin:7px 0}
+  .api-manual-model>summary{cursor:pointer;color:var(--muted)}
   .edit-page-header{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:8px}
   .edit-page-actions{display:flex;gap:4px}
   .edit-log-list .ai-btn{min-width:0;white-space:normal;overflow-wrap:anywhere}
@@ -1804,6 +1818,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .send-controls{display:flex;align-items:center;justify-content:flex-end;gap:5px;margin-left:auto;min-width:0;max-width:100%}
   .model-status{min-width:0;max-width:140px}
   .btn.model-picker{display:inline-flex;align-items:center;gap:4px;max-width:100%;white-space:nowrap;text-align:left}
+  .model-picker>.action-label{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:100%}
   .model-picker .model-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .model-picker .model-caret{flex:0 0 auto}
   .api-current{margin-bottom:10px;overflow-wrap:anywhere}
@@ -1825,8 +1840,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     line-height:13px;border:1px solid #c5cdd5;border-radius:50%;background:white;color:#47586a;cursor:pointer}
   .btn.ai-send:disabled{background:#e5e7eb;border-color:#ced3d8;color:#858d95;cursor:not-allowed;opacity:1}
   #send{display:inline-flex;align-items:center;justify-content:center;gap:5px}
-  .send-icon{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;flex:0 0 14px}
-  .send-spinner{display:none;transform-origin:center}
+  #send>.action-label{display:inline-flex;align-items:center;gap:5px;line-height:14px}
+  .send-icon{display:inline-flex;align-items:center;justify-content:center;align-self:center;line-height:0;width:14px;height:14px;flex:0 0 14px}
+  .send-icon svg{display:block;width:14px;height:14px;vertical-align:middle}
+  .send-label{display:inline-flex;align-items:center;line-height:14px}
+  .send-icon .send-spinner{display:none;transform-origin:center}
   #send.is-loading .send-plane{display:none}
   #send.is-loading .send-spinner{display:block;animation:send-spin .7s linear infinite}
   @keyframes send-spin{to{transform:rotate(360deg)}}
@@ -1904,6 +1922,41 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     }
     var historyPage="";
     var modelLookupScope="",modelLookupRequest=0;
+    function markApiChoice(list,attribute,value){
+      if(!list)return;
+      list.querySelectorAll("button["+attribute+"]").forEach(function(button){
+        var chosen=button.getAttribute(attribute)===value;
+        button.classList.toggle("ai-send",chosen);button.setAttribute("aria-pressed",chosen?"true":"false");
+      });
+    }
+    function filterModelButtons(){
+      var list=document.getElementById("api_model_buttons"),field=document.getElementById("api_model_filter");
+      if(!list)return;var query=field?field.value.trim().toLowerCase():"";
+      list.querySelectorAll(".api-model-group").forEach(function(group){
+        var count=0;group.querySelectorAll(".api-model-choice").forEach(function(button){
+          button.hidden=!!query && button.textContent.toLowerCase().indexOf(query)<0;if(!button.hidden)count++;
+        });group.hidden=count===0;
+      });
+      var empty=list.querySelector(".api-model-empty");if(empty)empty.hidden=!!list.querySelector(".api-model-choice:not([hidden])");
+    }
+    function renderModelButtons(){
+      var field=document.getElementById("api_model"),list=document.getElementById("api_model_buttons");
+      if(!field || !field.selectize || !list)return;
+      var picker=field.selectize,selected=picker.getValue();list.replaceChildren();
+      ["reported","configured"].forEach(function(kind){
+        var ids=Object.keys(picker.options).filter(function(id){return (picker.options[id].group||"configured")===kind;});
+        if(!ids.length)return;
+        var group=document.createElement("div");group.className="api-model-group";
+        var heading=document.createElement("div");heading.className="menu-heading";
+        heading.textContent=kind==="reported"?"Models returned by provider":"Configured / not in provider list";group.appendChild(heading);
+        ids.forEach(function(id){
+          var button=document.createElement("button");button.type="button";button.className="btn ai-btn api-model-choice";
+          button.setAttribute("data-model",id);button.textContent=picker.options[id].label||id;group.appendChild(button);
+        });list.appendChild(group);
+      });
+      var empty=document.createElement("p");empty.className="empty api-model-empty";empty.textContent="No matching models.";list.appendChild(empty);
+      markApiChoice(list,"data-model",selected);filterModelButtons();
+    }
     function requestModels(force){
       var provider=document.getElementById("api_provider"),revision=document.getElementById("api_form_revision"),form=document.getElementById("api_form_provider"),model=document.getElementById("api_model");
       if(!connected || serverBusy || pending || !provider || !revision || !form || provider.value!==form.value || !model || !model.selectize)return;
@@ -1914,6 +1967,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       var picker=model.selectize,selected=picker.getValue();
       picker.clear(true);picker.clearOptions();
       if(selected){picker.addOption({value:selected,label:selected+" (configured; checking)",group:"configured"});picker.setValue(selected,true);}
+      renderModelButtons();
       var button=document.getElementById("api_load_models"),notice=document.getElementById("api_model_notice"),key=document.getElementById("api_key_entry");
       if(button){button.disabled=true;button.textContent="Loading models…";}
       if(notice)notice.textContent="Loading available models…";
@@ -2168,6 +2222,26 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     document.addEventListener("click",function(e){
       var menu=document.getElementById("app_menu");
       if(menu && (!menu.contains(e.target) || (e.target.closest && e.target.closest(".menu-panel button"))))menu.open=false;
+      var providerChoice=e.target.closest && e.target.closest(".api-provider-choice");
+      if(providerChoice && !providerChoice.disabled){
+        var provider=document.getElementById("api_provider");
+        provider.value=providerChoice.getAttribute("data-provider");
+        markApiChoice(document.getElementById("api_provider_buttons"),"data-provider",provider.value);
+        provider.dispatchEvent(new Event("change",{bubbles:true}));
+      }
+      var modelChoice=e.target.closest && e.target.closest(".api-model-choice");
+      if(modelChoice && !modelChoice.disabled){
+        var model=document.getElementById("api_model");model.selectize.setValue(modelChoice.getAttribute("data-model"));
+        markApiChoice(document.getElementById("api_model_buttons"),"data-model",model.value);
+      }
+      var manual=e.target.closest && e.target.closest(".api-manual-use");
+      if(manual && !manual.disabled){
+        var entry=document.getElementById("api_manual_model"),id=entry?entry.value.trim():"",picker=document.getElementById("api_model");
+        if(id && id.length<=200 && !/[\\s\\x00-\\x1f]/.test(id)){
+          picker.selectize.addOption({value:id,label:id+" (manual ID)",group:"configured"});picker.selectize.setValue(id);
+          var filter=document.getElementById("api_model_filter");if(filter)filter.value="";renderModelButtons();
+        }
+      }
       var useApi=e.target.closest && e.target.closest(".api-use-connection");
       if(useApi && !useApi.disabled){
         Shiny.setInputValue("api_use_connection",{index:Number(useApi.getAttribute("data-index")),revision:useApi.getAttribute("data-revision"),nonce:++nonce},{priority:"event"});
@@ -2307,7 +2381,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           ids.forEach(function(id){if(typeof id==="string")picker.addOption({value:id,label:id,group:"reported"});});
           if(selected && ids.indexOf(selected)<0)picker.addOption({value:selected,label:selected+" (configured; not in provider list)",group:"configured"});
           if(selected)picker.setValue(selected,true);
-          picker.refreshOptions(false);
+          picker.refreshOptions(false);renderModelButtons();
         });
         Shiny.addCustomMessageHandler("ai_scroll_latest",function(msg){scrollLatest();});
         Shiny.addCustomMessageHandler("ai_review_lock",function(msg){var field=msg && document.getElementById(msg.mode_id);if(field)field.disabled=true;});
@@ -2339,12 +2413,24 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       window.setInterval(previewPlot,2000);
       if(window.jQuery){
         window.jQuery(document).on("input change","#prompt",resizePrompt);
+        window.jQuery(document).on("input","#api_model_filter",filterModelButtons);
         window.jQuery(document).on("change","#api_key_entry,#api_base_url",function(){
           window.setTimeout(function(){requestModels(true);},0);
         });
         window.jQuery(document).on("shiny:value",function(e){
           if(/^api_fields_/.test(e.name))window.requestAnimationFrame(function(){scheduleModels(0);});
-          if(e.name==="edit_history_panel" || e.name==="compose_model_status")window.requestAnimationFrame(updateSendState);
+          if(e.name==="edit_history_panel"){
+            var page=document.getElementById("edit_history_page"),list=page && page.querySelector(".edit-log-list"),code=page && page.querySelector("pre.source-diff"),chosen=page && page.querySelector(".edit-log-view[aria-pressed=true]");
+            var saved={page:page?page.scrollTop:0,list:list?list.scrollTop:0,x:code?code.scrollLeft:0,y:code?code.scrollTop:0,id:chosen?chosen.getAttribute("data-id"):null};
+            window.requestAnimationFrame(function(){
+              if(page){var next=page.querySelector(".edit-log-list"),pre=page.querySelector("pre.source-diff"),selected=page.querySelector(".edit-log-view[aria-pressed=true]");
+                if(next)next.scrollTop=saved.list;
+                if(pre && selected && selected.getAttribute("data-id")===saved.id){pre.scrollLeft=saved.x;pre.scrollTop=saved.y;}
+                page.scrollTop=saved.page;
+              }updateSendState();
+            });
+          }
+          if(e.name==="compose_model_status")window.requestAnimationFrame(updateSendState);
           if(e.name==="code_actions_toolbar")window.requestAnimationFrame(function(){targetRefreshing=false;updateSendState();});
           if(e.name==="filename")window.requestAnimationFrame(function(){
             var source=document.getElementById("source_context");if(source)source.title=sourceReadDetail||source.textContent.trim();
@@ -3160,8 +3246,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
             shiny::div(id="api_current_connection",class="api-current",shiny::strong("Using: "),
               api_settings$active()$label," / ",shiny::tags$code(api_settings$active()$model))else
             shiny::div(id="api_current_connection",class="api-current","No active connection"),
-          shiny::selectInput("api_provider","Provider",choices=stats::setNames(names(catalog),provider_labels),
-            selected=selected_provider,selectize=FALSE,width="100%"),
+          shiny::div(class="api-selection-adapter",shiny::selectInput("api_provider",NULL,
+            choices=stats::setNames(names(catalog),provider_labels),selected=selected_provider,selectize=FALSE,width="100%")),
+          shiny::span(class="api-selection-label","Provider"),
+          shiny::div(id="api_provider_buttons",class="edit-log-list api-selection-list",role="group","aria-label"="Providers",
+            lapply(seq_along(catalog),function(i){id<-names(catalog)[[i]];shiny::tags$button(type="button",
+              class=paste("btn ai-btn api-provider-choice",if(id==selected_provider)"ai-send"else""),"data-provider"=id,
+              "aria-pressed"=if(id==selected_provider)"true"else"false",provider_labels[[i]])})),
           shiny::uiOutput(fields_id),
           shiny::textOutput("api_notice")),
         footer=shiny::tagList(
@@ -3222,10 +3313,17 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       shiny::tagList(
         shiny::div(style="display:none",shiny::textInput("api_form_provider",NULL,value=id),
           shiny::textInput("api_form_revision",NULL,value=as.character(revision))),
-        shiny::selectizeInput("api_model","Model",choices=choices,selected=selected,width="100%",
+        shiny::div(class="api-selection-adapter",shiny::selectizeInput("api_model",NULL,choices=choices,selected=selected,width="100%",
           options=list(create=TRUE,persist=FALSE,placeholder="Choose an available model",
             optgroupField="group",optgroups=list(list(value="reported",label="Models returned by provider"),
-              list(value="configured",label="Configured / not in provider list")),lockOptgroupOrder=TRUE)),
+              list(value="configured",label="Configured / not in provider list")),lockOptgroupOrder=TRUE))),
+        shiny::tags$label(class="api-selection-label","for"="api_model_filter","Model"),
+        shiny::tags$input(id="api_model_filter",type="search",class="form-control","data-shiny-no-bind-input"="",placeholder="Search models"),
+        shiny::div(id="api_model_buttons",class="edit-log-list api-selection-list api-model-buttons",role="group","aria-label"="Models",
+          shiny::p(class="empty","Loading available models…")),
+        shiny::tags$details(class="api-manual-model",shiny::tags$summary("Enter model ID"),
+          shiny::textInput("api_manual_model",NULL,value="",width="100%",placeholder="Exact model ID"),
+          shiny::tags$button(type="button",class="btn ai-btn api-manual-use","Select ID")),
         shiny::tags$button(id="api_load_models",type="button",class="btn ai-btn","Refresh models"),
         shiny::p(class="api-model-notice",shiny::span(id="api_model_notice","Available models load automatically.")),
         if(id=="custom")shiny::textInput("api_base_url","API base URL",value=if(is.null(saved))""else saved$base_url,width="100%",
@@ -3894,6 +3992,10 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     }
     shiny::observeEvent(input$confirm_source_undo,confirm_restore(input$confirm_source_undo,"undo"),ignoreInit=TRUE)
     shiny::observeEvent(input$confirm_source_redo,confirm_restore(input$confirm_source_redo,"redo"),ignoreInit=TRUE)
+    history_diff_ui <- function(before,after)shiny::div(class="edit-history-preview",
+      shiny::p(class="menu-hint","Preview · full comparison · scroll to see more"),
+      shiny::tags$pre(class="source-diff",tabindex="0","aria-label"="Complete code comparison",
+        shiny::tags$code(class="diff-canvas",shiny::HTML(source_diff_display(before,after,full=TRUE)$html))))
     output$edit_history_panel <- shiny::renderUI({
       state$edit_version
       if(!state$edit_panel)return(NULL)
@@ -3910,16 +4012,15 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         if(!is.null(job))shiny::div(class="undo-comparison",
           shiny::strong(if(job$conflict)paste0(if(job$direction=="undo")"Undo"else"Redo"," blocked: Source changed after this AI edit.")
             else paste0(if(job$direction=="undo")"Undo"else"Redo"," preview: ",job$entry$name)),
-          shiny::tags$pre(class="source-diff",shiny::HTML(source_diff_display(job$snapshot$text,
-            if(job$direction=="undo")job$entry$before else job$entry$after)$html)),
+          history_diff_ui(job$snapshot$text,if(job$direction=="undo")job$entry$before else job$entry$after),
           if(!job$conflict)shiny::tags$button(type="button",class=paste("btn ai-btn",if(job$direction=="undo")"source-undo"else"source-redo"),
             "data-token"=job$token,if(job$direction=="undo")"Confirm Undo"else"Confirm Redo")),
-        shiny::div(class="edit-log-list",lapply(head(entries,100L),function(entry)shiny::tags$button(type="button",class="btn ai-btn edit-log-view",
-          "data-id"=entry$id,paste(entry$time,entry$name,entry$operation,entry$status,sep=" | ")))),
+        shiny::div(class="edit-log-list",lapply(head(entries,100L),function(entry)shiny::tags$button(type="button",class=paste("btn ai-btn edit-log-view",if(!is.null(selected) && identical(selected$id,entry$id))"ai-send"else""),
+          "aria-pressed"=if(!is.null(selected) && identical(selected$id,entry$id))"true"else"false","data-id"=entry$id,paste(entry$time,entry$name,entry$operation,entry$status,sep=" | ")))),
         if(is.null(selected))shiny::p("No changes recorded yet.")else if(is.null(job))shiny::tagList(
           shiny::p(title=selected$path,paste(selected$name,selected$status,sep=" - ")),
-          if(nzchar(selected$summary))shiny::p(paste("AI proposal notes:",selected$summary)),
-          shiny::tags$pre(class="source-diff",shiny::HTML(source_diff_display(selected$before,selected$after)$html))))
+          if(nzchar(selected$summary))shiny::tags$details(class="edit-proposal-notes",shiny::tags$summary("AI notes"),shiny::p(selected$summary)),
+          history_diff_ui(selected$before,selected$after)))
     })
     shiny::outputOptions(output,"edit_history_panel",suspendWhenHidden=FALSE)
     output$workspace_context_state <- shiny::renderText(if(isTRUE(input$workspace_context))"On"else"Off")

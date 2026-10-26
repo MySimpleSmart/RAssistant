@@ -112,6 +112,16 @@ main <- function() {
       "library(tidyverse)","","# 1. Read data",'birth_data <- read_csv("BIRTH_reduced.csv")',"",
       "# 2. Select four numeric variables","X_df <- birth_data %>%", "  select(matage, gestage, birthwt, head)","",
       "# 3. Convert to a matrix","X <- as.matrix(X_df)","","# 4. Check matrix dimensions","rtrtryydim(X)",""))
+    if(identical(Sys.getenv("RA_BROWSER_EDIT_PREVIEW_ONLY"),"true")) {
+      app$edit_store <- app$source_edit_store()
+      text <- function(i){lines<-c("# PREFIX_START",sprintf("value_%02d <- %d",1:90,1:90),"# SUFFIX_END","")
+        lines[[45L]]<-paste0('long_value <- "',strrep("x",1400L),'" # END_LONG_LINE')
+        lines[[70L]]<-paste("changed <-",i);paste(lines,collapse="\n")}
+      for(i in 1:8){id<-app$edit_store$begin(list(before=text(i-1L),after=text(i),path=app$initial$path,
+        name=basename(app$initial$path),document_id=app$initial$id,session=app$source_session_id,
+        operation="replace",summary="Preserve the complete script and its formatting."));app$edit_store$finish(id,"applied")}
+      app$initial$contents <- strsplit(text(8L),"\n",fixed=TRUE)[[1L]]
+    }
     edits <- list()
     app$write_source <- function(id,text){
       stopifnot(identical(id,app$initial$id))
@@ -319,12 +329,14 @@ main <- function() {
     js('document.getElementById("api_more_settings").click()')
     wait_js('document.getElementById("api_key_entry")!==null && document.querySelector(".modal-title").textContent==="API settings"')
     choose <- function(id) {
-      js(paste0('var field=document.getElementById("api_provider");field.value=',jsonlite::toJSON(id,auto_unbox=TRUE),';field.dispatchEvent(new Event("change",{bubbles:true}));'))
+      js(paste0('var id=',jsonlite::toJSON(id,auto_unbox=TRUE),';Array.from(document.querySelectorAll(".api-provider-choice")).find(function(b){return b.dataset.provider===id;}).click();'))
       wait_js(paste0('document.getElementById("api_form_provider")!==null && document.getElementById("api_form_provider").value===',jsonlite::toJSON(id,auto_unbox=TRUE)))
     }
     fill <- function(id,value) {
       if(id=="api_model")wait_js('document.getElementById("api_model")!==null && !!document.getElementById("api_model").selectize')
-      js(paste0('var field=document.getElementById(',jsonlite::toJSON(id,auto_unbox=TRUE),');if(field.selectize){var value=',jsonlite::toJSON(value,auto_unbox=TRUE),';if(value&&!field.selectize.options[value])field.selectize.addOption({value:value,label:value});field.selectize.setValue(value);}else{field.value=',jsonlite::toJSON(value,auto_unbox=TRUE),';field.dispatchEvent(new Event("input",{bubbles:true}));field.dispatchEvent(new Event("change",{bubbles:true}));}'))
+      if(id=="api_model") {
+        js(paste0('var value=',jsonlite::toJSON(value,auto_unbox=TRUE),';var row=Array.from(document.querySelectorAll(".api-model-choice")).find(function(b){return b.dataset.model===value;});if(row){row.click();}else{document.querySelector(".api-manual-model").open=true;var field=document.getElementById("api_manual_model");field.value=value;field.dispatchEvent(new Event("input",{bubbles:true}));field.dispatchEvent(new Event("change",{bubbles:true}));document.querySelector(".api-manual-use").click();}'))
+      }else js(paste0('var field=document.getElementById(',jsonlite::toJSON(id,auto_unbox=TRUE),');field.value=',jsonlite::toJSON(value,auto_unbox=TRUE),';field.dispatchEvent(new Event("input",{bubbles:true}));field.dispatchEvent(new Event("change",{bubbles:true}));'))
       input_id <- if(id=="api_key_entry")paste0(id,":shiny.password")else id
       wait_js(paste0('Shiny.shinyapp.$inputValues[',jsonlite::toJSON(input_id,auto_unbox=TRUE),']===',jsonlite::toJSON(value,auto_unbox=TRUE)))
     }
@@ -335,7 +347,14 @@ main <- function() {
     fill("api_key_entry","gemini-browser-key")
     wait_js('document.getElementById("api_model").selectize.options["gemini-only-model"]!==undefined && !document.getElementById("api_load_models").disabled')
     check(TRUE,"entering a key automatically loads its provider-reported models without pressing Refresh")
-    check(isTRUE(js('var width=document.querySelector(".api-settings").getBoundingClientRect().width;["api_provider","api_model","api_key_entry"].every(function(id){var node=document.getElementById(id);var control=node.selectize?node.selectize.$control[0]:node;return Math.abs(control.getBoundingClientRect().width-width)<2;})')),
+    js('var filter=document.getElementById("api_model_filter");filter.value="gemini-only";filter.dispatchEvent(new Event("input",{bubbles:true}));')
+    check(isTRUE(js('document.querySelectorAll(".api-model-choice:not([hidden])").length===1 && document.querySelector(".api-model-choice:not([hidden])").textContent.includes("gemini-only-model")')),
+      "the model button list filters locally without making another API request")
+    js('document.querySelector(".api-model-choice:not([hidden])").click();var filter=document.getElementById("api_model_filter");filter.value="";filter.dispatchEvent(new Event("input",{bubbles:true}));')
+    wait_js('Shiny.shinyapp.$inputValues.api_model==="gemini-only-model"')
+    check(isTRUE(js('document.querySelector(".api-model-choice[aria-pressed=true]").dataset.model==="gemini-only-model" && document.querySelector(".api-model-choice[aria-pressed=true]").classList.contains("ai-send")')),
+      "clicking a model row selects it with the same pressed and highlight state as Conversation")
+    check(isTRUE(js('var width=document.querySelector(".api-settings").getBoundingClientRect().width;["api_provider_buttons","api_model_buttons","api_key_entry"].every(function(id){return Math.abs(document.getElementById(id).getBoundingClientRect().width-width)<2;})')),
       "Provider, Model and API key controls fill the settings page width")
     fill("api_model","gemini-test")
     js('document.getElementById("api_save").click()')
@@ -343,6 +362,8 @@ main <- function() {
     check(TRUE,"Gemini saves and activates directly from the first-launch form")
     check(isTRUE(js('getComputedStyle(document.querySelector("#send .send-plane")).display!=="none" && getComputedStyle(document.querySelector("#send .send-spinner")).display==="none"')),
       "Send shows its send icon while idle")
+    check(isTRUE(js('var icon=document.querySelector("#send .send-icon").getBoundingClientRect(),label=document.querySelector("#send .send-label").getBoundingClientRect(),plane=document.querySelector("#send .send-plane").getBBox();Math.abs((icon.top+icon.bottom-label.top-label.bottom)/2)<0.5 && Math.abs(plane.y+plane.height/2-12)<0.1')),
+      "the send icon is vertically centered with its text and its drawing is balanced around the middle")
     fill("prompt","Keep this draft while switching providers")
     js('openAction("api_settings")')
     wait_js('document.getElementById("api_key_entry")!==null && document.getElementById("api_model").value==="gemini-test"')
@@ -388,12 +409,10 @@ main <- function() {
     check(isTRUE(js('document.querySelector(".api-active").textContent.includes("Google Gemini") && document.querySelector("tr[data-provider=gemini]").dataset.active==="true"')),
       "editing another provider does not falsely mark it as active before Save and use")
     browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
-    check(isTRUE(js('var width=document.querySelector(".api-settings").getBoundingClientRect().width;["api_provider","api_model","api_key_entry"].every(function(id){var node=document.getElementById(id);var control=node.selectize?node.selectize.$control[0]:node;return Math.abs(control.getBoundingClientRect().width-width)<2;})')),
+    check(isTRUE(js('var width=document.querySelector(".api-settings").getBoundingClientRect().width;["api_provider_buttons","api_model_buttons","api_key_entry"].every(function(id){return Math.abs(document.getElementById(id).getBoundingClientRect().width-width)<2;})')),
       "settings controls remain full width in a narrow Viewer")
-    js('document.getElementById("api_model").selectize.open();')
-    check(isTRUE(js('var picker=document.getElementById("api_model").selectize;Math.abs(picker.$dropdown[0].getBoundingClientRect().width-picker.$control[0].getBoundingClientRect().width)<2 && getComputedStyle(picker.$dropdown_content[0]).maxHeight==="150px"')),
-      "the model dropdown fills its control width and scrolls like the history list")
-    js('document.getElementById("api_model").selectize.close();')
+    check(isTRUE(js('["api_provider_buttons","api_model_buttons"].every(function(id){var list=document.getElementById(id);return list.classList.contains("edit-log-list") && getComputedStyle(list).maxHeight==="150px" && getComputedStyle(list).overflowY==="auto";}) && document.getElementById("api_provider").getClientRects().length===0 && document.getElementById("api_model").getClientRects().length===0')),
+      "provider and model choices use the same scrollable button-list style as Conversation without visible dropdowns")
     check(isTRUE(js('var table=document.querySelector(".api-connections").getBoundingClientRect(),dialog=document.querySelector(".modal-dialog").getBoundingClientRect();table.right<=innerWidth && table.left>=0 && dialog.right<=innerWidth && dialog.left>=0')),
       "provider, model and key status columns fit a narrow Viewer without horizontal clipping")
     screenshot <- Sys.getenv("RA_BROWSER_API_SCREENSHOT")
@@ -489,8 +508,9 @@ main <- function() {
   }
   check(isTRUE(js('!document.getElementById("app_menu").open && document.querySelector("#app_menu #history")!==null && document.querySelector("#app_menu #knowledge")!==null && document.getElementById("knowledge").textContent==="Knowledge Base" && document.querySelector("#app_menu #help")!==null && document.querySelector("#app_menu #close")!==null && document.getElementById("check_updates").closest("#app_menu")!==null && document.getElementById("console_context").closest(".toolbar-actions")!==null && document.querySelector(".upload-row #console_context")===null && document.getElementById("workspace_context").closest(".toolbar-actions")!==null && document.querySelector("#app_menu #workspace_context")===null && document.getElementById("workspace_context").checked && document.getElementById("workspace_context_state").textContent==="On"')),
     "Check updates lives in More actions while Console and default-on Workspace share the header")
-  check(isTRUE(js('document.getElementById("preview_undo").disabled && document.getElementById("preview_redo").disabled')),
-    "Undo and Redo are disabled when this Source has no AI change")
+  if(!identical(Sys.getenv("RA_BROWSER_EDIT_PREVIEW_ONLY"),"true"))
+    check(isTRUE(js('document.getElementById("preview_undo").disabled && document.getElementById("preview_redo").disabled')),
+      "Undo and Redo are disabled when this Source has no AI change")
   wait_js('!document.getElementById("plot_hover_thumbnail").hidden && document.getElementById("plot_hover_thumbnail").naturalWidth>0')
   check(isTRUE(js('var dot=document.getElementById("plot_available_indicator"),button=document.getElementById("attach_current_plot");button.querySelectorAll("img").length===0 && !dot.hidden && button.firstElementChild===dot && getComputedStyle(dot).backgroundColor==="rgb(47, 128, 237)" && document.querySelectorAll(".attachment-item").length===0 && document.querySelectorAll(".msg.user").length===0')),
     "a blue dot appears before Plot as soon as a plot exists, before any chat attachment")
@@ -500,6 +520,34 @@ main <- function() {
   unlink(source_marker)
   wait_js('!document.getElementById("plot_available_indicator").hidden',timeout=6)
   check(TRUE,"a new RStudio plot automatically restores the dot without hover, focus or attachment")
+  if(identical(Sys.getenv("RA_BROWSER_EDIT_PREVIEW_ONLY"),"true")) {
+    js('document.getElementById("prompt").value="Draft kept while reading code history";openAction("edit_history");')
+    wait_js('document.querySelectorAll(".edit-log-view").length===8 && document.querySelector(".edit-history-preview pre")!==null')
+    check(isTRUE(js('var text=document.querySelector(".edit-history-preview pre").textContent;text.includes("PREFIX_START") && text.includes("SUFFIX_END") && text.includes("END_LONG_LINE")')),
+      "code history includes the entire before/after script instead of only nearby diff context")
+    browser$Emulation$setDeviceMetricsOverride(width=380,height=700,deviceScaleFactor=1,mobile=FALSE)
+    check(isTRUE(js('var pre=document.querySelector(".edit-history-preview pre");pre.scrollWidth>pre.clientWidth && pre.scrollHeight>pre.clientHeight && document.documentElement.scrollWidth<=innerWidth && pre.getBoundingClientRect().right<=innerWidth')),
+      "long and tall code stays inside a narrow preview with both scroll directions available")
+    check(isTRUE(js('var row=Array.from(document.querySelectorAll(".edit-history-preview .diff-row")).find(function(x){return x.textContent.includes("END_LONG_LINE");});row.getBoundingClientRect().height<25 && getComputedStyle(document.querySelector(".diff-canvas")).whiteSpace==="pre"')),
+      "long code lines preserve indentation and stay on one line without broken wrapping")
+    js('var pre=document.querySelector(".edit-history-preview pre");pre.scrollLeft=pre.scrollWidth;pre.scrollTop=pre.scrollHeight;')
+    check(isTRUE(js('var pre=document.querySelector(".edit-history-preview pre");pre.scrollLeft>0 && pre.scrollTop>0 && pre.textContent.includes("SUFFIX_END")')),
+      "the right edge and end of the complete preview remain reachable by scrolling")
+    js('var list=document.querySelector("#edit_history_page .edit-log-list");list.scrollTop=list.scrollHeight;window.listTop=list.scrollTop;list.querySelector(".edit-log-view:last-child").click();')
+    wait_js('document.querySelector(".edit-log-view:last-child").getAttribute("aria-pressed")==="true"')
+    check(isTRUE(js('Math.abs(document.querySelector("#edit_history_page .edit-log-list").scrollTop-listTop)<2 && document.querySelectorAll(".edit-log-view[aria-pressed=true]").length===1 && document.querySelector(".edit-history-preview").textContent.includes("changed <- 1")')),
+      "selecting another edit updates the complete preview and keeps its list position")
+    js('var pre=document.querySelector(".edit-history-preview pre");pre.scrollLeft=0;pre.scrollTop=pre.scrollHeight;document.getElementById("edit_history_page").scrollTop=document.getElementById("edit_history_page").scrollHeight;')
+    screenshot <- Sys.getenv("RA_BROWSER_EDIT_HISTORY_SCREENSHOT")
+    if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+    check(!file.exists(edit_marker) && isTRUE(js('document.querySelectorAll("#messages .msg").length===0')),
+      "reading and scrolling edit previews does not call the model, write Source or insert chat messages")
+    js('document.querySelector(".edit-history-close").click();')
+    wait_js('getComputedStyle(document.getElementById("chat_stream")).display!=="none"')
+    check(isTRUE(js('document.getElementById("prompt").value==="Draft kept while reading code history" && window.aisourceErrors.length===0')),
+      "Back to chat preserves the draft without JavaScript errors")
+    cat(checks,"complete code history preview browser checks passed\n");return(invisible(NULL))
+  }
   if(identical(Sys.getenv("RA_BROWSER_HISTORY_ONLY"),"true")) {
     js('var p=document.getElementById("prompt");p.value="History rendering test";document.getElementById("send").click();')
     wait_js('!document.getElementById("send").disabled && document.querySelector("#messages .content table")!==null')
