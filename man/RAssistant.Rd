@@ -108,6 +108,10 @@ disables automatic checks while retaining explicit manual checks.
 
 New chat keeps the previous conversation in History, which offers Rename, Delete
 and Open chat on a separate page, with a read-only preview and Back to chat.
+Conversations use the same scrollable button list as Code edit history. Preview
+shows 20 complete messages initially; Load earlier messages adds 20 at a time.
+It uses the main chat renderer for code, tables, formulas and images, with Copy
+but no Source editing or run approval controls.
 Browsing preserves the active conversation and draft. Chats auto-save locally per
 project, outside the package installation,
 using \code{tools::R_user_dir("RAssistant", "data")}. The most recently used chat

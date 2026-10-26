@@ -1436,7 +1436,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(receipt$status=="missing")shiny::p("Reselect the missing file in Knowledge Base. No other files were substituted."),
       if(nzchar(receipt$instructions))shiny::tags$details(shiny::tags$summary("Instructions"),shiny::tags$pre(receipt$instructions)))
   }
-  restore_chat_data <- function(chat) {
+  restore_chat_data <- function(chat,preview=FALSE) {
     if (!is.list(chat) || !is.list(chat$messages)) {
       stop("Invalid conversation.")
     }
@@ -1450,7 +1450,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         attachments=chat_images(m$attachments),references=course_sources(m$references),source_read=source_read_info(m$source_read),
         knowledge_read=knowledge_receipt_info(m$knowledge_read,restore=TRUE))
       result$html <- if(m$type %in% c("text","validation"))tryCatch(render_markdown(result$text,
-        review_id=if(identical(m$role,"AI") && identical(m$type,"text"))m$sequence else NULL),
+        review_id=if(!preview && identical(m$role,"AI") && identical(m$type,"text"))m$sequence else NULL),
         error=function(e)shiny::tags$pre(result$text))else NULL
       if (identical(m$type,"validation")) {
         result$id <- if(is.numeric(m$id) && length(m$id)==1L && is.finite(m$id))m$id else m$sequence
@@ -1653,7 +1653,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .history-actions{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
   .modal-footer .history-actions>.btn{margin:0}
   .chat-history-preview{margin-top:12px;border-top:1px solid var(--border);padding-top:8px}
-  .history-preview-message{margin-bottom:12px}
+  .history-preview-message{margin:0 0 15px;min-width:0}
   .chat-history select.form-control,.chat-history input.form-control{font-size:12px;border-radius:3px}
   .app-version{font:10px var(--mono);color:var(--muted);white-space:nowrap;align-self:center}
   #update_check_status{flex:0 0 auto;font:11px var(--mono);color:var(--muted);padding:5px 8px}
@@ -1701,7 +1701,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .history{flex:1 1 auto;min-height:0;overflow:auto;padding:10px 10px 0;overflow-anchor:none;scroll-behavior:auto}
   .msg{margin:0 0 15px;min-width:0}
   .role{font:600 10px/1.5 var(--mono);color:#607080;margin-bottom:4px}
-  .msg.user .role{color:#386890}
+  .msg.user .role,.history-preview-message.user .role{color:#386890}
   .content{font-size:12px;line-height:1.6;overflow-wrap:anywhere}
   .content p{margin:0 0 7px}.content :last-child{margin-bottom:0}
   .content h1,.content h2,.content h3{font-size:12px;font-weight:650;margin:10px 0 5px}
@@ -1961,7 +1961,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       var knowledge=document.getElementById("knowledge");if(knowledge)knowledge.disabled=busy;
       var clear=document.getElementById("clear_images");if(clear)clear.disabled=working;
       document.querySelectorAll(".remove-attachment").forEach(function(btn){btn.disabled=busy;});
-      document.querySelectorAll(".source-review,.source-apply,.source-skip,.source-jump,.selection-action,.source-formatting,.source-undo,.source-redo,.edit-log-view,.edit-history-close,#edit_history").forEach(function(btn){btn.disabled=busy || btn.getAttribute("data-invalid")==="true";});
+      document.querySelectorAll(".source-review,.source-apply,.source-skip,.source-jump,.selection-action,.source-formatting,.source-undo,.source-redo,.edit-log-view,.edit-history-close,.chat-log-view,#history_more,#edit_history").forEach(function(btn){btn.disabled=busy || btn.getAttribute("data-invalid")==="true";});
       document.querySelectorAll("#preview_undo,.undo-preview").forEach(function(btn){btn.disabled=busy || !undoAvailable;});
       document.querySelectorAll("#preview_redo,.redo-preview").forEach(function(btn){btn.disabled=busy || !redoAvailable;});
       document.querySelectorAll(".code-target-action,.code-target-refresh,.code-target-close,#code_actions").forEach(function(btn){btn.disabled=busy || targetRefreshing;});
@@ -2165,6 +2165,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(e.target.closest && e.target.closest(".code-target-close"))Shiny.setInputValue("clear_code_target",++nonce,{priority:"event"});
       var formatting=e.target.closest && e.target.closest(".source-formatting");
       if(formatting && !formatting.disabled)Shiny.setInputValue("toggle_source_formatting",{token:formatting.getAttribute("data-token"),nonce:++nonce},{priority:"event"});
+      var chatView=e.target.closest && e.target.closest(".chat-log-view");
+      if(chatView && !chatView.disabled && connected){
+        chatView.closest(".chat-log-list").querySelectorAll(".chat-log-view").forEach(function(btn){
+          var chosen=btn===chatView;btn.setAttribute("aria-pressed",chosen?"true":"false");btn.classList.toggle("ai-send",chosen);
+        });
+        Shiny.setInputValue("history_view",{id:chatView.getAttribute("data-id"),revision:chatView.getAttribute("data-revision"),nonce:++nonce},{priority:"event"});
+      }
       var view=e.target.closest && e.target.closest(".edit-log-view");
       if(view)Shiny.setInputValue("edit_history_view",{id:view.getAttribute("data-id"),nonce:++nonce},{priority:"event"});
       if(e.target.closest && e.target.closest(".edit-history-close"))Shiny.setInputValue("edit_history_close",++nonce,{priority:"event"});
@@ -2473,7 +2480,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       current=initial,messages=list(),pending=NULL,job_id=0L,
       busy=FALSE,assignment="",file_id=initial$id,attachments=list(),upload_epoch=0L,message_id=0L,
       chat=new_chat_record(),draft="",image_count=0L,source_read=NULL,edit_panel=FALSE,edit_selected=NULL,edit_version=0L,
-      knowledge_files=list(),history_panel=FALSE,history_chats=list(),history_preferred=NULL
+      knowledge_files=list(),history_panel=FALSE,history_chats=list(),history_preferred=NULL,history_revision=0L,history_limit=20L
     )
     review_context <- shiny::reactiveVal(NULL)
     undo_job <- shiny::reactiveVal(NULL)
@@ -2735,30 +2742,31 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       persist_chat()
     },ignoreInit=TRUE)
     selected_chat <- function() {
-      id <- chat_text(input$history_selected)
+      id <- chat_text(state$history_preferred)
       chats <- tryCatch(history$list(),error=function(e)list())
       if(!id %in% vapply(chats,function(x)x$id,character(1)))return(NULL)
       id
     }
     show_history <- function(selected=NULL) {
       clear_source_review();undo_job(NULL);state$edit_panel <- FALSE
-      state$history_preferred <- if(is.null(selected))state$chat$id else selected
-      state$history_chats <- tryCatch(history$list(),error=function(e)list())
+      chats <- tryCatch(history$list(),error=function(e)list())
+      ids <- vapply(chats,function(x)x$id,character(1))
+      selected <- if(is.null(selected))state$chat$id else selected
+      state$history_preferred <- if(selected %in% ids)selected else if(length(ids))ids[[1L]]else NULL
+      state$history_chats <- chats;state$history_limit <- 20L
+      state$history_revision <- state$history_revision+1L
       state$history_panel <- TRUE
     }
     output$chat_history_panel <- shiny::renderUI({
       if(!state$history_panel)return(NULL)
       chats <- state$history_chats
-      choices <- stats::setNames(vapply(chats,function(x)x$id,character(1)),
-        vapply(chats,function(x)paste0(x$title,"  \u00B7  ",substr(x$updated_at,1L,10L)),character(1)))
-      selected <- state$history_preferred
-      if(!selected %in% unname(choices))selected <- if(length(choices))unname(choices[[1L]])else NULL
       shiny::div(class="chat-history-panel",
         shiny::div(class="edit-page-header",shiny::strong("Chat history"),
           shiny::div(class="edit-page-actions",shiny::actionButton("history_close","Back to chat",class="ai-btn"))),
         shiny::p("Saved on this computer for this project."),
         if(length(chats))shiny::tagList(
-          shiny::selectInput("history_selected","Conversation",choices=choices,selected=selected,selectize=FALSE,size=6L),
+          shiny::strong("Conversation"),
+          shiny::uiOutput("chat_history_list",class="edit-log-list chat-log-list",role="group","aria-label"="Conversations"),
           shiny::div(class="history-actions",
             shiny::actionButton("history_rename","Rename",class="ai-btn"),
             shiny::actionButton("history_delete","Delete",class="ai-btn"),
@@ -2766,21 +2774,43 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           shiny::uiOutput("chat_history_preview"))else shiny::p("No saved chats yet."))
     })
     shiny::outputOptions(output,"chat_history_panel",suspendWhenHidden=FALSE)
+    output$chat_history_list <- shiny::renderUI({
+      if(!state$history_panel)return(NULL)
+      revision <- state$history_revision
+      selected <- shiny::isolate(state$history_preferred)
+      shiny::tagList(lapply(state$history_chats,function(chat)shiny::tags$button(type="button",
+        class=paste("btn ai-btn chat-log-view",if(identical(chat$id,selected))"ai-send"else""),
+        "data-id"=chat$id,"data-revision"=as.character(revision),
+        "aria-pressed"=if(identical(chat$id,selected))"true"else"false",
+        paste0(chat$title,"  \u00B7  ",substr(chat$updated_at,1L,10L)))))
+    })
+    shiny::observeEvent(input$history_view,{
+      obj <- input$history_view
+      if(!state$history_panel || state$busy || !is.null(state$pending) || !is.list(obj) ||
+          !identical(chat_text(obj$revision),as.character(state$history_revision)))return()
+      id <- chat_text(obj$id)
+      if(!id %in% vapply(state$history_chats,function(x)x$id,character(1)))return()
+      state$history_preferred <- id;state$history_limit <- 20L
+    },ignoreInit=TRUE)
+    shiny::observeEvent(input$history_more,{
+      if(state$history_panel && !state$busy && is.null(state$pending))state$history_limit <- state$history_limit+20L
+    },ignoreInit=TRUE)
     output$chat_history_preview <- shiny::renderUI({
       if(!state$history_panel || is.null(history))return(NULL)
       state$history_chats
       id <- selected_chat();if(is.null(id))return(NULL)
       saved <- tryCatch(history$load(id),error=function(e)NULL)
       if(is.null(saved))return(shiny::p("The conversation is no longer available."))
-      # Read-only preview: no Source editing controls and no model request.
-      messages <- tail(Filter(function(m)m$role %in% c("You","AI") &&
-        identical(chat_text(m$type,"text"),"text"),saved$messages),4L)
+      total <- length(saved$messages)
+      saved$messages <- tail(saved$messages,state$history_limit)
+      restored <- tryCatch(restore_chat_data(saved,preview=TRUE),error=function(e)NULL)
+      if(is.null(restored))return(shiny::p("Could not preview this conversation."))
       shiny::div(class="chat-history-preview",
-        shiny::p(class="menu-hint","Preview · latest messages"),
-        lapply(messages,function(m)shiny::div(class="history-preview-message",
-          shiny::div(class="role",m$role),shiny::div(class="content",style="white-space:pre-wrap",
-            substr(chat_text(m$text),1L,1600L)))),
-        if(!length(messages))shiny::p(class="empty",if(nzchar(chat_text(saved$draft)))saved$draft else"Attachment draft"))
+        shiny::p(class="menu-hint",paste0("Preview · latest ",length(restored$messages)," of ",total," messages")),
+        if(total>length(restored$messages))shiny::actionButton("history_more","Load earlier messages",class="ai-btn"),
+        message_view(restored$messages,preview=TRUE),
+        if(!length(restored$messages))shiny::div(class="content",style="white-space:pre-wrap",
+          if(nzchar(restored$draft))restored$draft else"Attachment draft"))
     })
     shiny::observeEvent(input$history_close,{
       if(!state$busy && session_active)state$history_panel <- FALSE
@@ -3784,21 +3814,22 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       p <- state$current$path
       if (is.null(p) || !nzchar(p)) "Untitled" else basename(p)
     })
-    output$messages <- shiny::renderUI({
-      if (!length(state$messages)) return(shiny::div(class="empty","Ask about an open R script, or upload an image."))
-      shiny::withMathJax(shiny::tagList(lapply(state$messages,function(msg){
+    message_view <- function(messages,preview=FALSE) {
+      prefix <- if(preview)"preview-"else""
+      if (!length(messages)) return(if(preview)NULL else shiny::div(class="empty","Ask about an open R script, or upload an image."))
+      shiny::withMathJax(shiny::tagList(lapply(messages,function(msg){
         if (identical(msg$type,"logs")) {
-          return(shiny::div(class="msg","data-message-id"=msg$sequence,shiny::tags$details(class="log-details","data-detail-id"=paste0("logs-",msg$sequence),
+          return(shiny::div(class=if(preview)"history-preview-message"else"msg","data-message-id"=msg$sequence,shiny::tags$details(class="log-details","data-detail-id"=paste0(prefix,"logs-",msg$sequence),
             shiny::tags$summary("Execution output"),shiny::tags$pre(class="runlog",msg$text))))
         }
         if (identical(msg$type,"plots")) {
-          return(shiny::div(class="msg","data-message-id"=msg$sequence,shiny::tags$details(class="plot-gallery","data-detail-id"=paste0("plots-",msg$sequence),
+          return(shiny::div(class=if(preview)"history-preview-message"else"msg","data-message-id"=msg$sequence,shiny::tags$details(class="plot-gallery","data-detail-id"=paste0(prefix,"plots-",msg$sequence),
             shiny::tags$summary(paste0("Captured plots (",length(msg$images),")")),
             lapply(seq_along(msg$images),function(i){shiny::tags$img(src=msg$images[[i]],alt=paste("Plot",i))}))))
         }
         controls <- NULL
         if (identical(msg$type,"validation")) {
-          if (!is.null(state$pending) && identical(state$pending$id,msg$id)) {
+          if (!preview && !is.null(state$pending) && identical(state$pending$id,msg$id)) {
             controls <- shiny::div(class="run-approval",
               "Run the current .R / .Rmd script in a separate R process (45s max)? ",
               "This is not a sandbox: code may access or modify local files. ",
@@ -3835,7 +3866,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
               }
             }))
         } else NULL
-        shiny::div(class=paste("msg",if(identical(msg$role,"You"))"user" else "assistant"),"data-message-id"=msg$sequence,
+        shiny::div(class=paste(if(preview)"history-preview-message"else"msg",if(identical(msg$role,"You"))"user" else "assistant"),"data-message-id"=msg$sequence,
           shiny::div(class="role",msg$role),
           if(!is.null(msg$source_read))shiny::div(class="source-read",title=source_read_label(msg$source_read),
             if(isTRUE(msg$source_read$included))paste0(msg$source_read$name," - ",msg$source_read$lines,
@@ -3843,10 +3874,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
               if(length(msg$source_read$selection))paste0("; selected ",paste(msg$source_read$selection,collapse="-"))else"",
               if(nzchar(chat_text(msg$source_read$chunk)))paste0("; chunk ",msg$source_read$chunk)else"")else"Source omitted (size limit)"),
           if(!is.null(msg$knowledge_read))htmltools::tagAppendAttributes(knowledge_receipt_ui(msg$knowledge_read),
-            "data-detail-id"=paste0("knowledge-",msg$sequence)),
+            "data-detail-id"=paste0(prefix,"knowledge-",msg$sequence)),
           shiny::div(class="content",msg$html),attachments,academic,sources,controls)
       })))
-    })
+    }
+    output$messages <- shiny::renderUI(message_view(state$messages))
 
     set_validation_outcome <- function(id, label) {
       msgs <- state$messages

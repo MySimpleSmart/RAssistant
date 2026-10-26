@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.16.1
+Version: 0.16.2
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -31,6 +31,6 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Put Check updates and Help on separate full-width menu rows, keeping existing button styles.
-    Open Chat history on a separate page like Code edit history, with a read-only preview, Rename, Delete, Open chat and Back to chat. Preserve the current conversation and draft while browsing.
-    Use Knowledge Base documents only when selected for this chat. Clearing the last selection stops retrieval and new source labels; saved instructions and historical source receipts remain available.
+Config/RAssistant/Changes: Use the same scrollable button list for conversations and Code edit history. Keep the list position when selecting another conversation.
+    Render Chat history previews with the main chat renderer, including complete code blocks, Copy, tables, formulas, images and source receipts. Preview does not offer Source edits or run approvals.
+    Show the latest 20 complete messages with a visible count. Load earlier messages adds 20 at a time until the whole conversation is available, without cutting message text.

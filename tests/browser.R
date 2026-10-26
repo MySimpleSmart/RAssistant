@@ -164,6 +164,16 @@ main <- function() {
       Sys.sleep(.2)
       if(identical(Sys.getenv("RA_BROWSER_API_ONLY"),"true"))
         return(paste("Selected connection:",api$get()$provider,api$get()$model))
+      if(identical(Sys.getenv("RA_BROWSER_HISTORY_ONLY"),"true")) {
+        rich <- paste("Response 1","","```r",paste0("# ",strrep("x",1800L)),
+          "answer <- 42 # END_CODE_SENTINEL","```","","| x | y |","|---|---|","| 1 | 3 |","| 2 | 5 |","",
+          "Math: \\(y = 2x + 1\\).",sep="\n")
+        for(i in seq_len(12L))history$save(list(id=history$new_id(),title=paste("Saved conversation",i),
+          title_custom=TRUE,created_at="2026-10-26T00:00:00Z",draft="",assignment="",attachments=list(),knowledge_files=list(),
+          messages=lapply(seq_len(45L),function(n)list(role=if(n%%2L)"AI"else"You",type="text",sequence=n,
+            text=if(n==45L)rich else paste("Historical message",n)))))
+        return(rich)
+      }
       if(grepl("SIMULATED_FAILURE",prompt,fixed=TRUE))stop("Simulated API failure")
       if(grepl("SIMULATE_SOURCE_LOSS",prompt,fixed=TRUE))source_unavailable <<- TRUE
       if(identical(Sys.getenv("RA_BROWSER_SOURCE_INTENT_ONLY"),"true")) {
@@ -403,6 +413,46 @@ main <- function() {
   unlink(source_marker)
   wait_js('!document.getElementById("plot_available_indicator").hidden',timeout=6)
   check(TRUE,"a new RStudio plot automatically restores the dot without hover, focus or attachment")
+  if(identical(Sys.getenv("RA_BROWSER_HISTORY_ONLY"),"true")) {
+    js('var p=document.getElementById("prompt");p.value="History rendering test";document.getElementById("send").click();')
+    wait_js('!document.getElementById("send").disabled && document.querySelector("#messages .content table")!==null')
+    js('window.originalCode=document.querySelector("#messages pre code").textContent;window.originalStyle={};["code","td","th"].forEach(function(k){var style=getComputedStyle(document.querySelector("#messages .content "+k));originalStyle[k]={fontSize:style.fontSize,fontFamily:style.fontFamily,padding:style.padding,border:style.border};});var p=document.getElementById("prompt");p.value="Draft survives history";p.dispatchEvent(new Event("input",{bubbles:true}));openAction("history");')
+    wait_js('document.querySelectorAll(".chat-log-view").length===13 && document.querySelector(".chat-history-preview table")!==null')
+    check(isTRUE(js('document.querySelector("#chat_history_page select")===null && document.getElementById("chat_history_list").classList.contains("edit-log-list") && getComputedStyle(document.getElementById("chat_history_list")).maxHeight==="150px" && getComputedStyle(document.getElementById("chat_history_list")).overflowY==="auto"')),
+      "Conversation uses the same scroll-list component and height as Code edit history")
+    check(isTRUE(js('["code","td","th"].every(function(k){var s=getComputedStyle(document.querySelector(".chat-history-preview .content "+k)),base=originalStyle[k];return Object.keys(base).every(function(p){return s[p]===base[p];});})')),
+      "history code and table cells have the same computed styles as the active chat")
+    check(isTRUE(js('document.querySelector(".chat-history-preview pre code").textContent===originalCode && document.querySelector(".chat-history-preview").textContent.includes("END_CODE_SENTINEL") && document.querySelectorAll(".chat-history-preview table tr").length===3')),
+      "long code blocks and complete Markdown tables render without character truncation")
+    wait_js('document.querySelector(".chat-history-preview .MathJax")!==null')
+    check(TRUE,"history preview typesets formulas with the same MathJax renderer")
+    js('var list=document.getElementById("chat_history_list");list.scrollTop=list.scrollHeight;window.savedListTop=list.scrollTop;list.querySelector(".chat-log-view:last-child").click();')
+    wait_js('document.querySelector(".chat-history-preview").textContent.includes("latest 20 of 45")')
+    check(isTRUE(js('Math.abs(document.getElementById("chat_history_list").scrollTop-savedListTop)<2 && document.querySelector(".chat-log-view:last-child").getAttribute("aria-pressed")==="true"')),
+      "choosing a scrolled conversation preserves the list position and marks the selected row")
+    check(isTRUE(js('document.querySelectorAll(".chat-history-preview .history-preview-message").length===20 && document.querySelectorAll(".chat-history-preview .source-review,.chat-history-preview .source-apply").length===0 && document.querySelectorAll("#messages .msg.user").length===1')),
+      "preview shows twenty messages without live editor controls or duplicate chat turns")
+    js('document.getElementById("history_more").click();')
+    wait_js('document.querySelectorAll(".history-preview-message").length===40')
+    js('document.getElementById("history_more").click();')
+    wait_js('document.querySelectorAll(".history-preview-message").length===45 && document.getElementById("history_more")===null')
+    check(isTRUE(js('document.querySelector(".chat-history-preview").textContent.includes("Historical message 1") && document.querySelector(".chat-history-preview pre code").textContent===originalCode')),
+      "Load earlier reveals every earlier message without cutting or changing the code")
+    js('window.lastCopied=null;Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:function(t){lastCopied=t;return Promise.resolve();}}});document.querySelector(".chat-history-preview .code-copy").click();')
+    wait_js('lastCopied!==null')
+    check(isTRUE(js('lastCopied===originalCode')) && !file.exists(edit_marker),"preview Copy preserves the complete code without writing to Source")
+    browser$Emulation$setDeviceMetricsOverride(width=380,height=700,deviceScaleFactor=1,mobile=FALSE)
+    check(isTRUE(js('document.getElementById("chat_history_page").getBoundingClientRect().bottom<=innerHeight && document.getElementById("history_close").getBoundingClientRect().right<=innerWidth && document.querySelector(".chat-history-preview table").getBoundingClientRect().right<=innerWidth')),
+      "conversation buttons and rich previews fit a narrow Viewer")
+    screenshot <- Sys.getenv("RA_BROWSER_HISTORY_SCREENSHOT")
+    if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+    browser$Emulation$clearDeviceMetricsOverride()
+    js('document.getElementById("history_close").click();')
+    wait_js('getComputedStyle(document.getElementById("chat_stream")).display!=="none"')
+    check(isTRUE(js('document.getElementById("prompt").value==="Draft survives history" && document.querySelectorAll("#messages .msg.user").length===1 && window.aisourceErrors.length===0')),
+      "Back to chat preserves the draft, original conversation and clean JavaScript state")
+    cat(checks,"rich Chat history browser checks passed\n");return(invisible(NULL))
+  }
   # Fast check for the passive indicator; the default still runs the full suite.
   if(identical(Sys.getenv("RA_BROWSER_PLOT_ONLY"),"true")) {
     check(isTRUE(js('document.querySelectorAll(".attachment-item").length===0 && document.querySelectorAll(".msg.user").length===0 && window.aisourceErrors.length===0')),
@@ -659,10 +709,10 @@ main <- function() {
     js('document.getElementById("new_chat").click();')
     wait_js('document.querySelectorAll(".msg.user").length===0 && document.querySelector(".knowledge-unpin")===null')
     js('openAction("history");')
-    wait_js('document.getElementById("history_selected")!==null')
-    check(isTRUE(js('document.getElementById("history_selected").options.length===1')),
+    wait_js('document.querySelector(".chat-log-view")!==null')
+    check(isTRUE(js('document.querySelectorAll(".chat-log-view").length===1')),
       "a new chat resets selection without adding a blank History entry")
-    js('$("#history_selected").val(document.getElementById("history_selected").options[0].value).trigger("change");document.getElementById("history_restore").click();')
+    js('document.querySelector(".chat-log-view").click();document.getElementById("history_restore").click();')
     wait_js('document.getElementById("shiny-modal")===null && document.querySelector(".knowledge-unpin")!==null')
     check(isTRUE(js('document.querySelectorAll(".msg.user").length===2 && document.querySelectorAll(".knowledge-read").length===2')),
       "History restores the chat's selection and receipts together")
@@ -708,7 +758,7 @@ main <- function() {
   wait_js('document.querySelector(".empty")!==null')
   js('openAction("history");')
   wait_js('document.querySelector(".chat-history-panel")!==null && getComputedStyle(document.getElementById("chat_history_page")).display!=="none"')
-  check(isTRUE(js('document.getElementById("history_selected")===null && document.getElementById("chat_history_page").textContent.includes("No saved chats yet.") && document.getElementById("shiny-modal")===null')),
+  check(isTRUE(js('document.querySelector(".chat-log-view")===null && document.getElementById("chat_history_page").textContent.includes("No saved chats yet.") && document.getElementById("shiny-modal")===null')),
     "opening History after New chat uses a separate page without listing an empty conversation")
   js('document.getElementById("history_close").click();')
   wait_js('getComputedStyle(document.getElementById("chat_history_page")).display==="none"')
@@ -891,8 +941,8 @@ main <- function() {
   check(length(readRDS(edit_marker))==2L && readRDS(edit_marker)[[2L]]$operation=="new",
     "a reviewed new-document proposal needs its own explicit approval")
   js('openAction("history");')
-  wait_js('document.getElementById("history_selected")!==null')
-  check(isTRUE(js('document.getElementById("history_selected").options.length===1 && document.querySelectorAll("#chat_history_page .ai-btn").length===4 && document.getElementById("shiny-modal")===null')),
+  wait_js('document.querySelector(".chat-log-view")!==null')
+  check(isTRUE(js('document.querySelectorAll(".chat-log-view").length===1 && document.querySelectorAll("#chat_history_page .history-actions .ai-btn").length===3 && document.getElementById("shiny-modal")===null')),
     "History lists the current auto-saved chat with consistent controls")
   wait_js('document.querySelector(".chat-history-preview")!==null && getComputedStyle(document.getElementById("chat_stream")).display==="none"')
   check(isTRUE(js('getComputedStyle(document.querySelector(".compose")).display==="none" && document.querySelector("#chat_stream .chat-history-panel")===null && document.querySelector(".chat-history-preview .source-review")===null')),
@@ -903,10 +953,10 @@ main <- function() {
   screenshot <- Sys.getenv("RA_BROWSER_HISTORY_SCREENSHOT")
   if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
   browser$Emulation$clearDeviceMetricsOverride()
-  js('window.firstChatId=document.getElementById("history_selected").value;document.getElementById("history_rename").click();')
+  js('window.firstChatId=document.querySelector(".chat-log-view[aria-pressed=true]").getAttribute("data-id");document.getElementById("history_rename").click();')
   wait_js('document.getElementById("history_name")!==null')
   js('$("#history_name").val("Saved screenshot assignment").trigger("change");document.getElementById("history_save_name").click();')
-  wait_js('document.getElementById("history_selected")!==null && document.getElementById("history_selected").textContent.includes("Saved screenshot assignment")')
+  wait_js('document.querySelector(".chat-log-view")!==null && document.getElementById("chat_history_list").textContent.includes("Saved screenshot assignment")')
   check(TRUE,"Rename persists the chosen chat title")
   js('document.getElementById("history_close").click();')
   wait_js('getComputedStyle(document.getElementById("chat_history_page")).display==="none"')
@@ -915,25 +965,31 @@ main <- function() {
   js('document.getElementById("prompt").value="A separate history conversation";document.getElementById("send").click();')
   wait_js('!document.getElementById("send").disabled && document.querySelectorAll(".msg.user").length===1')
   js('openAction("history");')
-  wait_js('document.getElementById("history_selected")!==null && document.getElementById("history_selected").options.length===2')
-  js('window.secondChatId=document.getElementById("history_selected").value;$("#history_selected").val(firstChatId).trigger("change");document.getElementById("history_restore").click();')
+  wait_js('document.querySelector(".chat-log-view")!==null && document.querySelectorAll(".chat-log-view").length===2')
+  js('window.secondChatId=document.querySelector(".chat-log-view[aria-pressed=true]").getAttribute("data-id");Array.from(document.querySelectorAll(".chat-log-view")).find(function(b){return b.dataset.id===firstChatId;}).click();')
+  wait_js('document.querySelector(".chat-history-preview").textContent.includes("Explain this")')
+  js('document.getElementById("history_restore").click();')
   wait_js('document.getElementById("shiny-modal")===null && document.querySelectorAll(".msg.user").length===1 && document.querySelector(".msg.user").textContent.includes("Explain this")')
   check(isTRUE(js('!document.getElementById("chat_stream").textContent.includes("A separate history conversation")')),
     "Restore switches conversations without mixing their visible history")
   js('openAction("history");')
-  wait_js('document.getElementById("history_selected")!==null')
-  js('$("#history_selected").val(secondChatId).trigger("change");document.getElementById("history_delete").click();')
+  wait_js('document.querySelector(".chat-log-view")!==null')
+  js('Array.from(document.querySelectorAll(".chat-log-view")).find(function(b){return b.dataset.id===secondChatId;}).click();')
+  wait_js('document.querySelector(".chat-history-preview").textContent.includes("A separate history conversation")')
+  js('document.getElementById("history_delete").click();')
   wait_js('document.getElementById("history_confirm_delete")!==null')
   js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
   wait_js('document.getElementById("shiny-modal")===null')
   js('openAction("history");')
-  wait_js('document.getElementById("history_selected")!==null')
-  check(isTRUE(js('document.getElementById("history_selected").options.length===2')),
+  wait_js('document.querySelector(".chat-log-view")!==null')
+  check(isTRUE(js('document.querySelectorAll(".chat-log-view").length===2')),
     "cancelling Delete preserves the saved conversation")
-  js('$("#history_selected").val(secondChatId).trigger("change");document.getElementById("history_delete").click();')
+  js('Array.from(document.querySelectorAll(".chat-log-view")).find(function(b){return b.dataset.id===secondChatId;}).click();')
+  wait_js('document.querySelector(".chat-history-preview").textContent.includes("A separate history conversation")')
+  js('document.getElementById("history_delete").click();')
   wait_js('document.getElementById("history_confirm_delete")!==null')
   js('document.getElementById("history_confirm_delete").click();')
-  wait_js('document.getElementById("history_selected")!==null && document.getElementById("history_selected").options.length===1')
+  wait_js('document.querySelector(".chat-log-view")!==null && document.querySelectorAll(".chat-log-view").length===1')
   check(TRUE,"Delete removes the selected saved chat while retaining the active chat")
   js('document.getElementById("history_close").click();')
   wait_js('getComputedStyle(document.getElementById("chat_history_page")).display==="none"')

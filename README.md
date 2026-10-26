@@ -211,8 +211,12 @@ modify other users' installations; they run the update command.
 From 0.2.0, chats auto-save locally per RStudio project. **New chat** starts a
 separate conversation and keeps the previous one. **Chat history** opens a
 separate page with saved chats, a read-only preview, **Rename**, **Delete** and
-**Open chat**. **Back to chat** returns without changing the conversation or
-draft. Delete asks for confirmation.
+**Open chat**. Conversations use the same scrollable button list as Code edit
+history. Preview starts with the latest 20 complete messages; **Load earlier
+messages** adds 20 at a time until the entire conversation is visible. Code
+blocks, tables, formulas and images use the main chat styles; Copy works, while
+Source editing and run approval controls are omitted. **Back to chat** returns
+without changing the conversation or draft. Delete asks for confirmation.
 The most recently used chat reopens on the next `RAssistant::launch()`, including
 after restarting RStudio or updating the package. Opening RStudio alone does not
 automatically launch the assistant. Previously closed pre-0.2.0 chats cannot be recovered.

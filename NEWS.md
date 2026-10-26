@@ -1,3 +1,9 @@
+# RAssistant 0.16.2
+
+- Use the same scrollable button list for conversations and Code edit history. Keep the list position when selecting another conversation.
+- Render Chat history previews with the main chat renderer, including complete code blocks, Copy, tables, formulas, images and source receipts. Preview does not offer Source edits or run approvals.
+- Show the latest 20 complete messages with a visible count. Load earlier messages adds 20 at a time until the whole conversation is available, without cutting message text.
+
 # RAssistant 0.16.1
 
 - Put Check updates and Help on separate full-width menu rows, keeping existing button styles.

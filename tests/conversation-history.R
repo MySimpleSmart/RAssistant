@@ -27,6 +27,10 @@ main <- function() {
   first <- NULL;second <- NULL
   shiny::testServer(app$server,{
     session$flushReact()
+    choose_history <- function(id,nonce) {
+      if(!state$history_panel)show_history()
+      session$setInputs(history_view=list(id=id,revision=as.character(state$history_revision),nonce=nonce))
+    }
     check(!length(history$list()),"opening a blank chat does not create a History entry")
     session$setInputs(new_chat=1L);session$setInputs(new_chat=2L)
     check(!length(history$list()) && is.null(history$load()),"repeated New chat clicks do not accumulate empty conversations")
@@ -48,7 +52,7 @@ main <- function() {
       identical(state$draft,"Draft kept while browsing") && calls==before_calls &&
       grepl("Back to chat",output$chat_history_panel$html,fixed=TRUE),
       "Chat history opens its own page without changing the chat, draft or model calls")
-    session$setInputs(history_selected=first)
+    choose_history(first,1L)
     check(grepl("Remember the value 42",output$chat_history_preview$html,fixed=TRUE) &&
       !grepl("source-review",output$chat_history_preview$html,fixed=TRUE),
       "history previews stored messages without Source editing controls")
@@ -64,17 +68,17 @@ main <- function() {
       "New chat preserves the previous conversation without saving the new empty chat")
     session$setInputs(chat_submit=list(text="A separate topic",nonce=2L))
     check(length(history$list())==2L,"sending the first message adds the new conversation to History")
-    session$setInputs(history_selected=first,history_rename=1L)
+    choose_history(first,2L);session$setInputs(history_rename=1L)
     session$setInputs(history_name="Important assignment",history_save_name=1L)
     check(identical(history$load(first)$title,"Important assignment"),"History can rename a saved conversation")
-    session$setInputs(history_selected=first,history_restore=1L)
+    choose_history(first,3L);session$setInputs(history_restore=1L)
     check(identical(state$chat$id,first) && length(state$messages)==2L && is.null(state$pending),
       "Restore selects the saved conversation without calling the model or restoring approval")
     session$setInputs(chat_submit=list(text="Explain the value again",nonce=3L))
     check(grepl("Remember the value 42",last$prompt,fixed=TRUE) &&
       !grepl("A separate topic",last$prompt,fixed=TRUE),
       "restored chat context stays isolated from other conversations")
-    session$setInputs(history_selected=second,history_delete=1L,history_confirm_delete=1L)
+    choose_history(second,4L);session$setInputs(history_delete=1L,history_confirm_delete=1L)
     check(is.null(history$load(second)) && identical(state$chat$id,first),
       "Delete removes only the selected chat and preserves the active conversation")
     session$setInputs(chat_submit=list(text="Please run the script",nonce=4L))
@@ -94,7 +98,7 @@ main <- function() {
     session$setInputs(chat_submit=list(text="Continue the earlier screenshot explanation",nonce=5L))
     check(length(last$bytes)==1L && identical(last$bytes[[1L]],bytes),
       "a screenshot follow-up after relaunch reuses the original locally saved pixels")
-    session$setInputs(history_selected=first,history_delete=2L,history_confirm_delete=2L)
+    show_history(first);session$setInputs(history_delete=2L,history_confirm_delete=2L)
     check(!identical(state$chat$id,first) && !length(state$messages) && is.null(history$load(first)) && !length(history$list()),
       "deleting the active chat opens a new empty conversation")
   })
@@ -114,6 +118,40 @@ main <- function() {
     html="<script>not saved</script>",api_key="synthetic-private-sentinel")))
   check(is.null(snapshot[[1L]]$html) && is.null(snapshot[[1L]]$api_key),
     "saved messages exclude cached HTML and unrecognized private fields")
+  rich <- paste("```r",paste0("# ",strrep("x",1800L)),"answer <- 42 # END_CODE_SENTINEL","```","",
+    "| x | y |","|---|---|","| 1 | 3 |","| 2 | 5 |","",'\\[y = 2x + 1\\]',
+    "<script>window.previewInjected=true</script>",sep="\n")
+  record <- list(id=history$new_id(),title="Rich preview",title_custom=TRUE,created_at="2026-10-26T00:00:00Z",
+    draft="",assignment="",attachments=list(),knowledge_files=list(),
+    messages=lapply(seq_len(45L),function(i)list(role=if(i%%2L)"AI"else"You",type="text",sequence=i,
+      text=if(i==45L)rich else paste("Historical message",i))))
+  history$save(record)
+  shiny::testServer(app$server,{
+    session$flushReact();session$setInputs(prompt="Keep my draft",history=1L)
+    before_calls <- calls;active <- state$chat$id
+    html <- output$chat_history_preview$html
+    check(grepl("latest 20 of 45",html,fixed=TRUE) && grepl("END_CODE_SENTINEL",html,fixed=TRUE) &&
+      grepl("<table>",html,fixed=TRUE) && grepl("code-copy",html,fixed=TRUE),
+      "preview renders the latest twenty complete messages, including long code and Markdown tables")
+    check(!grepl('class="source-review"',html,fixed=TRUE) && !grepl("<script>window.previewInjected",html,fixed=TRUE) &&
+      grepl("&lt;script&gt;",html,fixed=TRUE),
+      "preview rebuilds safe Markdown without live Source editing controls or raw HTML execution")
+    check(grepl('class="btn ai-btn chat-log-view',output$chat_history_list$html,fixed=TRUE) &&
+      !grepl("<select",output$chat_history_panel$html,fixed=TRUE),
+      "conversation selection uses scrollable buttons instead of a native select")
+    session$setInputs(history_more=1L)
+    check(grepl("latest 40 of 45",output$chat_history_preview$html,fixed=TRUE),"Load earlier adds twenty complete messages")
+    session$setInputs(history_more=2L)
+    check(grepl("latest 45 of 45",output$chat_history_preview$html,fixed=TRUE) &&
+      !grepl('id="history_more"',output$chat_history_preview$html,fixed=TRUE),
+      "all earlier messages remain accessible and the paging button ends at the first message")
+    session$setInputs(history_view=list(id=record$id,revision=as.character(state$history_revision-1L),nonce=1L))
+    check(state$history_limit==60L,"stale conversation clicks cannot reset or switch a newer history page")
+    session$setInputs(history_view=list(id=record$id,revision=as.character(state$history_revision),nonce=2L))
+    check(state$history_limit==20L && identical(selected_chat(),record$id),"choosing a conversation starts its preview at the latest twenty messages")
+    check(calls==before_calls && identical(state$chat$id,active) && identical(state$draft,"Keep my draft"),
+      "preview paging and selection never call the model, replace the active chat or lose the draft")
+  })
   cat(checks,"conversation-history checks passed\n")
 }
 main()
