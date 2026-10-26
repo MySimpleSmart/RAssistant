@@ -85,7 +85,7 @@ shiny::testServer(app$server,{
   revision <- as.character(api_revision())
   before <- length(calls)
   session$setInputs(api_provider="deepseek",api_form_provider="deepseek",api_form_revision=revision,
-    api_load_models=1L)
+    api_discover=list(provider="deepseek",revision=revision,base_url="",entered_key=FALSE,request=1L))
   check(length(model_calls)==1L && model_calls[[1L]]$key=="deepseek-context-key" &&
     api$get()$provider=="deepseek" && length(calls)==before,
     "Load models uses only the chosen key without a chat or provider switch")
@@ -102,8 +102,12 @@ shiny::testServer(app$server,{
   revision <- as.character(api_revision())
   check(api_compact(),"composer opens the compact model picker")
   session$setInputs(api_provider="openai",api_form_provider="openai",api_form_revision=revision,
-    api_key_entry="stale-other-provider-key",api_model="first-model",api_load_models=2L)
+    api_key_entry="stale-other-provider-key",api_model="first-model",api_discover=list(provider="openai",revision=revision,base_url="",entered_key=TRUE,request=2L))
   check(tail(model_calls,1L)[[1L]]$key=="openai-context-key", "compact model discovery ignores cached key input and uses the selected provider's key")
+  reads <- length(model_calls)
+  session$setInputs(api_discover=list(provider="gemini",revision=revision,base_url="",entered_key=FALSE,request=3L))
+  session$setInputs(api_discover=list(provider="openai",revision="0",base_url="",entered_key=FALSE,request=4L))
+  check(length(model_calls)==reads,"stale provider or settings revisions never query another model catalog")
   session$setInputs(api_save=6L)
   check(api$get()$model=="first-model" && get("RAssistant/OpenAI",store)=="openai-context-key" && length(calls)==before &&
     grepl("first-model",output$compose_model_status$html,fixed=TRUE) && identical(input$prompt,"Draft when returning to OpenAI"),

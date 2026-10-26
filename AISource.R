@@ -1884,6 +1884,28 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       Shiny.setInputValue("source_watch_tick",++nonce,{priority:"event"});
     }
     var historyPage="";
+    var modelLookupScope="",modelLookupRequest=0;
+    function requestModels(force){
+      var provider=document.getElementById("api_provider"),revision=document.getElementById("api_form_revision"),form=document.getElementById("api_form_provider"),model=document.getElementById("api_model");
+      if(!connected || serverBusy || pending || !provider || !revision || !form || provider.value!==form.value || !model || !model.selectize)return;
+      var url=document.getElementById("api_base_url"),endpoint=provider.value==="custom" && url?url.value.trim().replace(new RegExp("/+$"),""):"";
+      var scope=[provider.value,revision.value,endpoint].join("|");
+      if(force!==true && scope===modelLookupScope)return;
+      modelLookupScope=scope;modelLookupRequest=++nonce;
+      var picker=model.selectize,selected=picker.getValue();
+      picker.clear(true);picker.clearOptions();
+      if(selected){picker.addOption({value:selected,label:selected+" (configured; checking)",group:"configured"});picker.setValue(selected,true);}
+      var button=document.getElementById("api_load_models"),notice=document.getElementById("api_model_notice"),key=document.getElementById("api_key_entry");
+      if(button){button.disabled=true;button.textContent="Loading models…";}
+      if(notice)notice.textContent="Loading available models…";
+      Shiny.setInputValue("api_discover",{provider:provider.value,revision:revision.value,base_url:endpoint,
+        entered_key:!!(key && key.value.trim()),request:modelLookupRequest},{priority:"event"});
+    }
+    function scheduleModels(attempt){
+      if(!document.getElementById("api_model"))return;
+      if(document.getElementById("api_model").selectize){requestModels(false);return;}
+      if(attempt<20)window.setTimeout(function(){scheduleModels(attempt+1);},50);
+    }
     function showHistoryPage(mode){
       if(mode===historyPage)return;historyPage=mode;historyOpen=!!mode;
       var chat=document.getElementById("chat_stream"),compose=document.querySelector(".compose");
@@ -2132,7 +2154,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         Shiny.setInputValue("api_use_connection",{index:Number(useApi.getAttribute("data-index")),revision:useApi.getAttribute("data-revision"),nonce:++nonce},{priority:"event"});
       }
       var loadModels=e.target.closest && e.target.closest("#api_load_models");
-      if(loadModels){window.setTimeout(function(){loadModels.disabled=true;loadModels.textContent="Loading models…";},0);}
+      if(loadModels && !loadModels.disabled)requestModels(true);
       var datasets=document.getElementById("workspace_menu");if(datasets && !datasets.contains(e.target))datasets.open=false;
       var activate=e.target.closest && e.target.closest("#code_actions");
       if(activate && !activate.disabled && connected){targetRefreshing=true;updateSendState();}
@@ -2250,16 +2272,23 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         Shiny.addCustomMessageHandler("ai_code_target_complete",function(msg){if(!msg.ready){targetRefreshing=false;updateSendState();}});
         Shiny.addCustomMessageHandler("ai_source_watch_complete",function(msg){sourceWatchPending=false;});
         Shiny.addCustomMessageHandler("ai_api_models_complete",function(msg){
-          var button=document.getElementById("api_load_models");if(button){button.disabled=false;button.textContent="Load available models";}
+          if(msg.request!==modelLookupRequest)return;
+          var button=document.getElementById("api_load_models"),notice=document.getElementById("api_model_notice");
+          if(button){button.disabled=false;button.textContent="Refresh models";}
+          if(notice && msg.notice)notice.textContent=msg.notice;
         });
         Shiny.addCustomMessageHandler("ai_api_models",function(msg){
           var provider=document.getElementById("api_provider"),revision=document.getElementById("api_form_revision"),model=document.getElementById("api_model");
-          if(!provider || !revision || !model || !model.selectize || provider.value!==msg.provider || revision.value!==msg.revision)return;
+          if(msg.request!==modelLookupRequest || !provider || !revision || !model || !model.selectize || provider.value!==msg.provider || revision.value!==msg.revision)return;
           if(msg.provider==="custom"){
             var url=document.getElementById("api_base_url");if(!url || url.value.trim().replace(new RegExp("/+$"),"")!==msg.base_url)return;
           }
-          (Array.isArray(msg.models)?msg.models:[msg.models]).forEach(function(id){if(typeof id==="string")model.selectize.addOption({value:id,label:id});});
-          model.selectize.refreshOptions(false);
+          var picker=model.selectize,selected=picker.getValue(),ids=Array.isArray(msg.models)?msg.models:[msg.models];
+          picker.clear(true);picker.clearOptions();
+          ids.forEach(function(id){if(typeof id==="string")picker.addOption({value:id,label:id,group:"reported"});});
+          if(selected && ids.indexOf(selected)<0)picker.addOption({value:selected,label:selected+" (configured; not in provider list)",group:"configured"});
+          if(selected)picker.setValue(selected,true);
+          picker.refreshOptions(false);
         });
         Shiny.addCustomMessageHandler("ai_scroll_latest",function(msg){scrollLatest();});
         Shiny.addCustomMessageHandler("ai_review_lock",function(msg){var field=msg && document.getElementById(msg.mode_id);if(field)field.disabled=true;});
@@ -2291,7 +2320,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       window.setInterval(previewPlot,2000);
       if(window.jQuery){
         window.jQuery(document).on("input change","#prompt",resizePrompt);
+        window.jQuery(document).on("change","#api_key_entry,#api_base_url",function(){
+          window.setTimeout(function(){requestModels(true);},0);
+        });
         window.jQuery(document).on("shiny:value",function(e){
+          if(/^api_fields_/.test(e.name))window.requestAnimationFrame(function(){scheduleModels(0);});
           if(e.name==="edit_history_panel" || e.name==="compose_model_status")window.requestAnimationFrame(updateSendState);
           if(e.name==="code_actions_toolbar")window.requestAnimationFrame(function(){targetRefreshing=false;updateSendState();});
           if(e.name==="filename")window.requestAnimationFrame(function(){
@@ -3137,17 +3170,20 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(is.null(api_settings))return(NULL)
       catalog <- api_settings$catalog()
       if(is.null(id) || !id %in% names(catalog))return(NULL)
-      models <- api_settings$model_choices(id)
       saved <- api_settings$profiles()[[id]]
       if(identical(id,api_settings$get()$provider))saved <- api_settings$get()
+      selected <- if(is.null(saved))""else saved$model
+      if(!nzchar(selected) && identical(id,api_settings$get()$provider) && api_settings$ready())selected <- api_settings$active()$model
+      choices <- if(nzchar(selected))stats::setNames(selected,paste0(selected," (configured; not checked)"))else character()
       shiny::tagList(
         shiny::div(style="display:none",shiny::textInput("api_form_provider",NULL,value=id),
           shiny::textInput("api_form_revision",NULL,value=as.character(revision))),
-        shiny::selectizeInput("api_model","Model",choices=models$choices,
-          selected=models$selected,
-          options=list(create=TRUE,persist=FALSE,placeholder="Choose a model or type its ID")),
-        shiny::actionButton("api_load_models","Load available models",class="ai-btn"),
-        shiny::p(class="api-model-notice",shiny::textOutput("api_model_notice",inline=TRUE)),
+        shiny::selectizeInput("api_model","Model",choices=choices,selected=selected,
+          options=list(create=TRUE,persist=FALSE,placeholder="Choose an available model",
+            optgroupField="group",optgroups=list(list(value="reported",label="Models returned by provider"),
+              list(value="configured",label="Configured / not in provider list")),lockOptgroupOrder=TRUE)),
+        shiny::tags$button(id="api_load_models",type="button",class="btn ai-btn","Refresh models"),
+        shiny::p(class="api-model-notice",shiny::span(id="api_model_notice","Available models load automatically.")),
         if(id=="custom")shiny::textInput("api_base_url","API base URL",value=if(is.null(saved))""else saved$base_url,
           placeholder="https://api.example.com/v1"),
         if(!compact)shiny::passwordInput("api_key_entry","API key",value="",placeholder="Leave blank to reuse this provider's key"),
@@ -3168,25 +3204,28 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         if(length(present))paste0("Key available from ",present[[1L]],if(stored=="Saved")" (takes priority)."else"." )
         else "No environment key. Leave blank to use the saved key.")
     })
-    api_model_notice <- shiny::reactiveVal("Default model is selected automatically. Load models to see this provider's list.")
-    output$api_model_notice <- shiny::renderText(api_model_notice())
-    shiny::observeEvent(input$api_provider,{
-      api_model_notice("Choose a model or type its ID. Load models fetches the provider's list.")
-    },ignoreInit=TRUE)
-    shiny::observeEvent(input$api_load_models,{
-      on.exit(session$sendCustomMessage("ai_api_models_complete",list()),add=TRUE)
-      if(is.null(api_settings) || state$busy || !is.null(state$pending))return()
-      if(!identical(input$api_provider,input$api_form_provider) ||
+    api_model_notice <- shiny::reactiveVal("")
+    shiny::observeEvent(input$api_discover,{
+      obj <- input$api_discover
+      if(is.null(api_settings) || !is.list(obj))return()
+      on.exit(session$sendCustomMessage("ai_api_models_complete",list(request=obj$request,notice=api_model_notice())),add=TRUE)
+      if(state$busy || !is.null(state$pending))return()
+      api_model_notice("Selection changed. Refresh models to check availability.")
+      if(!identical(chat_text(obj$provider),input$api_provider) ||
+          !identical(input$api_provider,input$api_form_provider) ||
+          !identical(chat_text(obj$revision),as.character(api_revision())) ||
           !identical(chat_text(input$api_form_revision),as.character(api_revision())))return()
+      endpoint <- if(input$api_provider=="custom")sub("/+$","",trimws(chat_text(input$api_base_url)))else""
+      if(!identical(chat_text(obj$base_url),endpoint))return()
       result <- tryCatch(api_settings$models(input$api_provider,
-        if(input$api_provider=="custom")input$api_base_url else NULL,
-        key=if(api_compact())""else chat_text(input$api_key_entry)),error=function(e)e)
+        if(input$api_provider=="custom")endpoint else NULL,
+        key=if(api_compact() || !isTRUE(obj$entered_key))""else chat_text(input$api_key_entry)),error=function(e)e)
       if(inherits(result,"error")) {
-        api_model_notice(paste("Could not load models:",redact_api_secrets(conditionMessage(result)),"You can type a model ID."));return()
+        api_model_notice(paste("Could not load available models:",redact_api_secrets(conditionMessage(result)),"Refresh or enter a model ID."));return()
       }
-      session$sendCustomMessage("ai_api_models",list(provider=input$api_provider,revision=as.character(api_revision()),
-        base_url=if(input$api_provider=="custom")sub("/+$","",trimws(chat_text(input$api_base_url)))else"",models=result))
-      api_model_notice(paste(length(result),"models loaded. Choose a model, then click Use model."))
+      session$sendCustomMessage("ai_api_models",list(request=obj$request,provider=input$api_provider,
+        revision=as.character(api_revision()),base_url=endpoint,models=result))
+      api_model_notice(paste(length(result),"models returned by this provider. Choose one, then Use model."))
     },ignoreInit=TRUE)
     shiny::observeEvent(input$api_use_connection,{
       if(is.null(api_settings) || state$busy || !is.null(state$pending))return()
@@ -3214,6 +3253,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           !identical(chat_text(input$api_form_revision),as.character(api_revision()))) {
         api_notice("Wait for the selected provider's fields to load, then retry.");return()
       }
+      if(!nzchar(chat_text(input$api_model))){api_notice("Choose a model from the provider's list, or enter its exact ID.");return()}
       result <- tryCatch(api_settings$save(input$api_provider,chat_text(input$api_model),
         if(input$api_provider=="custom")input$api_base_url else NULL,
         key=if(api_compact() || is.null(input$api_key_entry))""else input$api_key_entry),error=function(e)e)

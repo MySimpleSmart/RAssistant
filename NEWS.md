@@ -1,3 +1,9 @@
+# RAssistant 0.16.4
+
+- Automatically load the selected provider's model catalog when opening the picker, changing providers, or entering a key. Refresh models retries discovery without making a chat request.
+- Show API-reported models separately from configured IDs absent from the latest catalog. Remove obsolete options before each lookup; keep the current model until the user explicitly selects Use model.
+- Reject stale discovery responses after provider, endpoint or credential changes. Report discovery failures without presenting saved defaults as verified available models.
+
 # RAssistant 0.16.3
 
 - Show the active provider and exact model beside Send. Keep the label up to date after model or provider changes, with long IDs wrapping inside narrow Viewers.

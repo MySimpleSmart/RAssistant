@@ -87,9 +87,11 @@ keys and preserves the chat and draft. **API settings** in the picker opens key
 management. Switching is disabled while a request or run approval is active.
 
 Click **Use OpenAI** (or another saved provider's **Use** button) to switch in
-one step without entering its key again. The model picker fills in the provider's
-concrete default on first selection. **Load available models** fetches model IDs
-using only the selected provider's key; choose one or type a custom ID, then
+one step without entering its key again. The model picker automatically fetches model IDs
+using only the selected provider's key on open, provider changes and key entry.
+**Refresh models** retries discovery. API-reported models are grouped separately
+from configured IDs absent from the latest list; a failed lookup does not label
+old defaults as available. Choose a reported model or type a custom ID, then
 click **Use model**. Loading models does not send a chat or activate the provider.
 
 Built-in providers: OpenAI, Anthropic / Claude, Google Gemini, DeepSeek, Groq,

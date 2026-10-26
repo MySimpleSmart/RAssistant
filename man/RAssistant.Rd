@@ -52,10 +52,11 @@ opens a compact model/provider picker that reuses saved keys and preserves the
 conversation and draft; its API settings button opens key management. Switching
 is blocked during a request or pending run approval. Composer metadata is read
 locally without credential lookups.
-Saved providers offer a direct Use button. The model picker fills in a concrete
-default and accepts custom IDs. Load available models requests the selected
-provider's model catalog without sending a chat, saving a key or changing the
-active connection. Use model applies the selected model and connection.
+Saved providers offer a direct Use button. The model picker automatically requests the selected
+provider's model catalog on open, provider change and key entry. Refresh models
+retries the lookup. API-reported models are separated from configured IDs not
+in the latest list. Discovery does not send a chat, save a key or change the
+active connection. The picker also accepts custom IDs. Use model applies the selected model and connection.
 Custom endpoints use the OpenAI-compatible Chat Completions protocol, not an
 arbitrary HTTP API. Save does not make a paid API request; authentication and
 model access are checked on Send. Image support depends on the selected model.

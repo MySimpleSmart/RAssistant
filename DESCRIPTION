@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.16.3
+Version: 0.16.4
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -31,6 +31,6 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Show the active provider and exact model beside Send. Keep the label up to date after model or provider changes, with long IDs wrapping inside narrow Viewers.
-    Click the model label to choose a model or provider in a compact picker. Reuse its saved key, load available model IDs on request, and keep the conversation and draft. API settings remains available for managing keys.
-    Block model changes while a request or run approval is active. Read composer model metadata locally without credential lookups, and never use cached key fields from another settings form.
+Config/RAssistant/Changes: Automatically load the selected provider's model catalog when opening the picker, changing providers, or entering a key. Refresh models retries discovery without making a chat request.
+    Show API-reported models separately from configured IDs absent from the latest catalog. Remove obsolete options before each lookup; keep the current model until the user explicitly selects Use model.
+    Reject stale discovery responses after provider, endpoint or credential changes. Report discovery failures without presenting saved defaults as verified available models.

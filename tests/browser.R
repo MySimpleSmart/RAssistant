@@ -72,7 +72,8 @@ main <- function() {
       store_env$.provider_preferences_path <- function()file.path(history_root,"api-settings.rds")
       store_env$.api_models_factory <- function(name)function(credentials,base_url=NULL) {
         stopifnot(grepl("browser-key$",credentials()))
-        data.frame(id=c("catalog-model-alpha","catalog-model-beta"))
+        if(grepl("catalog-failure",credentials(),fixed=TRUE))stop(paste("Mock discovery failure",credentials()))
+        data.frame(id=c("catalog-model-alpha","catalog-model-beta",paste0(sub("-browser-key$","",credentials()),"-only-model")))
       }
       api <- store_env$.new_api_settings(store_env$.api_profile())
     }
@@ -321,9 +322,12 @@ main <- function() {
     }
     choose("gemini")
     wait_js('!!document.getElementById("api_model").selectize')
-    check(isTRUE(js('document.getElementById("api_model").value.length>0')),
-      "a new provider starts with its detected default model already selected")
-    fill("api_model","gemini-test");fill("api_key_entry","gemini-browser-key")
+    check(isTRUE(js('document.getElementById("api_model").value==="" && Object.keys(document.getElementById("api_model").selectize.options).length===0')),
+      "an unconfigured provider does not present an invented available model")
+    fill("api_key_entry","gemini-browser-key")
+    wait_js('document.getElementById("api_model").selectize.options["gemini-only-model"]!==undefined && !document.getElementById("api_load_models").disabled')
+    check(TRUE,"entering a key automatically loads its provider-reported models without pressing Refresh")
+    fill("api_model","gemini-test")
     js('document.getElementById("api_save").click()')
     wait_js('document.getElementById("shiny-modal")===null')
     check(TRUE,"Gemini saves and activates directly from the first-launch form")
@@ -361,13 +365,13 @@ main <- function() {
     wait_js('document.getElementById("api_model").selectize.options["catalog-model-alpha"]!==undefined && !document.getElementById("api_load_models").disabled')
     check(isTRUE(js('document.getElementById("api_model").value==="gemini-test" && document.querySelector(".api-active").textContent.includes("gemini-test")')),
       "loading models adds real choices while preserving the selected model and active connection")
-    default_model <- js('var picker=document.getElementById("api_model").selectize;Object.keys(picker.options).find(function(id){return picker.options[id].label.includes("(default)");})')
+    default_model <- "catalog-model-beta"
     fill("api_model",default_model);js('document.getElementById("api_save").click()')
     wait_js('document.getElementById("shiny-modal")===null')
     js('openAction("api_settings")')
     wait_js('document.querySelector(".api-active code")!==null && document.getElementById("api_model")!==null && document.getElementById("api_model").value!==""')
     check(isTRUE(js('var code=document.querySelector(".api-active code").textContent;code.length>0 && code!=="Default unavailable" && document.getElementById("api_model").value===code')),
-      "default model selections show their concrete runtime model ID")
+      "selecting a provider-reported model uses its exact runtime model ID")
     choose("openai")
     check(isTRUE(js('document.querySelector(".api-active").textContent.includes("Google Gemini") && document.querySelector("tr[data-provider=gemini]").dataset.active==="true"')),
       "editing another provider does not falsely mark it as active before Save and use")
@@ -406,8 +410,12 @@ main <- function() {
     wait_js('document.getElementById("api_model")!==null && document.getElementById("api_provider").value==="openai"')
     check(isTRUE(js('document.querySelector(".modal-title").textContent==="Change model" && document.querySelector(".api-overview")===null && document.getElementById("api_key_entry")===null && document.getElementById("api_more_settings")!==null')),
       "the composer opens a compact picker with an API settings link and no repeated key entry")
-    js('document.getElementById("api_load_models").click()')
-    wait_js('document.getElementById("api_model").selectize.options["catalog-model-alpha"]!==undefined && !document.getElementById("api_load_models").disabled')
+    wait_js('document.getElementById("api_model").selectize.options["openai-only-model"]!==undefined && !document.getElementById("api_load_models").disabled')
+    check(isTRUE(js('var p=document.getElementById("api_model").selectize;p.options["openai-only-model"].group==="reported" && p.options["gemini-only-model"]===undefined && document.getElementById("api_model_notice").textContent.includes("models returned")')),
+      "opening the composer picker automatically shows only the selected provider's freshly reported catalog")
+    check(isTRUE(js('document.getElementById("api_model").selectize.options[document.getElementById("api_model").value].label.includes("not in provider list")')),
+      "a configured model absent from the catalog is marked separately from available models")
+
     fill("api_model","catalog-model-alpha");js('document.getElementById("api_save").click()')
     wait_js('document.getElementById("shiny-modal")===null && document.getElementById("change_model").textContent.includes("catalog-model-alpha")')
     check(isTRUE(js('document.getElementById("prompt").value==="Keep this draft for OpenAI" && document.querySelectorAll(".msg.user").length===2')),
@@ -418,7 +426,11 @@ main <- function() {
       "Send uses the composer-selected model and prevents switching during the request")
     fill("prompt","Draft kept while selecting Gemini")
     js('document.getElementById("change_model").click()');wait_js('document.getElementById("api_model")!==null')
-    choose("gemini");js('document.getElementById("api_save").click()')
+    choose("gemini")
+    wait_js('document.getElementById("api_model").selectize.options["gemini-only-model"]!==undefined && !document.getElementById("api_load_models").disabled')
+    check(isTRUE(js('document.getElementById("api_model").selectize.options["openai-only-model"]===undefined')),
+      "changing providers refreshes availability automatically without keeping another provider's models")
+    js('document.getElementById("api_save").click()')
     wait_js('document.getElementById("shiny-modal")===null && document.getElementById("change_model").textContent.includes("Google Gemini")')
     js('document.getElementById("change_model").click()');wait_js('document.getElementById("api_model")!==null')
     choose("xai");fill("api_model","missing-key-model");js('document.getElementById("api_save").click()')
@@ -428,6 +440,10 @@ main <- function() {
     js('document.getElementById("api_more_settings").click()')
     wait_js('document.querySelector(".modal-title").textContent==="API settings" && document.getElementById("api_key_entry")!==null')
     check(TRUE,"the compact picker links directly to full API settings for credentials")
+    fill("api_key_entry","catalog-failure-browser-key")
+    wait_js('document.getElementById("api_model_notice").textContent.includes("Could not load available models") && !document.getElementById("api_load_models").disabled')
+    check(isTRUE(js('Object.values(document.getElementById("api_model").selectize.options).every(function(x){return x.group!=="reported";}) && !document.getElementById("api_model_notice").textContent.includes("catalog-failure-browser-key") && document.getElementById("change_model").textContent.includes("Google Gemini")')),
+      "failed discovery removes earlier available options, redacts the key and leaves the active connection unchanged")
     js('document.querySelector("#shiny-modal .modal-footer [data-dismiss=modal]").click()')
     wait_js('document.getElementById("shiny-modal")===null')
     js('document.getElementById("change_model").click()');wait_js('document.getElementById("api_model")!==null')
