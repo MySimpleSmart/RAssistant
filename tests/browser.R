@@ -335,16 +335,20 @@ main <- function() {
     fill("api_key_entry","gemini-browser-key")
     wait_js('document.getElementById("api_model").selectize.options["gemini-only-model"]!==undefined && !document.getElementById("api_load_models").disabled')
     check(TRUE,"entering a key automatically loads its provider-reported models without pressing Refresh")
+    check(isTRUE(js('var width=document.querySelector(".api-settings").getBoundingClientRect().width;["api_provider","api_model","api_key_entry"].every(function(id){var node=document.getElementById(id);var control=node.selectize?node.selectize.$control[0]:node;return Math.abs(control.getBoundingClientRect().width-width)<2;})')),
+      "Provider, Model and API key controls fill the settings page width")
     fill("api_model","gemini-test")
     js('document.getElementById("api_save").click()')
     wait_js('document.getElementById("shiny-modal")===null')
     check(TRUE,"Gemini saves and activates directly from the first-launch form")
+    check(isTRUE(js('getComputedStyle(document.querySelector("#send .send-plane")).display!=="none" && getComputedStyle(document.querySelector("#send .send-spinner")).display==="none"')),
+      "Send shows its send icon while idle")
     fill("prompt","Keep this draft while switching providers")
     js('openAction("api_settings")')
     wait_js('document.getElementById("api_key_entry")!==null && document.getElementById("api_model").value==="gemini-test"')
     check(isTRUE(js('document.getElementById("api_key_entry").value==="" && document.getElementById("api_model").value==="gemini-test" && document.getElementById("api_provider").value==="gemini"')),
       "reopening settings remembers the model without returning the saved key to the browser")
-    check(isTRUE(js('var row=document.querySelector(".api-connections tr[data-provider=gemini]");row.dataset.active==="true" && row.children[1].textContent.includes("gemini-test") && row.children[2].textContent==="Saved" && row.children[3].textContent==="Not set" && document.querySelector(".api-key-in-use").textContent.includes("Keychain (loaded)")')),
+    check(isTRUE(js('var row=document.querySelector(".api-connections tr[data-provider=gemini]");row.dataset.active==="true" && row.children[1].textContent.includes("gemini-test") && row.querySelector(".api-connection-state").dataset.state==="using" && row.querySelector(".api-connection-state").textContent==="Using now" && row.querySelector(".api-key-source").textContent==="Saved on this computer" && document.querySelector(".api-key-in-use").textContent.includes("Keychain (loaded)")')),
       "the overview clearly identifies the active model, saved key and actual loaded key source")
     choose("custom");fill("api_model","custom-test");fill("api_base_url","https://mock.example/v1")
     js('document.getElementById("api_save").click()')
@@ -384,6 +388,12 @@ main <- function() {
     check(isTRUE(js('document.querySelector(".api-active").textContent.includes("Google Gemini") && document.querySelector("tr[data-provider=gemini]").dataset.active==="true"')),
       "editing another provider does not falsely mark it as active before Save and use")
     browser$Emulation$setDeviceMetricsOverride(width=380L,height=700L,deviceScaleFactor=1,mobile=FALSE)
+    check(isTRUE(js('var width=document.querySelector(".api-settings").getBoundingClientRect().width;["api_provider","api_model","api_key_entry"].every(function(id){var node=document.getElementById(id);var control=node.selectize?node.selectize.$control[0]:node;return Math.abs(control.getBoundingClientRect().width-width)<2;})')),
+      "settings controls remain full width in a narrow Viewer")
+    js('document.getElementById("api_model").selectize.open();')
+    check(isTRUE(js('var picker=document.getElementById("api_model").selectize;Math.abs(picker.$dropdown[0].getBoundingClientRect().width-picker.$control[0].getBoundingClientRect().width)<2 && getComputedStyle(picker.$dropdown_content[0]).maxHeight==="150px"')),
+      "the model dropdown fills its control width and scrolls like the history list")
+    js('document.getElementById("api_model").selectize.close();')
     check(isTRUE(js('var table=document.querySelector(".api-connections").getBoundingClientRect(),dialog=document.querySelector(".modal-dialog").getBoundingClientRect();table.right<=innerWidth && table.left>=0 && dialog.right<=innerWidth && dialog.left>=0')),
       "provider, model and key status columns fit a narrow Viewer without horizontal clipping")
     screenshot <- Sys.getenv("RA_BROWSER_API_SCREENSHOT")
@@ -405,6 +415,8 @@ main <- function() {
     js('openAction("api_settings")');wait_js('document.querySelector("tr[data-provider=openai] .api-use-connection")!==null')
     check(isTRUE(js('document.querySelector("tr[data-provider=openai] .api-use-connection").textContent==="Use OpenAI"')),
       "saved providers expose a clearly named one-click Use button")
+    check(isTRUE(js('document.querySelector("tr[data-provider=openai] .api-connection-state").textContent==="Key available" && document.querySelector("tr[data-provider=openai] .api-connection-state").dataset.state==="ready" && document.querySelector("tr[data-provider=gemini] .api-connection-state").textContent==="Using now"')),
+      "ready providers and the connection currently in use have distinct text and visual states")
     js('document.querySelector("tr[data-provider=openai] .api-use-connection").click()')
     wait_js('document.getElementById("shiny-modal")===null')
     js('openAction("api_settings")');wait_js('document.querySelector("tr[data-provider=openai][data-active=true]")!==null')
@@ -430,10 +442,12 @@ main <- function() {
     wait_js('document.getElementById("shiny-modal")===null && document.getElementById("change_model").textContent.includes("catalog-model-alpha")')
     check(isTRUE(js('document.getElementById("prompt").value==="Keep this draft for OpenAI" && document.querySelectorAll(".msg.user").length===2')),
       "choosing a composer model updates its label without a request or lost draft")
-    js('document.getElementById("send").click();window.modelLockedDuringSend=document.getElementById("change_model").disabled;')
+    js('window.idleSendWidth=document.getElementById("send").getBoundingClientRect().width;document.getElementById("send").click();window.modelLockedDuringSend=document.getElementById("change_model").disabled;window.sendIconWasLoading=getComputedStyle(document.querySelector("#send .send-plane")).display==="none" && getComputedStyle(document.querySelector("#send .send-spinner")).display!=="none" && getComputedStyle(document.querySelector("#send .send-spinner")).animationName==="send-spin";window.loadingSendWidth=document.getElementById("send").getBoundingClientRect().width;')
     wait_js('document.querySelectorAll(".msg.assistant").length===3 && !document.getElementById("send").disabled')
     check(isTRUE(js('modelLockedDuringSend && Array.from(document.querySelectorAll(".msg.assistant")).pop().textContent.includes("Selected connection: openai catalog-model-alpha")')),
       "Send uses the composer-selected model and prevents switching during the request")
+    check(isTRUE(js('sendIconWasLoading && Math.abs(idleSendWidth-loadingSendWidth)<1 && getComputedStyle(document.querySelector("#send .send-plane")).display!=="none" && getComputedStyle(document.querySelector("#send .send-spinner")).display==="none" && document.getElementById("send").getAttribute("aria-busy")==="false"')),
+      "the send icon becomes a spinner during loading and returns without changing button width")
     fill("prompt","Draft kept while selecting Gemini")
     js('document.getElementById("change_model").click()');wait_js('document.getElementById("api_model")!==null')
     choose("gemini")
@@ -955,7 +969,7 @@ main <- function() {
   js('document.getElementById("console_context").click();')
   wait_js('document.getElementById("console_context_status").textContent.includes("On: 1 line")')
   js('window.thinkingShown=false;window.notificationObserver=new MutationObserver(function(){document.querySelectorAll(".shiny-notification").forEach(function(n){if(n.textContent.includes("Thinking"))window.thinkingShown=true;});});notificationObserver.observe(document.body,{childList:true,subtree:true});document.getElementById("prompt").value="Explain this";document.getElementById("send").click();document.getElementById("send").click();')
-  check(isTRUE(js('var s=document.getElementById("send");s.disabled && s.classList.contains("is-loading") && s.getAttribute("aria-busy")==="true" && getComputedStyle(s,"::before").animationName==="send-spin" && document.getElementById("compose_status").hidden')),
+  check(isTRUE(js('var s=document.getElementById("send");s.disabled && s.classList.contains("is-loading") && s.getAttribute("aria-busy")==="true" && getComputedStyle(s.querySelector(".send-spinner")).animationName==="send-spin" && getComputedStyle(s.querySelector(".send-plane")).display==="none" && document.getElementById("compose_status").hidden')),
     "Send shows loading immediately without a separate status row and blocks double clicks")
   wait_js('document.querySelector(".code-copy")!==null && !document.getElementById("send").disabled')
   check(isTRUE(js('document.querySelectorAll(".msg.user").length===1')), "double clicking produces one user turn")

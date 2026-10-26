@@ -1,3 +1,9 @@
+# RAssistant 0.16.6
+
+- Make Provider, Model, API key and custom endpoint fields fill the settings page width. Model options use a bounded scrolling list.
+- Identify providers with Using now, Key available, Add key or an actionable key-status label. Show the credential source without implying an environment-configured key is missing from Keychain.
+- Add a send icon to Send and replace it with a spinner while working. Keep the icon slot and button width stable, with the existing button styles and reduced-motion support.
+
 # RAssistant 0.16.5
 
 - Keep the model button beside Send on one compact line. Show the model name with an ellipsis when needed; retain the complete provider and model in its tooltip and inside the picker.

@@ -35,6 +35,8 @@ opens a separate page with local conversations, a read-only preview and
 **Back to chat**. **Knowledge Base** holds reference files and instructions.
 Check updates and Help each have their own full-width menu row; Close is separated below them, red,
 full-width and centered.
+Send has a send icon that becomes a spinner while working, using a fixed icon
+slot so the button does not change width.
 App also shows the installed version.
 Help contains launch, API-key and update instructions with Copy buttons.
 Advanced commands are expandable; manual update results appear below the header.
@@ -77,7 +79,11 @@ and optionally a model ID, then **Save & use**. You can switch without restartin
 or clearing the chat. A first launch without a key opens this form automatically.
 **Active connection** shows the provider, exact model and loaded key source.
 The **Connections** table lists each saved model, whether its key exists in
-Keychain, and any environment override. Defaults show their concrete model ID.
+current status and key source. **Using now** marks the active connection;
+**Key available** marks another configured provider ready to select. Missing or
+unavailable keys have an explicit action label. Environment keys are shown by
+variable name without a misleading missing-Keychain warning. Settings controls
+fill the page width and model options scroll. Defaults show their concrete model ID.
 Keychain status is read from metadata when settings opens; saved secrets are
 not retrieved for this overview. An unavailable store is shown separately from
 a missing key. Unsaved provider selections do not change the active connection.

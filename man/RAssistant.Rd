@@ -44,7 +44,9 @@ unset or edit an existing environment variable.
 
 Model preferences and the last selected provider are saved locally without keys.
 API settings shows the exact active model and loaded credential source, with
-separate Keychain and environment status for saved connections. Default model
+clear Using now and Key available indicators for configured providers, with
+explicit labels for missing or unavailable keys and the key source below each
+status. Settings controls fill the page width and model options scroll. Default model
 IDs are resolved locally; the overview neither calls an AI API nor retrieves
 other saved secrets. An unavailable store is distinct from an absent key.
 A compact model name appears beside Send, with an ellipsis for long names.
@@ -54,7 +56,9 @@ The picker marks available keys and reuses saved keys while preserving the
 conversation and draft. API settings opens key management without discarding
 the pending provider, model or custom endpoint. Switching
 is blocked during a request or pending run approval. Composer metadata is read
-locally without credential lookups.
+locally without credential lookups. Send shows a send icon that is replaced by a
+spinner while working, without changing button width; reduced-motion settings
+are respected.
 Saved providers offer a direct Use button. The model picker automatically requests the selected
 provider's model catalog on open, provider change and key entry. Refresh models
 retries the lookup. API-reported models are separated from configured IDs not

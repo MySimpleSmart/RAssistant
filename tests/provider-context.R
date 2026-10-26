@@ -81,6 +81,14 @@ shiny::testServer(app$server,{
   redacted <- app$redact_api_secrets("claude-context-key gemini-context-key deepseek-context-key")
   check(!grepl("context-key",redacted,fixed=TRUE),"redaction covers earlier providers after switching")
   assign("RAssistant/OpenAI","openai-context-key",store)
+  rm(list="RAssistant/OpenAI",envir=store)
+  Sys.setenv(OPENAI_API_KEY="openai-env-only-key")
+  open_api_settings()
+  markup <- output[[paste0("api_overview_",api_revision())]]$html
+  check(grepl("Key available",markup,fixed=TRUE) && grepl("From OPENAI_API_KEY",markup,fixed=TRUE) &&
+    !grepl("Not saved",markup,fixed=TRUE) && !grepl("openai-env-only-key",markup,fixed=TRUE),
+    "an environment-only provider is clearly available without implying its unsaved Keychain copy is a missing key")
+  Sys.unsetenv("OPENAI_API_KEY");assign("RAssistant/OpenAI","openai-context-key",store)
   open_api_settings()
   revision <- as.character(api_revision())
   before <- length(calls)
