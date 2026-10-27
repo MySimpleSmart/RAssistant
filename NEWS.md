@@ -1,3 +1,9 @@
+# RAssistant 0.19.0
+
+- After an approved Source edit, offer Check changed code inline. Preview only changed complete R expressions or affected Rmd/Quarto chunks, with referenced Workspace input names, before a separate Run changed code approval.
+- Run the approved scope in an isolated R process using bounded copies of referenced Workspace values and helpers. Do not submit unchanged expressions or other chunks; show local output and captured plots without an automatic AI request. Definition-only checks explicitly leave function bodies untested.
+- Recheck Source and input requirements before execution, reject stale or replayed approvals, and preserve Cancel, history and the existing whole-script validation. Missing or unsupported inputs stop the scoped check instead of rerunning setup.
+
 # RAssistant 0.18.0
 
 - Follow literal source()/sys.source() imports and Rmd child references on Send with Workspace On, including nested project files and source(chdir=TRUE). Parse paths without executing project code; label dynamic, missing and excluded references.

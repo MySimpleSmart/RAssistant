@@ -15,7 +15,7 @@
 local({
 run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), package_info = NULL) {
   packages <- c("shiny", "ellmer", "rstudioapi", "commonmark", "htmltools", "httpuv",
-                "jsonlite", "callr", "knitr", "rlang")
+                "jsonlite", "callr", "knitr", "rlang", "codetools")
   for (pkg in packages) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
       stop("Missing package: ", pkg, ". Install with install.packages(\"", pkg, "\").")
@@ -1268,11 +1268,133 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     unique(vapply(items, resolve, character(1), USE.NAMES = FALSE))
   }
 
+  post_edit_scope <- function(before,after,kind="R") {
+    none <- function(reason)list(ok=FALSE,label=reason,units=list(),code="")
+    if(identical(before,after))return(none("No code changed."))
+    rows <- source_diff_rows(before,after,full=TRUE)
+    added <- vapply(Filter(function(x)x$kind=="add",rows),function(x)x$new,integer(1))
+    removed <- vapply(Filter(function(x)x$kind=="remove",rows),function(x)x$old,integer(1))
+    context <- Filter(function(x)x$kind=="context",rows)
+    ast <- function(text)tryCatch(paste(deparse(parse(text=text,keep.source=FALSE)),collapse="\n"),error=function(e)NULL)
+    units <- list()
+    if(kind=="Rmd") {
+      chunks <- function(text)source_chunks(list(id="scoped-check",path="check.Rmd",contents=strsplit(text,"\n",fixed=TRUE)[[1L]]))
+      old <- chunks(before);new <- chunks(after);lines <- strsplit(after,"\n",fixed=TRUE)[[1L]]
+      for(chunk in new) {
+        old_rows <- vapply(Filter(function(x)x$new>=chunk$open_row && x$new<=chunk$close_row,context),function(x)x$old,integer(1))
+        prior <- Filter(function(x)any(old_rows>=x$open_row & old_rows<=x$close_row),old)
+        changed <- any(added>=chunk$open_row & added<=chunk$close_row) ||
+          any(vapply(prior,function(x)any(removed>=x$start_row & removed<=x$end_row),logical(1)))
+        if(!changed || !nzchar(trimws(chunk$text)))next
+        key <- ast(chunk$text)
+        if(is.null(key))return(none("Changed chunk has a syntax error; not run."))
+        if(any(vapply(prior,function(x)identical(ast(x$text),key),logical(1))))next
+        header <- lines[[chunk$open_row]]
+        if(grepl("eval[[:blank:]]*=[[:blank:]]*(FALSE|F)([,}[:blank:]]|$)",header) ||
+           grepl("(?m)^[[:blank:]]*#\\|[[:blank:]]*eval:[[:blank:]]*false[[:blank:]]*$",chunk$text,perl=TRUE))
+          return(none("Changed chunk has eval disabled; not run."))
+        units[[length(units)+1L]] <- list(code=chunk$text,start=chunk$start_row,end=chunk$end_row,
+          label=paste0("Chunk ",chunk$chunk," · lines ",chunk$start_row,"–",chunk$end_row))
+      }
+    } else {
+      expressions <- function(text) {
+        sf <- srcfilecopy("<scoped-check>",strsplit(text,"\n",fixed=TRUE)[[1L]])
+        tryCatch(parse(text=sf$lines,srcfile=sf,keep.source=TRUE),error=function(e)NULL)
+        data <- utils::getParseData(sf,includeText=TRUE)
+        if(is.null(data))return(list())
+        data <- data[data$parent==0L & !data$terminal,,drop=FALSE]
+        lapply(seq_len(nrow(data)),function(i)list(code=data$text[[i]],start=data$line1[[i]],end=data$line2[[i]],key=ast(data$text[[i]])))
+      }
+      old <- expressions(before);new <- expressions(after)
+      old_changed <- Filter(function(x)any(removed>=x$start & removed<=x$end),old)
+      for(unit in new) {
+        old_rows <- vapply(Filter(function(x)x$new>=unit$start && x$new<=unit$end,context),function(x)x$old,integer(1))
+        deletion <- any(vapply(old_changed,function(x)any(old_rows>=x$start & old_rows<=x$end),logical(1)))
+        if(!any(added>=unit$start & added<=unit$end) && !deletion)next
+        if(any(vapply(old_changed,function(x)identical(x$key,unit$key),logical(1))))next
+        unit$label <- paste0("Lines ",unit$start,"–",unit$end);unit$key <- NULL
+        units[[length(units)+1L]] <- unit
+      }
+    }
+    if(!length(units))return(none("No changed executable R code to run."))
+    code <- paste(vapply(units,function(x)x$code,character(1)),collapse="\n\n")
+    if(length(units)>3L || nchar(code)>12000L)return(none("Changed code exceeds the scoped check limit."))
+    parsed <- tryCatch(parse(text=code,keep.source=FALSE),error=function(e)NULL)
+    if(is.null(parsed))return(none("Changed code has a syntax error; not run."))
+    is_definition <- function(x)is.call(x) && (identical(x[[1L]],as.name("function")) ||
+      ((identical(x[[1L]],as.name("<-")) || identical(x[[1L]],as.name("="))) && length(x)==3L &&
+        is.symbol(x[[2L]]) && is.call(x[[3L]]) && identical(x[[3L]][[1L]],as.name("function"))))
+    list(ok=TRUE,units=units,code=code,label=paste(vapply(units,function(x)x$label,character(1)),collapse="; "),
+      definition_only=all(vapply(parsed,is_definition,logical(1))))
+  }
+  scope_input_names <- function(code,definition_only=FALSE) {
+    if(definition_only)return(character())
+    flatten <- function(x)if(is.call(x) && identical(x[[1L]],as.name("{")))
+      unlist(lapply(as.list(x)[-1L],flatten),recursive=FALSE)else list(x)
+    expressions <- unlist(lapply(as.list(parse(text=code,keep.source=FALSE)),flatten),recursive=FALSE)
+    self_reads <- function(x) {
+      if(!is.call(x) || identical(x[[1L]],as.name("function")))return(character())
+      own <- if((identical(x[[1L]],as.name("<-")) || identical(x[[1L]],as.name("="))) &&
+        length(x)==3L && is.symbol(x[[2L]]) && as.character(x[[2L]]) %in% all.vars(x[[3L]]))as.character(x[[2L]])else character()
+      unique(c(own,unlist(lapply(as.list(x)[-1L],function(part)tryCatch(self_reads(part),error=function(e)character())),use.names=FALSE)))
+    }
+    assigned <- extra <- character()
+    for(expr in expressions) {
+      extra <- union(extra,setdiff(self_reads(expr),assigned))
+      if(is.call(expr) && length(expr)==3L && is.symbol(expr[[2L]]) &&
+         (identical(expr[[1L]],as.name("<-")) || identical(expr[[1L]],as.name("="))))assigned <- union(assigned,as.character(expr[[2L]]))
+    }
+    body <- as.call(c(list(as.name("{")),expressions))
+    fun <- as.function(list(body),envir=baseenv())
+    sort(unique(c(codetools::findGlobals(fun,merge=TRUE),extra)))
+  }
+  scope_packages <- function()intersect(rev(sub("^package:","",grep("^package:",search(),value=TRUE))),loadedNamespaces())
+  scope_workspace_inputs <- function(code,definition_only=FALSE,env=.GlobalEnv,copy=FALSE) {
+    queue <- scope_input_names(code,definition_only);seen <- character();values <- list();missing <- character();names <- character()
+    packages <- if(definition_only)character()else scope_packages()
+    while(length(queue)) {
+      name <- queue[[1L]];queue <- queue[-1L]
+      if(name %in% seen)next
+      seen <- c(seen,name)
+      if(exists(name,env,inherits=FALSE)) {
+        if(!name %in% workspace_names(env)) {missing<-c(missing,name);next}
+        if(length(names)>=20L)stop("More than 20 Workspace inputs are required. Use a smaller check.")
+        names <- c(names,name)
+        value <- get(name,env,inherits=FALSE)
+        if(is.function(value) && identical(environment(value),globalenv()))
+          queue <- unique(c(queue,setdiff(c(codetools::findGlobals(value,merge=TRUE),
+            scope_input_names(paste(deparse(body(value)),collapse="\n"))),names(formals(value)))))
+        if(!copy)next
+        if(length(values)>=20L)stop("More than 20 Workspace inputs are required. Run the setup separately first.")
+        safe <- function(x,depth=0L) {
+          if(depth>8L || isS4(x))return(FALSE)
+          if(is.function(x))return(identical(environment(x),globalenv()) || identical(environment(x),baseenv()) || isNamespace(environment(x)))
+          if(!typeof(x) %in% c("NULL","logical","integer","double","complex","character","raw","list"))return(FALSE)
+          if(is.list(x) && !all(vapply(unclass(x),safe,logical(1),depth=depth+1L)))return(FALSE)
+          attrs <- attributes(x)
+          is.null(attrs) || all(vapply(attrs,safe,logical(1),depth=depth+1L))
+        }
+        if(!safe(value))stop(paste0("Workspace input ",name," cannot be copied safely for an isolated check."))
+        values[[name]] <- value
+        if(sum(vapply(values,function(x)as.numeric(utils::object.size(x)),numeric(1)))>10*1024^2)
+          stop("Workspace inputs exceed 10 MB. Use a smaller check.")
+      } else {
+        available <- exists(name,baseenv(),inherits=TRUE) || any(vapply(packages,function(pkg)
+          name %in% getNamespaceExports(pkg),logical(1)))
+        if(!available)missing <- c(missing,name)
+      }
+    }
+    if(copy && length(missing))stop(paste0("Missing Workspace inputs: ",paste(head(missing,8L),collapse=", "),". Run the setup code first."))
+    if(copy && length(serialize(values,NULL))>10*1024^2)stop("Serialized Workspace inputs exceed 10 MB.")
+    list(names=unique(names),missing=unique(missing),bindings=values,packages=packages)
+  }
+
   # Run only after an inline Yes in the chat. The R code executes in a separate
   # process, but this is NOT a security sandbox. Plots are written to a temporary
   # folder so they can be visually inspected by a multimodal API request.
   # Return the plot folder to the caller; it must clean up after analysis.
-  validate_script <- function(code, working_dir, kind = "R", timeout_seconds = 45L) {
+  validate_script <- function(code, working_dir, kind = "R", timeout_seconds = 45L,
+                              bindings=list(), packages=character(), scoped=FALSE) {
     stopifnot(kind %in% c("R", "Rmd"))
     src <- tempfile(fileext = if (identical(kind, "Rmd")) ".Rmd" else ".R")
     out <- tempfile(fileext = ".out")
@@ -1286,9 +1408,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     run_error <- NULL
     result <- tryCatch(
       callr::r(
-        func = function(source_file, wd, format_kind, image_dir, secret_env) {
+        func = function(source_file, wd, format_kind, image_dir, secret_env, copied_bindings, attached_packages, scoped_run) {
           setwd(wd)
           Sys.unsetenv(secret_env)
+          for(pkg in attached_packages)suppressPackageStartupMessages(library(pkg,character.only=TRUE,warn.conflicts=FALSE))
+          if(length(copied_bindings))list2env(copied_bindings,envir=globalenv())
           work <- tempfile(pattern = "rstudio-ai-validation-")
           dir.create(work, recursive = TRUE)
           on.exit(unlink(work, recursive = TRUE, force = TRUE), add = TRUE)
@@ -1333,13 +1457,14 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
                            width = 900, height = 600, res = 110)
             on.exit(try(grDevices::dev.off(), silent = TRUE), add = TRUE)
             # Keep logs focused on actual numbers rather than source echoes.
-            source(source_file, local = TRUE, echo = FALSE, print.eval = TRUE)
-            cat("\nR script completed.\n")
+            source(source_file, local = if(scoped_run)new.env(parent=globalenv())else TRUE, echo = FALSE, print.eval = TRUE)
+            cat(if(scoped_run)"\nScoped code completed.\n"else"\nR script completed.\n")
           }
           TRUE
         },
         args = list(source_file = src, wd = working_dir,
                     format_kind = kind, image_dir = plot_dir,
+                    copied_bindings=bindings,attached_packages=packages,scoped_run=scoped,
                     secret_env = if(is.null(api_settings))"OPENAI_API_KEY"else unique(unlist(lapply(api_settings$catalog(),`[[`,"env")))),
         stdout = out, stderr = err, show = FALSE,
         timeout = timeout_seconds, libpath = .libPaths(),
@@ -2420,7 +2545,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       var knowledge=document.getElementById("knowledge");if(knowledge)knowledge.disabled=busy;
       var clear=document.getElementById("clear_images");if(clear)clear.disabled=working;
       document.querySelectorAll(".remove-attachment").forEach(function(btn){btn.disabled=busy;});
-      document.querySelectorAll(".source-review,.source-apply,.source-skip,.source-jump,.selection-action,.source-formatting,.source-undo,.source-redo,.edit-log-view,.edit-history-close,.chat-log-view,#history_more,#edit_history").forEach(function(btn){btn.disabled=busy || btn.getAttribute("data-invalid")==="true";});
+      document.querySelectorAll(".source-review,.source-apply,.source-skip,.source-jump,.selection-action,.source-formatting,.source-undo,.source-redo,.edit-log-view,.edit-history-close,.chat-log-view,.post-edit-preview,#history_more,#edit_history").forEach(function(btn){btn.disabled=busy || btn.getAttribute("data-invalid")==="true";});
+      document.querySelectorAll(".scope-run,.scope-cancel").forEach(function(btn){btn.disabled=working || !connected;});
       document.querySelectorAll("#preview_undo,.undo-preview").forEach(function(btn){btn.disabled=busy || !undoAvailable;});
       document.querySelectorAll("#preview_redo,.redo-preview").forEach(function(btn){btn.disabled=busy || !redoAvailable;});
       document.querySelectorAll(".code-target-action,.code-target-refresh,.code-target-close,#code_actions").forEach(function(btn){btn.disabled=busy || targetRefreshing;});
@@ -2622,6 +2748,15 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         editApplying=true;updateSendState();
         Shiny.setInputValue("apply_source_change",{token:apply.getAttribute("data-token"),change:apply.hasAttribute("data-change")?Number(apply.getAttribute("data-change")):null,nonce:++nonce},{priority:"event"});
       }
+      var check=e.target.closest && e.target.closest(".post-edit-preview");
+      if(check && !check.disabled && connected)Shiny.setInputValue("preview_post_edit_check",{token:check.getAttribute("data-token"),nonce:++nonce},{priority:"event"});
+      var scopeRun=e.target.closest && e.target.closest(".scope-run");
+      if(scopeRun && !scopeRun.disabled && pending && !validationInFlight){
+        var scopeToken=scopeRun.getAttribute("data-token");validationInFlight=true;updateSendState();
+        Shiny.setInputValue("run_post_edit_check",{token:scopeToken,nonce:++nonce},{priority:"event"});
+      }
+      var scopeCancel=e.target.closest && e.target.closest(".scope-cancel");
+      if(scopeCancel && !scopeCancel.disabled)Shiny.setInputValue("cancel_post_edit_check",{token:scopeCancel.getAttribute("data-token"),nonce:++nonce},{priority:"event"});
       var skip=e.target.closest && e.target.closest(".source-skip");
       if(skip && !skip.disabled && connected && !editApplying){
         editApplying=true;updateSendState();
@@ -4023,6 +4158,68 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       }
       length(state$messages)
     }
+    post_edit_offer <- function(before,fresh) {
+      scope <- tryCatch(post_edit_scope(before,full_text(fresh),source_kind(chat_text(fresh$path),full_text(fresh))),
+        error=function(e)list(ok=FALSE,label="Scoped check unavailable; not run."))
+      list(token=basename(tempfile("post-edit-")),snapshot=source_snapshot(fresh),scope=scope)
+    }
+    shiny::observeEvent(input$preview_post_edit_check,{
+      obj <- input$preview_post_edit_check
+      if(state$busy || !is.null(state$pending) || !is.list(obj) || !nzchar(chat_text(obj$token)))return()
+      found <- Filter(function(m)identical(m$post_edit_check$token,obj$token),state$messages)
+      if(length(found)!=1L)return()
+      offer <- found[[1L]]$post_edit_check
+      if(!isTRUE(offer$scope$ok))return()
+      fresh <- matching_source(offer$snapshot)
+      if(is.null(fresh)){shiny::showNotification("Source changed. Apply a fresh reviewed change before checking it.",type="warning");return()}
+      inputs <- tryCatch(scope_workspace_inputs(offer$scope$code,offer$scope$definition_only),error=function(e)e)
+      if(inherits(inputs,"error")){shiny::showNotification(conditionMessage(inputs),type="warning");return()}
+      state$job_id <- state$job_id+1L
+      state$pending <- list(id=state$job_id,scope="post_edit",token=basename(tempfile("scope-approval-")),
+        doc_id=fresh$id,path=chat_text(fresh$path),lines=fresh$contents,offer=offer,inputs=inputs,
+        working_dir=select_working_dir(full_text(fresh),chat_text(fresh$path)))
+      push("AI",paste0("Check changed code · ",offer$snapshot$name," · ",offer$scope$label),
+        type="validation",extra=list(id=state$job_id))
+      persist_chat();sync_client()
+    },ignoreInit=TRUE)
+    shiny::observeEvent(input$cancel_post_edit_check,{
+      job <- state$pending;obj <- input$cancel_post_edit_check
+      if(state$busy || is.null(job) || !identical(job$scope,"post_edit") || !is.list(obj) || !identical(obj$token,job$token))return()
+      finish_pending("Not run");persist_chat();sync_client()
+    },ignoreInit=TRUE)
+    shiny::observeEvent(input$run_post_edit_check,{
+      on.exit({persist_chat();sync_client();session$sendCustomMessage("ai_validation_complete",list())},add=TRUE)
+      job <- state$pending;obj <- input$run_post_edit_check
+      if(state$busy || is.null(job) || !identical(job$scope,"post_edit") || !is.list(obj) || !identical(obj$token,job$token))return()
+      if(is.null(matching_source(job$offer$snapshot))) {
+        finish_pending("Not run: Source changed");return()
+      }
+      # Consume the per-preview approval before copying inputs or starting R.
+      finish_pending("Running");state$busy <- TRUE;sync_client()
+      on.exit(state$busy<-FALSE,add=TRUE,after=FALSE)
+      prepared <- tryCatch({
+        current <- scope_workspace_inputs(job$offer$scope$code,job$offer$scope$definition_only)
+        if(!identical(current$names,job$inputs$names) || !identical(current$missing,job$inputs$missing) ||
+           !identical(current$packages,job$inputs$packages))stop("Workspace inputs changed. Preview the check again.")
+        scope_workspace_inputs(job$offer$scope$code,job$offer$scope$definition_only,copy=TRUE)
+      },error=function(e)e)
+      if(inherits(prepared,"error")) {
+        set_validation_outcome(job$id,"Not run: inputs unavailable")
+        push("AI",paste("Check not run:",conditionMessage(prepared)),extra=list(context=FALSE));return()
+      }
+      run <- tryCatch(validate_script(job$offer$scope$code,job$working_dir,kind="R",timeout_seconds=45L,
+        bindings=prepared$bindings,packages=prepared$packages,scoped=TRUE),error=function(e)
+          list(ok=FALSE,logs=conditionMessage(e),plots=character(),plot_dir=NULL))
+      if(!is.null(run$plot_dir))on.exit(unlink(run$plot_dir,recursive=TRUE),add=TRUE)
+      set_validation_outcome(job$id,if(run$ok)"Scoped check completed"else"Scoped check failed or timed out")
+      push("AI",paste0(if(run$ok)"Changed code completed without an R error."else"Changed code failed or timed out.",
+        if(isTRUE(job$offer$scope$definition_only))" Function definitions were evaluated; their bodies were not called."else"",
+        " Only the approved scope was submitted.",
+        if(is.null(matching_source(job$offer$snapshot)))" Source changed during the check; results apply to the approved snapshot."else""))
+      push("AI",paste0("Scoped check: ",job$offer$snapshot$name," · ",job$offer$scope$label,"\n",redact_api_secrets(run$logs)),type="logs")
+      previews <- tryCatch(plot_previews(run$plots),error=function(e)list())
+      if(length(previews))push("AI","Plots",type="plots",extra=list(images=previews))
+    },ignoreInit=TRUE)
     open_source_review <- function(obj,automatic=FALSE) {
       if(!session_active || (!automatic && state$busy) || !is.null(state$pending) || !is.list(obj) ||
           !isTRUE(obj$epoch==state$upload_epoch) || !is.numeric(obj$message) || length(obj$message)!=1L || !is.finite(obj$message))return()
@@ -4309,12 +4506,16 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         shiny::showNotification(paste(if(write_started)"Apply could not be confirmed:"else"Source was not changed:",conditionMessage(result)),type="error",duration=NULL)
       } else {
         state$source_read <- NULL
+        offer <- if(!job$creating)post_edit_offer(job$before,fresh)else NULL
         if(individual && !identical(after,job$after))
+        {
           continue_review(ctx,job,job$after,fresh,progress="Applied one change (unsaved, not run). Review the remaining changes.")
+          push("AI",paste0("Applied to ",job$target," (unsaved). Not run."),extra=list(context=FALSE,post_edit_check=offer))
+        }
         else {
           clear_source_review()
           push("AI",if(job$creating)paste0("Created ",job$target," (unsaved). Not run.")else
-            paste0("Applied to ",job$target," (unsaved). Not run."),extra=list(context=FALSE))
+            paste0("Applied to ",job$target," (unsaved). Not run."),extra=list(context=FALSE,post_edit_check=offer))
         }
       }
     },ignoreInit=TRUE)
@@ -4432,7 +4633,20 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         controls <- NULL
         if (identical(msg$type,"validation")) {
           if (!preview && !is.null(state$pending) && identical(state$pending$id,msg$id)) {
-            controls <- shiny::div(class="run-approval",
+            controls <- if(identical(state$pending$scope,"post_edit")) {
+              job <- state$pending
+              extra_packages <- setdiff(job$inputs$packages,c("base","methods","datasets","utils","grDevices","graphics","stats"))
+              shiny::div(class="run-approval scoped-run-approval",
+                shiny::p("Run only this code in a separate R process (45s max). It may access or change files."),
+                shiny::tags$details(open="open",shiny::tags$summary("Code and inputs"),
+                  lapply(job$offer$scope$units,function(unit)shiny::tagList(shiny::strong(unit$label),shiny::tags$pre(class="runlog",unit$code))),
+                  shiny::p(paste("Workspace copies:",if(length(job$inputs$names))paste(job$inputs$names,collapse=", ")else"none")),
+                  if(length(job$inputs$missing))shiny::p(paste("Setup needed:",paste(job$inputs$missing,collapse=", "))),
+                  if(length(extra_packages))shiny::p(paste("Packages:",paste(extra_packages,collapse=", ")))),
+                shiny::div(class="run-buttons",
+                  shiny::tags$button(type="button",class="btn ai-btn ai-send scope-run","data-token"=job$token,"Run changed code"),
+                  shiny::tags$button(type="button",class="btn ai-btn scope-cancel","data-token"=job$token,"Cancel")))
+            }else shiny::div(class="run-approval",
               "Run the current .R / .Rmd script in a separate R process (45s max)? ",
               "This is not a sandbox: code may access or modify local files. ",
               "Logs and up to 3 plot images may be shared with the selected AI provider.",
@@ -4486,7 +4700,12 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
               title=if(identical(msg$console_error$kind,"match"))"Exact code match; the originating file was not recorded. Open this matching expression in Source."else
                 "Source location recorded in the failing R call stack. Open in Source.",console_target_label(msg$console_error))else
               shiny::span(console_target_label(msg$console_error))),
-          shiny::div(class="content",msg$html),attachments,academic,sources,controls)
+          shiny::div(class="content",msg$html),
+          if(!preview && !is.null(msg$post_edit_check))shiny::div(class="post-edit-check",
+            if(isTRUE(msg$post_edit_check$scope$ok))shiny::tags$button(type="button",class="btn ai-btn post-edit-preview",
+              "data-token"=msg$post_edit_check$token,title=msg$post_edit_check$scope$label,"Check changed code")else
+              shiny::span(class="source-read",msg$post_edit_check$scope$label)),
+          attachments,academic,sources,controls)
       })))
     }
     output$messages <- shiny::renderUI(message_view(state$messages))
@@ -4912,7 +5131,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       on.exit(persist_chat(),add=TRUE)
       on.exit({sync_client();session$sendCustomMessage("ai_validation_complete",list())},add=TRUE)
       job<-state$pending
-      if(is.null(job) || state$busy)return()
+      if(is.null(job) || state$busy || identical(job$scope,"post_edit"))return()
       live<-tryCatch(active_doc(id=job$doc_id),error=function(e)NULL)
       if(!is_source_context(live) || !identical(live$id,job$doc_id) ||
           !identical(live$contents,job$lines) || !identical(live$path,job$path)){

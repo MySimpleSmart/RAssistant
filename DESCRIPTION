@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.18.0
+Version: 0.19.0
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -14,6 +14,7 @@ Depends: R (>= 4.2.0)
 Imports:
     askpass,
     callr,
+    codetools,
     commonmark,
     ellmer (>= 0.5.0),
     htmltools,
@@ -31,6 +32,6 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Follow literal source()/sys.source() imports and Rmd child references on Send with Workspace On, including nested project files and source(chdir=TRUE). Parse paths without executing project code; label dynamic, missing and excluded references.
-    Map function calls to candidate definitions by file and global line number. Send fresh related code, using complete relevant function excerpts when a module exceeds the shared excerpt budget; keep duplicate definitions and runtime bindings unverified.
-    Bound dependency traversal to three levels and six files, with cycle, file-size and shared excerpt limits. Keep the active unsaved editor authoritative and related files read-only; Workspace Off excludes the scan.
+Config/RAssistant/Changes: After an approved Source edit, offer Check changed code inline. Preview only changed complete R expressions or affected Rmd/Quarto chunks, with referenced Workspace input names, before a separate Run changed code approval.
+    Run the approved scope in an isolated R process using bounded copies of referenced Workspace values and helpers. Do not submit unchanged expressions or other chunks; show local output and captured plots without an automatic AI request. Definition-only checks explicitly leave function bodies untested.
+    Recheck Source and input requirements before execution, reject stale or replayed approvals, and preserve Cancel, history and the existing whole-script validation. Missing or unsupported inputs stop the scoped check instead of rerunning setup.

@@ -86,6 +86,14 @@ Separate changes support Apply and Skip; Source links focus the matching editor
 line. Selecting Source text or placing the cursor inside an R chunk automatically
 shows Explain, Fix and Improve, without menu activation. Local selection checks
 make no AI request. Actions reread Source on click. Edits require explicit approval.
+After Replace, Check changed code previews only changed complete R expressions
+or affected Rmd/Quarto chunks. A separate Run changed code approval executes that
+preview in an isolated R process, with bounded copies of current referenced
+Workspace inputs and helpers. Missing or unsupported inputs stop the check;
+setup and other chunks are not rerun. Code can affect local files. Cancel runs
+nothing. Source and input requirements are checked again before execution, and
+history cannot restore live approval. Output and plots stay in chat without an
+automatic model request. Definition-only checks do not call function bodies.
 Spacing-only proposals are separated from code corrections. A separate Code edit
 history page stores up to 100 local before/after backups. Comparisons include
 the full saved script and preserve formatting, with both scroll directions

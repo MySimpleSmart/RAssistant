@@ -13,6 +13,7 @@ main <- function() {
   on.exit(unlink(c(reopen_marker,reopen_url)),add=TRUE)
   edit_marker <- tempfile()
   on.exit(unlink(edit_marker),add=TRUE)
+  on.exit(unlink(paste0(edit_marker,"-scoped-run")),add=TRUE)
   source_marker <- tempfile()
   on.exit(unlink(source_marker),add=TRUE)
   navigation_marker <- tempfile()
@@ -108,6 +109,16 @@ main <- function() {
       app$package_info$viewer_closed <- function()launch_env$.cancel_viewer_open()
     }
     app$initial <- list(id="fixture",path=file.path(tempdir(),"example.R"),contents="plot(1:3)")
+    if(identical(Sys.getenv("RA_BROWSER_POST_EDIT_ONLY"),"true")) {
+      app$initial <- list(id="fixture",path=file.path(tempdir(),"scoped.qmd"),contents=c(
+        "# Results","```{r changed}","x <- bad(X)","print(x)","```","```{r other}",'stop("UNTOUCHED")',"```"))
+      app$scope_workspace_inputs <- function(code,definition_only=FALSE,copy=FALSE,...)
+        list(names="X",missing=character(),bindings=if(copy)list(X=matrix(1:6,2,3))else list(),packages=character())
+      app$validate_script <- function(code,...){
+        saveRDS(list(code=code,args=list(...)),paste0(edit_marker,"-scoped-run"))
+        list(ok=TRUE,logs="SCOPED_BROWSER_OUTPUT: 2 3",plots=character(),plot_dir=NULL)
+      }
+    }
     if(identical(Sys.getenv("RA_BROWSER_SOURCE_INTENT_ONLY"),"true"))
       app$initial <- list(id="fixture",path=file.path(tempdir(),"test.R"),contents=function_source)
     if(identical(Sys.getenv("RA_BROWSER_SOURCE_PATCH_ONLY"),"true"))
@@ -177,6 +188,7 @@ main <- function() {
     app$ask_ai <- function(system_prompt,prompt,images=character()) {
       count <<- count+1L
       Sys.sleep(.2)
+      if(identical(Sys.getenv("RA_BROWSER_POST_EDIT_ONLY"),"true"))return("```r-edit-3-3\nx <- dim(X)\n```")
       if(identical(Sys.getenv("RA_BROWSER_CONSOLE_SOURCE_ONLY"),"true"))return("Only the failing Source line needs review.")
       if(identical(Sys.getenv("RA_BROWSER_API_ONLY"),"true"))
         return(paste("Selected connection:",api$get()$provider,api$get()$model))
@@ -316,6 +328,50 @@ main <- function() {
   wait_js('document.querySelector(".empty")!==null')
   js('window.alerts=[];window.alert=function(x){alerts.push(x);};window.receivedMessages=[];$(document).on("shiny:message",function(e){if(e.message.custom)receivedMessages.push(e.message.custom);});')
   check(isTRUE(js('document.querySelector(".empty")!==null')), "existing Shiny UI connects and renders")
+  if(identical(Sys.getenv("RA_BROWSER_POST_EDIT_ONLY"),"true")) {
+    marker <- paste0(edit_marker,"-scoped-run")
+    js('var p=document.getElementById("prompt");p.value="Fix the code";p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click()')
+    wait_js('document.querySelector(".source-apply")!==null && !document.querySelector(".source-apply").disabled')
+    js('document.querySelector(".source-apply").click()')
+    wait_js('document.querySelector(".post-edit-preview")!==null && !document.querySelector(".post-edit-preview").disabled')
+    check(file.exists(edit_marker) && length(readRDS(edit_marker))==1L && !file.exists(marker),
+      "Replace offers a scoped check without running anything")
+    js('document.querySelector(".post-edit-preview").click()')
+    wait_js('document.querySelector(".scoped-run-approval")!==null && !document.querySelector(".scope-run").disabled')
+    check(isTRUE(js('var e=document.querySelector(".scoped-run-approval");e.querySelector("details").open && e.textContent.includes("x <- dim(X)") && e.textContent.includes("print(x)") && !e.textContent.includes("UNTOUCHED") && e.textContent.includes("Workspace copies: X")')) && !file.exists(marker),
+      "inline approval shows the changed chunk and input names without another chunk or execution")
+    check(isTRUE(js('var a=getComputedStyle(document.querySelector(".scope-cancel")),b=getComputedStyle(document.getElementById("new_chat"));["borderRadius","backgroundColor","borderColor","paddingTop","paddingLeft"].every(function(k){return a[k]===b[k]})')),
+      "Cancel follows the existing button design system")
+    js('window.oldScopedToken=document.querySelector(".scope-run").dataset.token;document.querySelector(".scope-cancel").click()')
+    wait_js('document.querySelector(".scope-run")===null && !document.getElementById("send").disabled')
+    check(!file.exists(marker),"Cancel restores chat without execution")
+    js('document.querySelector(".post-edit-preview").click()')
+    wait_js('document.querySelector(".scope-run")!==null && !document.querySelector(".scope-run").disabled')
+    js('Shiny.setInputValue("run_post_edit_check",{token:oldScopedToken,nonce:5000},{priority:"event"})')
+    wait_js('!document.querySelector(".scope-run").disabled')
+    check(!file.exists(marker),"a cancelled browser approval cannot approve a fresh preview")
+    changed <- c("# Results","```{r changed}","x <- dim(X)","print(x)","```","```{r other}","manual <- 42","```")
+    saveRDS(list(contents=changed),source_marker)
+    js('document.querySelector(".scope-run").click()')
+    wait_js('document.querySelector(".scope-run")===null && document.querySelector("#messages").textContent.includes("Not run: Source changed")')
+    check(!file.exists(marker),"the browser refuses execution after a manual Source edit")
+    unlink(source_marker)
+    js('document.querySelector(".post-edit-preview").click()')
+    wait_js('document.querySelector(".scope-run")!==null && !document.querySelector(".scope-run").disabled')
+    browser$Emulation$setDeviceMetricsOverride(width=380,height=780,deviceScaleFactor=1,mobile=FALSE)
+    check(isTRUE(js('var e=document.querySelector(".scoped-run-approval");e.getBoundingClientRect().right<=innerWidth+1 && e.querySelector("pre").scrollWidth<=e.querySelector("pre").clientWidth+1')),
+      "the approval and code preview fit a narrow Viewer")
+    screenshot <- Sys.getenv("RA_BROWSER_POST_EDIT_SCREENSHOT")
+    if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+    js('document.querySelector(".scope-run").click()')
+    wait_js('document.querySelector(".scope-run")===null && !document.getElementById("send").disabled && document.querySelector("#messages").textContent.includes("Scoped check completed")')
+    run <- readRDS(marker)
+    check(identical(run$code,"x <- dim(X)\nprint(x)\n") && isTRUE(run$args$scoped) && length(readRDS(edit_marker))==1L,
+      "Run changed code submits only the approved chunk and performs no further Source writes")
+    check(isTRUE(js('document.querySelector("#messages").textContent.includes("SCOPED_BROWSER_OUTPUT") && window.aisourceErrors.length===0')),
+      "scoped results appear in chat with no browser errors")
+    cat(checks,"Post-edit browser checks passed\n");return(invisible(NULL))
+  }
   if(identical(Sys.getenv("RA_BROWSER_CONSOLE_SOURCE_ONLY"),"true")) {
     path <- file.path(tempdir(),"console-analysis.qmd")
     contents <- c("# Results","```{r analysis}","x <- missing_fn(3)","print(x)","```","Keep this paragraph.")

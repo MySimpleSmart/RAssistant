@@ -444,6 +444,7 @@ a long-running command can temporarily grow the spool before control returns.
   images support multipart work. Use History to return to another conversation.
 - Script validation requires **Yes**, executes the entire current R/Rmd file in
   a child process, and may affect files. Only approved output/plots are shared.
+- After Replace, **Check changed code** offers a smaller, separately approved run.
 - Current Source text, detected CSV headers, enabled Console/Workspace context and uploaded images are sent to
   your selected AI provider when you click **Send**. An API account/key and internet access are needed.
 - Standalone `source("AISource.R")` remains supported with `OPENAI_API_KEY` set.
@@ -577,7 +578,18 @@ Ask for explanation only if you do not want a code proposal.
 
 Checks parse R syntax, R Markdown/Quarto R chunks and inline R without executing
 them. They do not validate YAML, other languages, package availability or runtime
-results. Use the separate approved script-validation flow to run code.
+results. After Replace, **Check changed code** previews the changed complete R
+expressions or affected Rmd/Quarto chunk bodies. **Run changed code** approves
+only that preview in a separate R process (45 seconds); Cancel runs nothing.
+The preview lists the current Workspace inputs to copy. Up to 20 ordinary inputs
+and helpers, totalling 10 MB, can be copied; lazy/active bindings, unsupported
+objects and missing inputs stop the check. Setup code and other chunks are not
+automatically run. An edited function definition is evaluated without calling
+its body, and the result says so. This is an isolated context, not a full copy of
+RStudio's options, connections or session state, and code can affect local files.
+Output and plots appear in chat without an automatic model request. Source and
+input requirements are rechecked before starting; restored history has no live
+execution approval. The existing whole-script validation remains available.
 
 Apply targets the exact document and contents captured for that answer. A changed,
 renamed or closed document invalidates replacement/append; send a fresh message.
