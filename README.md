@@ -373,6 +373,21 @@ toolbar is not modified. The existing three-image and 4 MB per-image limits appl
 Attaching alone makes no AI request. Each thumbnail has a remove control;
 Clear discards all staged images when multiple images are attached.
 
+## Context inspector
+
+**... > Context** opens a separate inspector page. **Draft preview** reads the
+current message's Source, Console, Workspace/project excerpts, selected Knowledge
+Base files, images and earlier conversation locally. **Refresh** rereads it;
+opening this page makes no model request or code execution. Off switches still
+exclude their context. The provider/model is shown without its key.
+
+**Last Send** shows the actual gathered context and delivery status, including
+approved full-script validation output when it was sent for analysis. It remains
+fixed when you edit the draft or change Workspace values. Send always rereads
+context instead of using the preview. These raw snapshots are temporary: they
+are cleared on chat changes/disconnect and are not saved in History. **Back to
+chat** preserves the draft.
+
 ## Console context
 
 In the package app, **Console** starts enabled in the header beside New chat. Wait for

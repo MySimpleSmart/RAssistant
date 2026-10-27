@@ -109,6 +109,10 @@ main <- function() {
       app$package_info$viewer_closed <- function()launch_env$.cancel_viewer_open()
     }
     app$initial <- list(id="fixture",path=file.path(tempdir(),"example.R"),contents="plot(1:3)")
+    if(identical(Sys.getenv("RA_BROWSER_CONTEXT_ONLY"),"true")) {
+      app$initial <- list(id="fixture",path=file.path(tempdir(),"context.R"),contents="nrow(birth_data)")
+      app$api_key <- "browser-context-fixture-key"
+    }
     if(identical(Sys.getenv("RA_BROWSER_POST_EDIT_ONLY"),"true")) {
       app$initial <- list(id="fixture",path=file.path(tempdir(),"scoped.qmd"),contents=c(
         "# Results","```{r changed}","x <- bad(X)","print(x)","```","```{r other}",'stop("UNTOUCHED")',"```"))
@@ -177,6 +181,8 @@ main <- function() {
         selected <- readRDS(source_marker);row <- selected$row
         if(!is.null(selected$path))context$path <- selected$path
         if(is.character(selected$contents))context$contents <- selected$contents
+        if(identical(Sys.getenv("RA_BROWSER_CONTEXT_ONLY"),"true") && is.numeric(selected$context_value))
+          data_env$birth_data$weight[[1L]] <- selected$context_value
         if(is.numeric(row) && row>=1L && row<=length(app$initial$contents)) {
           text <- if(selected$mode=="selection")app$initial$contents[[row]]else""
           context$selection <- list(list(text=text,range=list(start=c(row,1L),end=c(row,nchar(text)+1L))))
@@ -188,6 +194,7 @@ main <- function() {
     app$ask_ai <- function(system_prompt,prompt,images=character()) {
       count <<- count+1L
       Sys.sleep(.2)
+      if(identical(Sys.getenv("RA_BROWSER_CONTEXT_ONLY"),"true"))return("CONTEXT_BROWSER_RESPONSE")
       if(identical(Sys.getenv("RA_BROWSER_POST_EDIT_ONLY"),"true"))return("```r-edit-3-3\nx <- dim(X)\n```")
       if(identical(Sys.getenv("RA_BROWSER_CONSOLE_SOURCE_ONLY"),"true"))return("Only the failing Source line needs review.")
       if(identical(Sys.getenv("RA_BROWSER_API_ONLY"),"true"))
@@ -328,6 +335,58 @@ main <- function() {
   wait_js('document.querySelector(".empty")!==null')
   js('window.alerts=[];window.alert=function(x){alerts.push(x);};window.receivedMessages=[];$(document).on("shiny:message",function(e){if(e.message.custom)receivedMessages.push(e.message.custom);});')
   check(isTRUE(js('document.querySelector(".empty")!==null')), "existing Shiny UI connects and renders")
+  if(identical(Sys.getenv("RA_BROWSER_CONTEXT_ONLY"),"true")) {
+    saveRDS(list(console="CONTEXT_CONSOLE_FIRST"),source_marker)
+    js('var p=document.getElementById("prompt");p.value="Explain birth_data";p.dispatchEvent(new Event("input",{bubbles:true}));openAction("context_inspector")')
+    wait_js('getComputedStyle(document.getElementById("context_page")).display!=="none" && document.querySelectorAll(".context-section").length===6')
+    check(isTRUE(js('document.querySelector(".context-request pre").textContent==="Explain birth_data" && document.querySelector("#context_page").textContent.includes("3100") && document.querySelector("#context_page").textContent.includes("CONTEXT_CONSOLE_FIRST") && document.querySelectorAll("#messages .msg.user").length===0')),
+      "Context captures the current draft immediately and reads local data without sending")
+    check(isTRUE(js('getComputedStyle(document.querySelector(".compose")).display==="none" && document.getElementById("shiny-modal")===null && document.querySelector(".context-connection").textContent.includes("OpenAI") && !document.getElementById("context_page").textContent.includes("browser-context-fixture-key")')),
+      "the inspector uses a separate page and identifies the recipient without exposing a key")
+    check(isTRUE(js('document.querySelectorAll(".context-section")[4].querySelector("summary").textContent.includes("None")')),
+      "an available plot is not counted as an attached image")
+    check(isTRUE(js('var a=getComputedStyle(document.getElementById("context_back")),b=getComputedStyle(document.getElementById("new_chat"));["fontSize","borderRadius","backgroundColor","paddingTop","paddingLeft"].every(function(k){return a[k]===b[k]}) && document.getElementById("context_last").disabled')),
+      "Back follows the existing button style and Last Send is disabled before a request")
+    js('document.querySelector(".context-section summary").click()')
+    check(isTRUE(js('var e=document.querySelector(".context-section");e.open && e.querySelector("pre").offsetHeight>0 && getComputedStyle(e.querySelector("summary")).display==="list-item" && getComputedStyle(e.querySelector("pre")).overflowY==="auto"')),
+      "sections have visible disclosure markers and expand to bounded code previews")
+    js('document.getElementById("workspace_context").click();document.getElementById("console_context").click()')
+    wait_js('document.getElementById("console_context_state").textContent==="Off"')
+    js('document.getElementById("context_refresh").click()')
+    wait_js('document.querySelectorAll(".context-section")[2].querySelector("summary").textContent.includes("Off")')
+    check(isTRUE(js('!document.getElementById("context_page").textContent.includes("3100") && !document.getElementById("context_page").textContent.includes("CONTEXT_CONSOLE_FIRST")')),
+      "Refresh respects Console Off and Workspace Off")
+    js('document.getElementById("workspace_context").click();document.getElementById("console_context").click();document.getElementById("context_back").click()')
+    wait_js('getComputedStyle(document.querySelector(".compose")).display!=="none" && !document.getElementById("send").disabled')
+    check(isTRUE(js('document.getElementById("prompt").value==="Explain birth_data"')),
+      "returning to chat preserves the unsent draft")
+    saveRDS(list(console="CONTEXT_CONSOLE_SECOND",context_value=3200,contents=c("nrow(birth_data)","# Fresh Source before Send")),source_marker)
+    js('document.getElementById("send").click()')
+    wait_js('!document.getElementById("send").disabled && document.querySelector("#messages").textContent.includes("CONTEXT_BROWSER_RESPONSE")')
+    saveRDS(list(console="CONTEXT_CONSOLE_THIRD",context_value=3300),source_marker)
+    js('var p=document.getElementById("prompt");p.value="Unsent birth_data draft";p.dispatchEvent(new Event("input",{bubbles:true}));openAction("context_inspector")')
+    wait_js('document.querySelector(".context-caption")!==null && document.querySelector(".context-caption").textContent==="Sent"')
+    check(isTRUE(js('var p=document.getElementById("context_page");p.textContent.includes("3200") && !p.textContent.includes("3300") && p.textContent.includes("Fresh Source before Send") && p.textContent.includes("CONTEXT_CONSOLE_SECOND") && document.getElementById("context_refresh").disabled')),
+      "Last Send freezes the actual fresh values, Console capture and Source used for the request")
+    js('document.getElementById("context_draft").click()')
+    wait_js('document.querySelector(".context-caption")!==null && document.querySelector(".context-caption").textContent.includes("Draft preview") && document.getElementById("context_page").textContent.includes("3300")')
+    check(isTRUE(js('document.querySelector(".context-request pre").textContent==="Unsent birth_data draft" && document.getElementById("context_page").textContent.includes("CONTEXT_CONSOLE_THIRD") && document.querySelectorAll("#messages .msg.user").length===1')),
+      "Draft preview can refresh changed data without another model request")
+    js('document.getElementById("context_last").click()')
+    wait_js('document.querySelector(".context-caption")!==null && document.querySelector(".context-caption").textContent==="Sent"')
+    check(isTRUE(js('document.getElementById("context_page").textContent.includes("3200") && !document.getElementById("context_page").textContent.includes("3300")')),
+      "switching views never rewrites the Last Send snapshot")
+    browser$Emulation$setDeviceMetricsOverride(width=380,height=780,deviceScaleFactor=1,mobile=FALSE)
+    check(isTRUE(js('document.documentElement.scrollWidth<=innerWidth+1 && document.getElementById("context_page").getBoundingClientRect().right<=innerWidth+1')),
+      "the inspector and its controls fit a narrow Viewer")
+    screenshot <- Sys.getenv("RA_BROWSER_CONTEXT_SCREENSHOT")
+    if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+    js('document.getElementById("context_back").click()')
+    wait_js('getComputedStyle(document.querySelector(".compose")).display!=="none"')
+    check(isTRUE(js('document.getElementById("prompt").value==="Unsent birth_data draft" && window.aisourceErrors.length===0')) && !file.exists(edit_marker),
+      "inspection preserves the chat draft, makes no Source writes and produces no browser errors")
+    cat(checks,"Context inspector browser checks passed\n");return(invisible(NULL))
+  }
   if(identical(Sys.getenv("RA_BROWSER_POST_EDIT_ONLY"),"true")) {
     marker <- paste0(edit_marker,"-scoped-run")
     js('var p=document.getElementById("prompt");p.value="Fix the code";p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click()')

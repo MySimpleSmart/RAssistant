@@ -1,3 +1,9 @@
+# RAssistant 0.20.0
+
+- Add More actions > Context as a separate page with Draft preview and Last Send. Inspect Source, Console, Workspace/project data, selected Knowledge Base excerpts, images and conversation context, with the provider/model identified.
+- Share context preparation between preview and Send. Refresh reads local context without a model request or code execution; Send rereads current data, and Last Send preserves the actual attempted snapshot with Sent, Failed or local/approval-flow status.
+- Include approved validation logs and plot context. Respect Off switches and keep raw inspector snapshots temporary, outside saved history; clear them on chat changes or disconnect.
+
 # RAssistant 0.19.0
 
 - After an approved Source edit, offer Check changed code inline. Preview only changed complete R expressions or affected Rmd/Quarto chunks, with referenced Workspace input names, before a separate Run changed code approval.

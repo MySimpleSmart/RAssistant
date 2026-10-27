@@ -79,6 +79,13 @@ at two lines and grows with the draft. Attachment thumbnails above it have
 individual remove controls; Clear removes all when multiple images are attached.
 Each Send reads the current Source buffer, including unsaved changes, up to
 50,000 characters. Chat labels the file and line count sent.
+More actions > Context opens a separate page with Draft preview and Last Send.
+Preview and Refresh read local context without model requests or execution;
+Send rereads the current data. Inspect Source, Console, Workspace/project data,
+selected Knowledge Base excerpts, images, earlier conversation and the recipient
+provider/model. Off switches are respected. Last Send keeps the actual attempted
+snapshot and delivery status, including approved validation output sent for
+analysis. Raw inspector snapshots are temporary and not saved in History.
 A single Source correction automatically shows a numbered inline comparison
 with syntax checking and highlighted changes. Review opens other edit operations.
 Copy keeps Source unchanged; Replace, Append or Create requires an explicit click.
