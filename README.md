@@ -406,6 +406,17 @@ exceeds the request limit, the newest tail is kept. Datasets named in the latest
 command can supply fresh values through Workspace context, even when Source does
 not mention them.
 
+The latest failed task can show a clickable **Console error · file:line** in chat,
+including the Rmd/Quarto chunk name. R source references identify the recorded
+runtime location when available. Otherwise, a unique expression match in the
+current editor is labelled **Matching Source**; this does not prove that file
+produced the error. Repeated expressions and changed or unavailable code show a
+short status instead of a guessed link. Clicking opens and checks the document
+before focusing its line; it never executes or replaces code. Location evidence
+is included with that request so corrections can target only the failing lines.
+Raw stack metadata and navigation snapshots remain temporary, like Console capture,
+and are not stored in chat history. A fresh Send can locate an error again.
+
 Only output produced after enabling is available. This is a bounded excerpt,
 not proof the current Source was executed. Plots, external-process output,
 messages intercepted by other handlers and output hidden by other sinks may be

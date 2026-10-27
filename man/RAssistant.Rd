@@ -189,6 +189,12 @@ uncaught errors, warnings and messages. Completed commands follow their output
 with task boundaries. Errors include condition calls and stack entries when
 available, which may be enclosing calls rather than full commands. Silent commands,
 including plotting and assignments, are recorded with a no-text-output label.
+The latest failed task shows a clickable file and line when runtime source
+references are available, including Rmd/Quarto chunk names. A unique expression
+match without a runtime file is explicitly labelled Matching Source. Ambiguous,
+changed or unavailable code is not assigned a guessed line. Clicking rechecks the
+document and focuses the line without executing or editing code. The request
+includes this local location evidence; navigation snapshots are not saved in history.
 Comments are not recorded; plot pixels are not included. Earlier image uploads
 are historical context, not the latest plot. A fixed registration helper runs in the RStudio Console without
 changing focus. Activation refuses to overwrite an unfinished Console command.

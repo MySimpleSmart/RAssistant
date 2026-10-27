@@ -59,6 +59,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     rstudioapi::setSelectionRanges(list(rstudioapi::document_range(c(row,column),c(row,end_column))),id=id)
     rstudioapi::executeCommand("activateSource",quiet=TRUE)
   }
+  open_console_source <- function(path) rstudioapi::documentOpen(path,moveCursor=FALSE)
   line_offsets <- function(text) {
     positions <- gregexpr("\n",text,fixed=TRUE)[[1L]]
     c(0L,positions[positions>0L])
@@ -1548,6 +1549,91 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     terms <- knowledge_source_terms(command)
     list(text=substr(paste(c(head(condition,12L),terms$functions,terms$packages),collapse=" "),1L,1800L),command=command)
   }
+  console_source_match <- function(calls,ctx) {
+    if(!is_source_context(ctx) || nchar(full_text(ctx))>50000L)return(NULL)
+    canonical <- function(text)tryCatch({
+      parsed <- parse(text=text,keep.source=FALSE)
+      if(length(parsed)!=1L || !is.call(parsed[[1L]]))return(NULL)
+      paste(deparse(parsed[[1L]],width.cutoff=500L),collapse="\n")
+    },error=function(e)NULL)
+    parts <- if(source_kind(chat_text(ctx$path),full_text(ctx))=="Rmd")source_chunks(ctx)else
+      list(list(text=full_text(ctx),start_row=1L))
+    expressions <- list()
+    for(part in parts) {
+      src <- srcfilecopy("<console-match>",strsplit(part$text,"\n",fixed=TRUE)[[1L]])
+      tryCatch(parse(text=part$text,srcfile=src,keep.source=TRUE),error=function(e)NULL)
+      data <- utils::getParseData(src,includeText=TRUE)
+      if(is.null(data))next
+      data <- data[data$token=="expr" & !data$terminal,,drop=FALSE]
+      for(i in seq_len(nrow(data))) {
+        key <- canonical(data$text[[i]])
+        if(!is.null(key))expressions[[length(expressions)+1L]] <- list(key=key,
+          row=data$line1[[i]]+part$start_row-1L,end_row=data$line2[[i]]+part$start_row-1L)
+      }
+    }
+    for(call in head(calls,7L)) {
+      key <- canonical(call)
+      if(is.null(key))next
+      found <- Filter(function(x)identical(x$key,key),expressions)
+      if(!length(found))next
+      # Duplicate expressions are ambiguous, even if the cursor is on one.
+      ranges <- unique(vapply(found,function(x)paste(x$row,x$end_row),character(1)))
+      if(length(ranges)!=1L)return(list(ambiguous=TRUE))
+      return(found[[1L]][c("row","end_row")])
+    }
+    NULL
+  }
+  console_error_target <- function(text,evidence,ctx) {
+    task <- latest_console_task(text)
+    if(!grepl("[End failed Console task",task,fixed=TRUE))return(NULL)
+    if(!is.list(evidence) || !nzchar(chat_text(evidence$marker)) ||
+        !grepl(evidence$marker,task,fixed=TRUE))return(list(status="unknown"))
+    same_path <- function(a,b)nzchar(chat_text(a)) && nzchar(chat_text(b)) &&
+      identical(normalizePath(a,winslash="/",mustWork=FALSE),normalizePath(b,winslash="/",mustWork=FALSE))
+    make <- function(doc,row,end_row,kind) {
+      if(row<1L || end_row<row || end_row>length(doc$contents))return(NULL)
+      chunk_doc <- doc;if(is.null(chunk_doc$id))chunk_doc$id <- "console-file"
+      chunk <- Filter(function(x)row>=x$start_row && row<=x$end_row,source_chunks(chunk_doc))
+      list(status="located",kind=kind,id=doc$id,path=chat_text(doc$path),row=as.integer(row),end_row=as.integer(end_row),
+        name=if(nzchar(chat_text(doc$path)))basename(doc$path)else"Untitled",
+        chunk=if(length(chunk))chunk[[1L]]$chunk else"",snapshot=full_text(doc))
+    }
+    locations <- if(is.list(evidence$locations))Filter(is.list,evidence$locations)else list()
+    for(loc in locations) {
+      if(!is.numeric(loc$row) || length(loc$row)!=1L || !is.finite(loc$row) || loc$row!=floor(loc$row) ||
+         !is.numeric(loc$end_row) || length(loc$end_row)!=1L || !is.finite(loc$end_row) ||
+         loc$end_row!=floor(loc$end_row) || loc$row<1L || loc$end_row<loc$row || loc$end_row-loc$row>50L ||
+         !nzchar(chat_text(loc$text)))next
+      doc <- if(is_source_context(ctx) && same_path(loc$path,ctx$path))ctx else NULL
+      if(is.null(doc)) {
+        path <- chat_text(loc$path)
+        size <- if(nzchar(path))file.info(path)$size else NA_real_
+        if(is.na(size) || size>200000L || !grepl("\\.(r|rmd|qmd|md|markdown)$",path,ignore.case=TRUE))next
+        contents <- tryCatch(readLines(path,warn=FALSE,encoding="UTF-8"),error=function(e)NULL)
+        if(is.null(contents))next
+        doc <- list(id=NULL,path=path,contents=contents)
+      }
+      if(loc$end_row>length(doc$contents) ||
+          !identical(paste(doc$contents[seq.int(loc$row,loc$end_row)],collapse="\n"),loc$text))
+        return(list(status="changed"))
+      result <- make(doc,loc$row,loc$end_row,"runtime")
+      if(!is.null(result))return(result)
+    }
+    # An exact expression match is a navigation aid, not proof that this
+    # editor document produced the Console error. Say so in UI and API input.
+    match <- console_source_match(evidence$calls,ctx)
+    if(isTRUE(match$ambiguous))return(list(status="ambiguous"))
+    if(!is.null(match))return(make(ctx,match$row,match$end_row,"match"))
+    list(status="unknown")
+  }
+  console_target_label <- function(target) {
+    if(is.null(target))return("")
+    if(identical(target$status,"located"))return(paste0(target$name,":",target$row,
+      if(target$end_row>target$row)paste0("–",target$end_row)else"",
+      if(nzchar(chat_text(target$chunk)))paste0(" · ",target$chunk)else""))
+    switch(target$status,changed="Source changed since this error",ambiguous="Multiple matching Source locations",
+      "Source location unavailable")
+  }
   knowledge_work_context <- function(request,source="",path="",console="",workspace=FALSE,selected=character(),env=.GlobalEnv) {
     source_terms <- knowledge_source_terms(source,path)
     console_terms <- knowledge_console_terms(console)
@@ -1640,6 +1726,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
      display:flex;align-items:center;justify-content:space-between;padding:3px 8px;gap:6px}
   .source-context{flex:1 1 auto;min-width:0;font-size:11px;color:var(--muted);
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .console-error-location{display:flex;align-items:center;flex-wrap:wrap;gap:3px 6px;color:var(--muted);font-size:11px;margin:3px 0}
+  .console-error-location .btn.console-source-jump{font-size:11px;padding:1px 6px;max-width:100%;white-space:normal;text-align:left}
   .toolbar-actions{display:flex;gap:4px;align-items:center;flex:0 0 auto}
   .app-menu{position:relative}
   .app-menu>summary{list-style:none;cursor:pointer;border:1px solid #ccd2d9;border-radius:3px;
@@ -2268,6 +2356,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       }
       var jump=e.target.closest && e.target.closest(".source-jump");
       if(jump && !jump.disabled && connected)Shiny.setInputValue("jump_source_line",{token:jump.getAttribute("data-token"),line:Number(jump.getAttribute("data-line")),nonce:++nonce},{priority:"event"});
+      var consoleJump=e.target.closest && e.target.closest(".console-source-jump");
+      if(consoleJump && !consoleJump.disabled && connected)Shiny.setInputValue("jump_console_source",{token:consoleJump.getAttribute("data-token"),nonce:++nonce},{priority:"event"});
       var selection=e.target.closest && e.target.closest(".selection-action");
       if(selection && !selection.disabled && connected){
         submitId=++nonce;scrollLatest();updateSendState();
@@ -3870,6 +3960,30 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         as.integer(sum(ifelse(utf8ToInt(fresh$contents[[obj$line]])>65535L,2L,1L))+1L)),
         error=function(e)shiny::showNotification(paste("Could not focus Source:",conditionMessage(e)),type="warning"))
     },ignoreInit=TRUE)
+    shiny::observeEvent(input$jump_console_source,{
+      obj <- input$jump_console_source
+      if(!is.list(obj) || !is.character(obj$token) || length(obj$token)!=1L || is.na(obj$token))return()
+      found <- Filter(function(m)identical(m$console_error$token,obj$token),state$messages)
+      if(length(found)!=1L)return()
+      target <- found[[1L]]$console_error
+      if(!identical(target$status,"located"))return()
+      tryCatch({
+        fresh <- if(!is.null(target$id))active_doc(id=target$id)else NULL
+        if(!is_source_context(fresh) && nzchar(target$path)) {
+          id <- open_console_source(target$path)
+          fresh <- active_doc(id=id)
+        }
+        if(!is_source_context(fresh) || !identical(full_text(fresh),target$snapshot) ||
+           (!is.null(target$id) && !identical(fresh$id,target$id)) ||
+           (!is.null(target$path) && nzchar(target$path) &&
+             !identical(normalizePath(fresh$path,mustWork=FALSE),normalizePath(target$path,mustWork=FALSE)))) {
+          shiny::showNotification("Source changed or is unavailable. Send again to locate the current error.",type="warning")
+          return()
+        }
+        focus_source(fresh$id,target$row,1L,
+          as.integer(sum(ifelse(utf8ToInt(fresh$contents[[target$row]])>65535L,2L,1L))+1L))
+      },error=function(e)shiny::showNotification(paste("Could not open error location:",conditionMessage(e)),type="warning"))
+    },ignoreInit=TRUE)
     shiny::observeEvent(input$skip_source_change,{
       on.exit(session$sendCustomMessage("ai_edit_complete",list()),add=TRUE)
       obj <- input$skip_source_change;job <- preview_job;ctx <- review_context()
@@ -4090,6 +4204,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
               if(nzchar(chat_text(msg$source_read$chunk)))paste0("; chunk ",msg$source_read$chunk)else"")else"Source omitted (size limit)"),
           if(!is.null(msg$knowledge_read))htmltools::tagAppendAttributes(knowledge_receipt_ui(msg$knowledge_read),
             "data-detail-id"=paste0(prefix,"knowledge-",msg$sequence)),
+          if(!preview && !is.null(msg$console_error))shiny::div(class="console-error-location",
+            shiny::span(if(identical(msg$console_error$kind,"match"))"Console error · Matching Source"else"Console error"),
+            if(identical(msg$console_error$status,"located"))shiny::tags$button(type="button",class="btn ai-btn console-source-jump",
+              "data-token"=msg$console_error$token,
+              title=if(identical(msg$console_error$kind,"match"))"Exact code match; the originating file was not recorded. Open this matching expression in Source."else
+                "Source location recorded in the failing R call stack. Open in Source.",console_target_label(msg$console_error))else
+              shiny::span(console_target_label(msg$console_error))),
           shiny::div(class="content",msg$html),attachments,academic,sources,controls)
       })))
     }
@@ -4245,6 +4366,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         return()
       }
       if (!source_available) live <- empty_source_context()
+      console_evidence <- if(console_enabled && is.function(console_capture$diagnostics))
+        tryCatch(console_capture$diagnostics(redact=api_secrets()),error=function(e)NULL)else NULL
+      console_target <- if(console_enabled)tryCatch(console_error_target(console_text,console_evidence,live),
+        error=function(e)list(status="unknown"))else NULL
+      if(!is.null(console_target))console_target$token <- basename(tempfile("console-location-"))
       content <- full_text(live)
       source_included <- source_available
       editor_note <- "Source editor unavailable this turn; no current code was read. Do not infer its current contents from earlier chat."
@@ -4310,6 +4436,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       user_index <- push("You",display_text,
            extra=list(source=if(source_available && !is.null(live$path) && nzchar(live$path))basename(live$path)else "",
              source_read=state$source_read,
+             console_error=console_target,
              knowledge_read=course$receipt,
              attachments=lapply(seq_along(sent_images),function(i)
              list(label=sent_images[[i]]$label,preview=sent_images[[i]]$preview,number=state$image_count+i))))
@@ -4405,6 +4532,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       system <- paste(system,"CURRENT EDITOR is freshly read, including unsaved changes. Its N | prefixes are source line numbers, never code. Use its exact global line numbers for edit ranges. PROJECT SCAN lists saved files and may include bounded related source documents; these are read-only context, never editable targets or proof of execution. The inventory is not a claim that every file was read. Markdown headings and R chunk ranges identify the current document structure; retain all unrelated sections. Loaded Workspace function definitions reflect current memory and may differ from unsaved Source; they do not prove the current script executed.")
       if(nzchar(course$system))system <- paste(system,course$system,sep="\n\n")
       if(console_enabled)system <- paste(system,
+        "CONSOLE ERROR LOCATION, when provided, is locally derived evidence. A recorded runtime location comes from R source references; an exact Source match is only a matching expression, not proof of the originating file. Do not invent a location when unavailable or ambiguous. If the location belongs to another file, do not replace the active Source document with its code. Propose only the faulty lines, preserve unrelated code and require the existing Copy/Review/Replace approval flow.",
         "RECENT R CONSOLE OUTPUT is supplied as task data from an enabled capture. Use it when relevant",
         "to the user's request. It may predate the current Source text or come from another command.",
         "It is a bounded excerpt, not a complete execution trace or proof the current script ran.",
@@ -4436,6 +4564,12 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         if(console_enabled)paste0("\n\nRECENT R CONSOLE OUTPUT AND COMMANDS (captured after enabling; up to 200 lines / 12,000 characters):\n",
           if(nzchar(console_text))console_text else "Capture is enabled, but no completed commands or text have been captured since activation.")else "",
         if(console_enabled && nzchar(console_text))paste0("\n\nLATEST CONSOLE TASK (from the captured tail):\n",latest_console_task(console_text))else"",
+        if(!is.null(console_target))paste0("\n\nCONSOLE ERROR LOCATION (local read-only evidence):\n",
+          console_target_label(console_target),
+          if(identical(console_target$status,"located"))paste0("\nEvidence: ",
+            if(console_target$kind=="runtime")"Recorded runtime source reference"else"Exact expression match only; originating file unverified",
+            ".\n",paste(sprintf("%d | %s",seq.int(console_target$row,console_target$end_row),
+              strsplit(console_target$snapshot,"\n",fixed=TRUE)[[1L]][seq.int(console_target$row,console_target$end_row)]),collapse="\n"))else". Do not guess a file or line.")else"",
         "\n\nRECENT CHAT:\n",earlier)
       prompt <- if(length(sent_images)) paste0(
         if(nzchar(request_text))paste0("USER MESSAGE:\n",request_text,"\n\n")else"",

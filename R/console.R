@@ -12,6 +12,8 @@
   state$notice <- ""
   state$started_at <- NULL
   state$boundary <- 0
+  state$error <- NULL
+  state$error_number <- 0L
   limit <- 12000L
   activation_helper <- call(":::", as.name("RAssistant"), as.name(".activate_console_capture"))
   call_text <- function(expr) {
@@ -111,6 +113,38 @@
       text <- paste0(kind, ": ", conditionMessage(condition))
       if (kind == "Error") {
         origin <- conditionCall(condition)
+        # Preserve source references before R unwinds the failing stack. Do not
+        # call the editor API here: it can interrupt RStudio's Console handling.
+        stack <- calls
+        handler <- which(vapply(stack, function(x) is.call(x) &&
+          identical(x[[1L]], as.name(".handleSimpleError")), logical(1)))
+        if (length(handler)) stack <- utils::head(stack, handler[[1L]] - 1L)
+        locations <- Filter(Negate(is.null), lapply(rev(stack), function(x) tryCatch({
+          ref <- attr(x, "srcref")
+          if (!inherits(ref, "srcref")) return(NULL)
+          src <- attr(ref, "srcfile")
+          path <- src$filename
+          if (!is.character(path) || length(path) != 1L || !nzchar(path) ||
+              startsWith(path, "<") || !grepl("\\.(r|rmd|qmd|md|markdown)$", path, ignore.case = TRUE)) return(NULL)
+          if (!startsWith(path, "/") && is.character(src$wd)) path <- file.path(src$wd, path)
+          path <- normalizePath(path, winslash = "/", mustWork = FALSE)
+          # srcfilecopy retains the text that actually ran, including unsaved
+          # code. Never substitute a later disk read as execution evidence.
+          rows <- as.integer(ref[c(1L, 3L)])
+          saved <- if (inherits(src, "srcfilecopy") && exists("lines", src, inherits = FALSE)) src$lines else NULL
+          if (anyNA(rows) || rows[[1L]] < 1L || rows[[2L]] < rows[[1L]] ||
+              rows[[2L]] > length(saved) || diff(rows) > 50L) return(NULL)
+          excerpt <- paste(saved[seq.int(rows[[1L]], rows[[2L]])], collapse = "\n")
+          if (nchar(excerpt) > 4000L) return(NULL)
+          list(path = path, row = rows[[1L]], end_row = rows[[2L]], text = excerpt)
+        }, error = function(e) NULL)))
+        state$error_number <- state$error_number + 1L
+        marker <- paste0("[Console error ", state$error_number, "]")
+        state$error <- list(marker = marker, locations = utils::head(locations, 8L),
+          calls = unique(c(vapply(utils::head(rev(stack), 6L), function(x)
+            substr(paste(deparse(x, width.cutoff = 100L, nlines = 31L), collapse = "\n"), 1L, 4000L), character(1)),
+            if (!is.null(origin)) substr(paste(deparse(origin, nlines = 31L), collapse = "\n"), 1L, 4000L))))
+        text <- c(text, marker)
         if (!is.null(origin)) text <- c(text, paste0("[Error condition call] ", call_text(origin)))
         # Top-level errors do not trigger addTaskCallback. Preserve the stack
         # entry before unwinding, even when stop() supplies no condition call.
@@ -169,6 +203,7 @@
   callback <- addTaskCallback(task, name = paste0("RAssistant-console-", basename(tempfile())))
   stop_capture <- function() {
     state$active <- FALSE
+    state$error <- NULL
     state$notice <- ""
     isTRUE(release_sink())
   }
@@ -184,6 +219,7 @@
     state$active <- TRUE
     state$started_at <- Sys.time()
     state$boundary <- 0
+    state$error <- NULL
     invisible(TRUE)
   }
   snapshot <- function(redact = character()) {
@@ -208,6 +244,17 @@
       pending = !state$active && owns_connection(), notice = state$notice,
       lines = if (nzchar(text)) length(strsplit(text, "\n", fixed = TRUE)[[1L]]) else 0L)
   }
+  diagnostics <- function(redact = character()) {
+    if (!state$active || is.null(state$error)) return(NULL)
+    # Keep this transient evidence out of persisted conversations. A credential
+    # in executable text must not become a navigation fingerprint or API input.
+    result <- state$error
+    for (secret in redact[!is.na(redact) & nzchar(redact)]) {
+      result$calls <- result$calls[!grepl(secret, result$calls, fixed = TRUE)]
+      result$locations <- Filter(function(x) !grepl(secret, paste(x$path, x$text), fixed = TRUE), result$locations)
+    }
+    result
+  }
   dispose <- function() {
     state$disposed <- TRUE
     done <- stop_capture()
@@ -216,7 +263,7 @@
   }
   list(id = basename(tempfile("capture-")), prepare = prepare,
     start = start_capture, stop = stop_capture, snapshot = snapshot,
-    status = status, dispose = dispose)
+    status = status, diagnostics = diagnostics, dispose = dispose)
 }
 
 .activate_console_capture <- function(id) {

@@ -55,6 +55,10 @@ main <- function() {
         fixture <- if(file.exists(source_marker))readRDS(source_marker)else list()
         if(is.character(fixture$console))fixture$console else "CONSOLE_BROWSER_VALUE_42"
       },
+      diagnostics=function(redact){
+        fixture <- if(file.exists(source_marker))readRDS(source_marker)else list()
+        fixture$diagnostics
+      },
       status=function()list(enabled=console_enabled,ready=TRUE,pending=FALSE,notice="",lines=if(console_enabled)1L else 0L))
     api <- NULL
     if(identical(Sys.getenv("RA_BROWSER_API_ONLY"),"true")) {
@@ -173,6 +177,7 @@ main <- function() {
     app$ask_ai <- function(system_prompt,prompt,images=character()) {
       count <<- count+1L
       Sys.sleep(.2)
+      if(identical(Sys.getenv("RA_BROWSER_CONSOLE_SOURCE_ONLY"),"true"))return("Only the failing Source line needs review.")
       if(identical(Sys.getenv("RA_BROWSER_API_ONLY"),"true"))
         return(paste("Selected connection:",api$get()$provider,api$get()$model))
       if(identical(Sys.getenv("RA_BROWSER_HISTORY_ONLY"),"true")) {
@@ -311,6 +316,57 @@ main <- function() {
   wait_js('document.querySelector(".empty")!==null')
   js('window.alerts=[];window.alert=function(x){alerts.push(x);};window.receivedMessages=[];$(document).on("shiny:message",function(e){if(e.message.custom)receivedMessages.push(e.message.custom);});')
   check(isTRUE(js('document.querySelector(".empty")!==null')), "existing Shiny UI connects and renders")
+  if(identical(Sys.getenv("RA_BROWSER_CONSOLE_SOURCE_ONLY"),"true")) {
+    path <- file.path(tempdir(),"console-analysis.qmd")
+    contents <- c("# Results","```{r analysis}","x <- missing_fn(3)","print(x)","```","Keep this paragraph.")
+    failed <- paste("Error: could not find function missing_fn","[Console error 1]",
+      "[End failed Console task; full command may be unavailable]",sep="\n")
+    metadata <- list(marker="[Console error 1]",calls="missing_fn(3)",locations=list())
+    fixture <- list(path=path,contents=contents,console=failed,diagnostics=metadata)
+    submit <- function(text) {
+      old <- js('document.querySelectorAll("#messages .msg.user").length')
+      js(paste0('var p=document.getElementById("prompt");p.value=',jsonlite::toJSON(text,auto_unbox=TRUE),
+        ';p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click();'))
+      wait_js(paste0('!document.getElementById("send").disabled && document.querySelectorAll("#messages .msg.user").length===',old+1L))
+    }
+    saveRDS(fixture,source_marker)
+    submit("Explain this Console error")
+    wait_js('document.querySelector(".console-source-jump")!==null')
+    check(isTRUE(js('var e=document.querySelector(".console-error-location");e.textContent.includes("Matching Source") && e.textContent.includes("console-analysis.qmd:3") && e.textContent.includes("analysis")')),
+      "a Console error displays its matching global Source row and chunk, with unverified origin labelled")
+    check(isTRUE(js('var b=document.querySelector(".console-source-jump"),s=getComputedStyle(b),base=getComputedStyle(document.getElementById("new_chat"));b.classList.contains("btn") && b.classList.contains("ai-btn") && s.backgroundColor===base.backgroundColor && s.borderRadius===base.borderRadius && s.borderColor===base.borderColor')),
+      "Console navigation uses the existing button design system")
+    js('document.querySelector(".console-source-jump").click()')
+    for(i in 1:100){if(file.exists(navigation_marker))break;Sys.sleep(.05)}
+    check(file.exists(navigation_marker) && readRDS(navigation_marker)$row==3L && !file.exists(edit_marker),
+      "the real browser click focuses the error line without writing Source")
+    unlink(navigation_marker)
+    fixture$contents <- c("# Inserted",contents);saveRDS(fixture,source_marker)
+    js('document.querySelector(".console-source-jump").click()')
+    wait_js('document.querySelector(".shiny-notification")!==null && document.querySelector(".shiny-notification").textContent.includes("Source changed")')
+    check(!file.exists(navigation_marker) && !file.exists(edit_marker),"a stale browser location refuses to focus a different line")
+    fixture$contents <- contents
+    fixture$diagnostics$locations <- list(list(path=path,row=3L,end_row=3L,text=contents[[3L]]))
+    saveRDS(fixture,source_marker);submit("Read the recorded runtime location")
+    check(isTRUE(js('var e=Array.from(document.querySelectorAll(".console-error-location")).pop();!e.textContent.includes("Matching Source") && e.querySelector("button").title.includes("failing R call stack")')),
+      "recorded runtime locations are distinct from expression matches")
+    fixture$diagnostics$locations <- list()
+    fixture$contents <- c(contents,"```{r duplicate}","x <- missing_fn(3)","```")
+    saveRDS(fixture,source_marker);submit("Locate this duplicate expression")
+    check(isTRUE(js('var e=Array.from(document.querySelectorAll(".console-error-location")).pop();e.textContent.includes("Multiple matching") && e.querySelector("button")===null')),
+      "ambiguous code has a clear status and no fabricated navigation link")
+    fixture$console <- paste(failed,"[Completed Console command; no text output captured]","> x <- 1","[End Console task]",sep="\n")
+    saveRDS(fixture,source_marker);submit("Explain the latest result")
+    check(isTRUE(js('Array.from(document.querySelectorAll("#messages .msg.user")).pop().querySelector(".console-error-location")===null')),
+      "a newer successful Console task does not acquire an earlier error link")
+    browser$Emulation$setDeviceMetricsOverride(width=380,height=780,deviceScaleFactor=1,mobile=FALSE)
+    check(isTRUE(js('Array.from(document.querySelectorAll(".console-error-location")).every(function(e){return e.getBoundingClientRect().right<=innerWidth+1})')),
+      "error locations fit a narrow Viewer using the existing button style")
+    screenshot <- Sys.getenv("RA_BROWSER_CONSOLE_SOURCE_SCREENSHOT")
+    if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
+    check(isTRUE(js('window.aisourceErrors.length===0')),"Console navigation causes no browser errors")
+    cat(checks,"Console Source browser checks passed\n");return(invisible(NULL))
+  }
   if(identical(Sys.getenv("RA_BROWSER_API_ONLY"),"true")) {
     wait_js('document.getElementById("api_provider")!==null && document.getElementById("api_key_entry")!==null')
     check(isTRUE(js('document.querySelectorAll("#api_provider option").length===14 && document.getElementById("api_key_entry").type==="password"')),

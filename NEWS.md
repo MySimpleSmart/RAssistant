@@ -1,3 +1,9 @@
+# RAssistant 0.17.0
+
+- Link the latest Console error to its recorded Source file and line, including Rmd/Quarto chunk names. Click the location in chat to open the failing code without running or editing it.
+- When R provides no file reference, show a uniquely matching Source expression with an explicit Matching Source label. Ambiguous, changed or unavailable locations do not get a guessed line link.
+- Send the local location evidence to the selected model for focused corrections. Keep navigation tied to the captured task and Source snapshot; never reuse an older error after a newer successful command.
+
 # RAssistant 0.16.7
 
 - Use Conversation-style full-width button lists for provider and model selection, with selected rows, model search and the existing automatic catalog lookup. Keep manual IDs available in a collapsed advanced control.

@@ -10,6 +10,7 @@
 ^\.env.*$
 ^tests/(helpers|regression|source-context|source-edits|source-workflow|source-advanced|source-restore|source-smart|source-auto|workspace-data|assignment-context|image-reading|conversation-context|conversation-history|console-context|plot-attachment|knowledge-context|knowledge-work|live-image-reading|browser)\.R$
 ^tests/provider-context\.R$
+^tests/console-source\.R$
 ^.*\.Rcheck$
 ^.*\.(tar\.gz|tgz|zip)$
 ^R Assistant Local$

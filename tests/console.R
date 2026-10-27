@@ -47,6 +47,15 @@ main <- function() {
     "checks$error <- grepl('Error: VISIBLE_ERROR_31', captured, fixed=TRUE)",
     "checks$completed_command <- grepl('[Completed Console command for preceding output]\\n> cat(\"VISIBLE_CONSOLE_VALUE_42\\\\n\")', captured, fixed=TRUE)",
     "checks$error_command <- grepl('[Error stack entry; may be an enclosing call] stop(\"VISIBLE_ERROR_31\")', captured, fixed=TRUE)",
+    "checks$error_metadata <- grepl(cap$diagnostics()$marker,captured,fixed=TRUE) && any(grepl('VISIBLE_ERROR_31',cap$diagnostics()$calls,fixed=TRUE))",
+    "writeLines(c('failure <- function() {', '  stop(\"SOURCE_LOCATION_ERROR\")', '}', 'failure()'), 'source-location.R')",
+    "source('source-location.R',keep.source=TRUE)",
+    "location <- cap$diagnostics()$locations[[1L]]",
+    "checks$runtime_location <- identical(location$row,2L) && identical(location$end_row,2L) && identical(location$path,normalizePath('source-location.R')) && identical(location$text,'  stop(\"SOURCE_LOCATION_ERROR\")')",
+    "checks$runtime_stack <- any(grepl('SOURCE_LOCATION_ERROR',cap$diagnostics()$calls,fixed=TRUE))",
+    "writeLines('stop(\"synthetic-secret-key\")','source-secret.R')",
+    "source('source-secret.R',keep.source=TRUE)",
+    "checks$metadata_redaction <- !grepl('synthetic-secret-key',paste(unlist(cap$diagnostics(redact='synthetic-secret-key')),collapse=''),fixed=TRUE)",
     "fail_nested <- function() stop('NESTED_ERROR')",
     "fail_nested()",
     "nested <- cap$snapshot()",
@@ -66,7 +75,7 @@ main <- function() {
     "checks$stop <- cap$stop() && sink.number() == 0L && !file.exists(path) && identical(cap$snapshot(), '')",
     "cat('WHILE_OFF_SENTINEL\\n')",
     "cap$start()",
-    "checks$fresh_start <- !grepl('WHILE_OFF_SENTINEL|VISIBLE_ERROR_31|silent_console_assignment',cap$snapshot())",
+    "checks$fresh_start <- !grepl('WHILE_OFF_SENTINEL|VISIBLE_ERROR_31|silent_console_assignment',cap$snapshot()) && is.null(cap$diagnostics())",
     "for(i in 1:1000) cat(sprintf('line-%04d %s\\n', i, strrep('x', 60)))",
     "bounded <- cap$snapshot()",
     "checks$bound <- nchar(bounded) <= 12000 && length(strsplit(bounded, '\\n')[[1]]) <= 200 && grepl('line-1000', bounded, fixed=TRUE) && !grepl('line-0001', bounded, fixed=TRUE)",
@@ -117,7 +126,7 @@ main <- function() {
     stdout=output, stderr=errors)
   if (!identical(code, 0L) || !file.exists(result)) stop("Console subprocess failed; ", paste(readLines(errors),collapse="\n"))
   checks <- readRDS(result)
-  stopifnot(length(checks) == 37L)
+  stopifnot(length(checks) == 41L)
   if (!all(vapply(checks, isTRUE, logical(1)))) stop("Console checks failed: ",
     paste(names(checks)[!vapply(checks,isTRUE,logical(1))],collapse=", "))
   visible <- paste(readLines(output,warn=FALSE),collapse="\n")
