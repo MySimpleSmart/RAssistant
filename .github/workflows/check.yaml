@@ -29,7 +29,7 @@ jobs:
         shell: Rscript {0}
         run: |
           source("tools/sync-app.R")
-          for (suite in c("regression", "source-context", "source-edits", "source-workflow", "source-advanced", "source-restore", "source-smart", "source-auto", "workspace-data", "assignment-context", "image-reading", "conversation-context", "conversation-history", "console-context", "plot-attachment", "knowledge-context", "knowledge-work")) {
+          for (suite in c("regression", "source-context", "source-edits", "source-workflow", "source-advanced", "source-restore", "source-smart", "source-auto", "workspace-data", "assignment-context", "image-reading", "conversation-context", "conversation-history", "console-context", "console-source", "console-request", "plot-attachment", "knowledge-context", "knowledge-work")) {
             status <- system2(file.path(R.home("bin"), "Rscript"), paste0("tests/", suite, ".R"))
             if (status != 0L) stop("Failed: ", suite)
           }

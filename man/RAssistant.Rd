@@ -201,6 +201,12 @@ changing focus. Activation refuses to overwrite an unfinished Console command.
 Capture starts on, can be switched off, keeps normal output visible, and clears on disable, chat
 changes, disconnect, Close or update. The raw temporary capture is not saved in
 chat snapshots; answers based on it remain in chat. The active API key is redacted.
+Each request with captured output shows a Console receipt with delivery status
+and line count; expanding it displays the redacted excerpt supplied for that
+turn. History saves receipt counts without raw Console text. Console evidence
+precedes Source context in the model request. Direct Console questions without
+captured or supplied image evidence receive a short local status message instead
+of hypothetical script results. Run code with Console On to capture new output.
 Switching chats preserves the On/Off choice with a fresh buffer when enabled.
 Old output, plots, external-process output and conditions caught by other handlers
 may be absent. Cleanup waits for any output sink placed above ours; updates wait

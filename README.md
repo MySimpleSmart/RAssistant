@@ -392,6 +392,15 @@ is not added to saved chat snapshots, though answers based on it remain in chat.
 Switching chats preserves the On/Off choice and starts a fresh buffer when On.
 The active API key is redacted from captured context before it is sent.
 
+When captured text is used, **Console · Sent · N lines** appears below your
+message. Expand it to inspect the exact redacted excerpt. A failed request is
+labelled Request failed. Saved chat history retains the status and counts,
+without the raw temporary excerpt. Console evidence precedes Source context in
+the model request. A direct Console question with no capture or supplied image
+gets a short local explanation of Empty, Off or Unavailable, rather than a
+prediction of what the script would print. Run code with Console On to capture
+new output; output printed before capture began is unavailable.
+
 Completed commands are recorded after their output with task boundaries. Errors
 include their condition call or stack entry when available; an enclosing call
 may not show the whole command. Commands that print no text, including plotting

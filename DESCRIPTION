@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.17.0
+Version: 0.17.1
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -31,6 +31,6 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Link the latest Console error to its recorded Source file and line, including Rmd/Quarto chunk names. Click the location in chat to open the failing code without running or editing it.
-    When R provides no file reference, show a uniquely matching Source expression with an explicit Matching Source label. Ambiguous, changed or unavailable locations do not get a guessed line link.
-    Send the local location evidence to the selected model for focused corrections. Keep navigation tied to the captured task and Source snapshot; never reuse an older error after a newer successful command.
+Config/RAssistant/Changes: Put captured Console output before Source context in model requests. Direct Console questions prioritize observed output rather than a table of hypothetical script results.
+    Show a compact Console receipt with delivery status and line count. Expand it to inspect the exact redacted text supplied for that turn; saved history retains counts without raw Console output.
+    Answer direct Console questions with a short local message when capture is empty, Off or unavailable. Ask for code to be run with Console On instead of requesting manual copying or screenshots; pasted output and image questions keep their normal path.

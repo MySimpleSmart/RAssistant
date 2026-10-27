@@ -1,3 +1,9 @@
+# RAssistant 0.17.1
+
+- Put captured Console output before Source context in model requests. Direct Console questions prioritize observed output rather than a table of hypothetical script results.
+- Show a compact Console receipt with delivery status and line count. Expand it to inspect the exact redacted text supplied for that turn; saved history retains counts without raw Console output.
+- Answer direct Console questions with a short local message when capture is empty, Off or unavailable. Ask for code to be run with Console On instead of requesting manual copying or screenshots; pasted output and image questions keep their normal path.
+
 # RAssistant 0.17.0
 
 - Link the latest Console error to its recorded Source file and line, including Rmd/Quarto chunk names. Click the location in chat to open the failing code without running or editing it.

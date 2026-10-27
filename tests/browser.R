@@ -336,6 +336,12 @@ main <- function() {
       "a Console error displays its matching global Source row and chunk, with unverified origin labelled")
     check(isTRUE(js('var b=document.querySelector(".console-source-jump"),s=getComputedStyle(b),base=getComputedStyle(document.getElementById("new_chat"));b.classList.contains("btn") && b.classList.contains("ai-btn") && s.backgroundColor===base.backgroundColor && s.borderRadius===base.borderRadius && s.borderColor===base.borderColor')),
       "Console navigation uses the existing button design system")
+    check(isTRUE(js('var e=document.querySelector(".console-read");e.querySelector("summary").textContent.includes("Sent") && e.querySelector("pre").textContent.includes("could not find function missing_fn") && !e.open')),
+      "a collapsed Console receipt reports delivery and keeps the exact captured text inspectable")
+    js('document.querySelector(".console-read summary").click()')
+    check(isTRUE(js('document.querySelector(".console-read").open && getComputedStyle(document.querySelector(".console-excerpt")).overflowY==="auto"')),
+      "the Console receipt expands with bounded scrolling in the existing disclosure style")
+    js('document.querySelector(".console-read summary").click()')
     js('document.querySelector(".console-source-jump").click()')
     for(i in 1:100){if(file.exists(navigation_marker))break;Sys.sleep(.05)}
     check(file.exists(navigation_marker) && readRDS(navigation_marker)$row==3L && !file.exists(edit_marker),
@@ -359,6 +365,10 @@ main <- function() {
     saveRDS(fixture,source_marker);submit("Explain the latest result")
     check(isTRUE(js('Array.from(document.querySelectorAll("#messages .msg.user")).pop().querySelector(".console-error-location")===null')),
       "a newer successful Console task does not acquire an earlier error link")
+    fixture$console <- "";saveRDS(fixture,source_marker)
+    submit("Explain the Console output")
+    check(isTRUE(js('var user=Array.from(document.querySelectorAll("#messages .msg.user")).pop(),answer=Array.from(document.querySelectorAll("#messages .msg.assistant")).pop();user.textContent.includes("Console · No new output") && answer.textContent.includes("Run your code with Console On") && answer.textContent.length<220 && answer.querySelector("table")===null')),
+      "an empty capture produces a short actionable response instead of hypothetical Source results")
     browser$Emulation$setDeviceMetricsOverride(width=380,height=780,deviceScaleFactor=1,mobile=FALSE)
     check(isTRUE(js('Array.from(document.querySelectorAll(".console-error-location")).every(function(e){return e.getBoundingClientRect().right<=innerWidth+1})')),
       "error locations fit a narrow Viewer using the existing button style")
