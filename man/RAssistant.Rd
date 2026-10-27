@@ -99,6 +99,14 @@ Workspace opens a local picker and preview for manual selections. Each excerpt
 contains at most the first 20 rows and 20 columns, with further text limits;
 sample calculations are not full-dataset statistics. Workspace Off excludes
 both metadata and cell values. Previewing alone makes no AI request.
+Workspace On also follows literal source/sys.source imports and Rmd child files
+on Send. The dependency map links calls to candidate definitions by file and
+global line, without executing code or resolving runtime bindings. Traversal is
+limited to six project files over three levels, with 32,000-byte file limits and
+a shared 10,000-character excerpt budget. Relevant whole function definitions
+can be excerpted from larger modules. Dynamic paths, cycles, missing files and
+duplicate definitions are labelled. The active unsaved buffer remains authoritative;
+related files are read-only context. Workspace Off excludes this scan.
 Current R chunk actions target only a closed R chunk's body in Rmd or Quarto.
 Users can replace or append to the captured file, or create an unsaved R/Rmd
 document. R snippets appended to Rmd are wrapped in an R chunk. Static checks

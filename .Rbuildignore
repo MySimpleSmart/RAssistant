@@ -12,6 +12,7 @@
 ^tests/provider-context\.R$
 ^tests/console-source\.R$
 ^tests/console-request\.R$
+^tests/project-dependencies\.R$
 ^.*\.Rcheck$
 ^.*\.(tar\.gz|tgz|zip)$
 ^R Assistant Local$

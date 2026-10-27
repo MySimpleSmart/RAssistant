@@ -1,3 +1,9 @@
+# RAssistant 0.18.0
+
+- Follow literal source()/sys.source() imports and Rmd child references on Send with Workspace On, including nested project files and source(chdir=TRUE). Parse paths without executing project code; label dynamic, missing and excluded references.
+- Map function calls to candidate definitions by file and global line number. Send fresh related code, using complete relevant function excerpts when a module exceeds the shared excerpt budget; keep duplicate definitions and runtime bindings unverified.
+- Bound dependency traversal to three levels and six files, with cycle, file-size and shared excerpt limits. Keep the active unsaved editor authoritative and related files read-only; Workspace Off excludes the scan.
+
 # RAssistant 0.17.1
 
 - Put captured Console output before Source context in model requests. Direct Console questions prioritize observed output rather than a table of hypothetical script results.

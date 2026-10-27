@@ -520,10 +520,21 @@ are supported; specialized column classes may be omitted.
 Workspace On also reads function signatures and up to three relevant in-memory
 function definitions without calling them. These may differ from unsaved Source.
 Each Send scans the current project root and one directory level for a bounded
-file inventory. Up to three explicitly referenced R/Markdown documents are read
-from disk, within a 10,000-character combined budget. The active editor always
-comes from its unsaved buffer. Hidden folders, dependency trees and links outside
-the project are excluded. The scan does not execute code or load data files.
+file inventory. A dependency map also follows literal `source()`/`sys.source()`
+imports and Rmd child references, including deeper project paths. It accounts for
+`source(chdir=TRUE)`, detects cycles and maps function calls to candidate definitions
+by file and global line number. Dynamic paths, changed working-directory scopes,
+missing files and duplicate definitions are labelled rather than guessed.
+
+Traversal reads at most six files over three import levels, each at most 32,000
+bytes. Dependency excerpts and up to three other explicitly referenced documents
+share a 10,000-character budget. When a module is too large for a complete excerpt,
+relevant complete function definitions take priority. The dependency report is
+bounded separately. The active editor always comes from its unsaved buffer;
+related code comes from fresh disk reads, without execution or proof of runtime
+bindings. To edit a related file, open it in Source first. Hidden folders,
+dependency trees and links outside the project are excluded. Workspace Off
+excludes the dependency scan together with other Workspace context.
 
 **... > Code edit history** opens a separate page with time, target, status,
 proposal notes and the exact before/after comparison for approved edits.
