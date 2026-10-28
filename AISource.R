@@ -2383,6 +2383,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .knowledge-scope{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:0 0 4px;font-size:10px;color:var(--muted)}
   .knowledge-scope button{border:1px solid var(--border);border-radius:3px;background:var(--panel);padding:2px 5px;color:var(--text);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .knowledge #knowledge_selected{max-height:180px;overflow:auto;margin:6px 0}
+  .knowledge #knowledge_selected .checkbox{display:flex;align-items:center;gap:8px;justify-content:space-between}
+  .knowledge #knowledge_selected .checkbox label{flex:1;min-width:0;margin:0;overflow-wrap:anywhere}
+  .knowledge-delete{flex:0 0 auto}
   .code-wrap.review-open>pre{display:none}
   .source-edit-card{padding:8px;border:1px solid var(--border);font-size:11px}
   .source-edit-mode .form-group{margin-bottom:7px}
@@ -2727,6 +2730,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       document.querySelectorAll(".scope-run,.scope-cancel").forEach(function(btn){btn.disabled=working || !connected;});
       document.querySelectorAll("#preview_undo,.undo-preview").forEach(function(btn){btn.disabled=busy || !undoAvailable;});
       document.querySelectorAll("#preview_redo,.redo-preview").forEach(function(btn){btn.disabled=busy || !redoAvailable;});
+      document.querySelectorAll(".knowledge-delete").forEach(function(btn){btn.disabled=busy;});
       document.querySelectorAll(".code-target-action,.code-target-refresh,.code-target-close,#code_actions").forEach(function(btn){btn.disabled=busy || targetRefreshing;});
       document.querySelectorAll(".code-wrap").forEach(function(wrap){wrap.classList.toggle("review-open",!!wrap.querySelector(".source-edit-card"));});
       var imageLabel=document.getElementById("image_picker");if(imageLabel)imageLabel.setAttribute("aria-disabled",busy?"true":"false");
@@ -2824,6 +2828,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       stageImages(files);
     },true);
     document.addEventListener("click",function(e){
+      var removeKnowledge=e.target.closest && e.target.closest(".knowledge-delete");
+      if(removeKnowledge){
+        if(connected && !serverBusy && !removeKnowledge.disabled)Shiny.setInputValue("knowledge_delete",{
+          id:removeKnowledge.getAttribute("data-id"),epoch:uploadEpoch,nonce:++nonce,
+          instructions:document.getElementById("knowledge_instructions").value},{priority:"event"});
+        return;
+      }
       var unpin=e.target.closest && e.target.closest(".knowledge-unpin");
       if(unpin){
         if(connected && !serverBusy)Shiny.setInputValue("knowledge_unpin",{id:unpin.getAttribute("data-id"),epoch:uploadEpoch,nonce:++nonce},{priority:"event"});
@@ -3741,25 +3752,30 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           "PDF, TXT, Markdown or R code"))$allTags()
     }
     show_knowledge <- function(profile=NULL) {
+      knowledge_target <<- NULL
       if(is.null(profile))profile <- tryCatch(knowledge$profile(),error=function(e)list())
       docs <- tryCatch(knowledge$list(),error=function(e)list())
       choices <- stats::setNames(vapply(docs,function(x)x$id,character(1)),
         vapply(docs,function(x)paste0(x$name,if(isTRUE(x$legacy))" (older format)"else""),character(1)))
+      documents <- if(length(docs))shiny::checkboxGroupInput("knowledge_selected",NULL,choices=choices,
+        selected=vapply(state$knowledge_files,function(x)x$id,character(1)),width="100%")else shiny::p(class="empty","No documents yet.")
+      for(doc in docs)documents <- htmltools::tagQuery(documents)$
+        find("input")$filter(function(el,i)identical(el$attribs$value,doc$id))$parent()$after(shiny::tags$button(type="button",
+          class="btn ai-btn knowledge-delete","data-id"=doc$id,
+          title=paste("Delete",doc$name,"from Knowledge Base"),"aria-label"=paste("Delete",doc$name,"from Knowledge Base"),"Delete"))$allTags()
       shiny::showModal(shiny::modalDialog(title="Knowledge Base",
         shiny::div(class="assistant-help chat-history knowledge",
           shiny::p("Stored locally. Only excerpts are sent."),
           shiny::tags$strong("Use in this chat"),
-          shiny::p(class="menu-hint","Select up to 5 files. No selection means no files are sent."),
+          shiny::p(class="menu-hint","Up to 5 files \u00b7 selection saves automatically."),
           if(any(vapply(docs,function(x)isTRUE(x$legacy),logical(1))))
             shiny::p(class="menu-hint","Re-add files marked older format to preserve their full structure."),
-          if(length(docs))shiny::checkboxGroupInput("knowledge_selected",NULL,choices=choices,
-            selected=vapply(state$knowledge_files,function(x)x$id,character(1)),width="100%")else shiny::p(class="empty","No documents yet."),
+          documents,
           knowledge_picker(),
           shiny::tags$strong("Instructions"),
           shiny::textAreaInput("knowledge_instructions",NULL,value=chat_text(profile$instructions),
             rows=4,width="100%",placeholder="Optional: use ggplot2 and explain each step.")),
         footer=shiny::div(class="history-actions",
-          if(length(docs))shiny::actionButton("knowledge_remove","Remove selected",class="ai-btn"),
           shiny::actionButton("knowledge_save","Save instructions",class="ai-btn"),
           modal_button("Close")),easyClose=TRUE))
     }
@@ -3801,18 +3817,22 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         shiny::showNotification("Instructions saved.",type="message")
       },error=function(e)shiny::showNotification(conditionMessage(e),type="error"))
     })
-    shiny::observeEvent(input$knowledge_remove,{
+    shiny::observeEvent(input$knowledge_delete,{
       if(is.null(knowledge) || state$busy)return()
+      obj <- input$knowledge_delete
+      if(!is.list(obj) || !is.character(obj$id) || length(obj$id)!=1L || is.na(obj$id) ||
+          !isTRUE(obj$epoch==state$upload_epoch))return()
       docs <- tryCatch(knowledge$list(),error=function(e)list())
-      doc <- Filter(function(x)x$id %in% input$knowledge_selected,docs)
-      if(!length(doc))return()
-      knowledge_target <<- vapply(doc,function(x)x$id,character(1))
-      knowledge_draft <<- knowledge_inputs()
-      shiny::showModal(shiny::modalDialog(title="Remove selected documents?",
-        shiny::p(paste(vapply(doc,function(x)x$name,character(1)),collapse=", ")),
+      doc <- Filter(function(x)identical(x$id,obj$id),docs)
+      if(length(doc)!=1L)return()
+      knowledge_target <<- doc[[1L]]$id
+      knowledge_draft <<- list(instructions=chat_text(obj$instructions,knowledge_inputs()$instructions))
+      shiny::showModal(shiny::modalDialog(title="Delete from Knowledge Base?",
+        shiny::p(shiny::strong(doc[[1L]]$name)),
+        shiny::p(class="menu-hint","Your original file is kept."),
         footer=shiny::div(class="history-actions",
           shiny::actionButton("knowledge_cancel_remove","Cancel",class="ai-btn"),
-          shiny::actionButton("knowledge_confirm_remove","Remove",class="ai-btn"))))
+          shiny::actionButton("knowledge_confirm_remove","Delete",class="ai-btn"))))
     })
     shiny::observeEvent(input$knowledge_cancel_remove,show_knowledge(knowledge_draft))
     shiny::observeEvent(input$knowledge_confirm_remove,{

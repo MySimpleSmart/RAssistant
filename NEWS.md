@@ -1,3 +1,8 @@
+# RAssistant 0.21.1
+
+- Separate Knowledge Base chat selection from deletion. Checkboxes save automatically; each file has its own Delete action instead of Remove selected.
+- Confirm the exact file before deleting its stored copy. Keep the original file, chat selections for other documents and unsaved instructions when cancelling.
+
 # RAssistant 0.21.0
 
 - Turn Send into Stop while waiting for an AI response, using a centered square icon and the existing button style. Keep the draft and attachments ready for a deliberate retry.

@@ -167,8 +167,22 @@ shiny::testServer(app$server, {
     !grepl("KNOWLEDGE BASE EXCERPTS",tail(calls,1L)[[1L]]$prompt,fixed=TRUE),
     "a missing selected file is reported without silently substituting another document")
 
-  session$setInputs(knowledge_selected=other_id,knowledge_remove=1L,knowledge_confirm_remove=1L)
-  check(!length(knowledge$list()) && length(history$list())==1L,"removing course material leaves chats intact")
+  session$setInputs(knowledge_pin_change=list(ids=list(),epoch=state$upload_epoch,nonce=24L))
+  check(!length(state$knowledge_files) && length(knowledge$list())==1L,
+    "unchecking every file removes chat context without deleting stored documents")
+  session$setInputs(knowledge_delete=list(id=other_id,epoch=state$upload_epoch-1L,nonce=25L),knowledge_confirm_remove=1L)
+  check(length(knowledge$list())==1L,"a Delete request from a previous chat cannot remove a document")
+  session$setInputs(knowledge_delete=list(id=other_id,epoch=state$upload_epoch,nonce=26L))
+  check(length(knowledge$list())==1L && !length(state$knowledge_files),
+    "an unchecked file can be chosen for deletion without checking it or deleting it before confirmation")
+  session$setInputs(knowledge_cancel_remove=1L)
+  session$setInputs(knowledge_confirm_remove=2L)
+  check(length(knowledge$list())==1L,"Cancel clears the deletion target and a later confirmation does nothing")
+  session$setInputs(knowledge_delete=list(id=other_id,epoch=state$upload_epoch,nonce=27L))
+  session$setInputs(knowledge_confirm_remove=3L)
+  check(!length(knowledge$list()) && length(history$list())==1L && file.exists(other) &&
+    identical(readLines(other),"Use lm for regression and report regression coefficients."),
+    "per-file Delete removes only the stored document and preserves chats and the original file")
 })
 
 fresh <- load_assistant(package_info=list(version="0.3.0",history=history,knowledge=knowledge))

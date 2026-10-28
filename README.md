@@ -299,6 +299,11 @@ project: PDFs, notes (`.txt`, `.md`) and R code examples (`.R`, `.Rmd`,
 the assistant should always follow for your work, such as preferred packages,
 functions or coding conventions.
 
+Checkboxes under **Use in this chat** save automatically; unchecking a file keeps
+it in Knowledge Base. Each file has its own **Delete** button, which asks before
+deleting the stored copy and leaves the original file intact. **Save instructions**
+only saves the instructions text.
+
 When files are selected for this chat, RAssistant matches your message and
 pasted task against those files on your computer. Search also considers functions and package names
 in the current Source, conditions and command names from the latest completed

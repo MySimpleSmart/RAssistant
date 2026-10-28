@@ -1029,8 +1029,29 @@ main <- function() {
     wait_js('document.getElementById("knowledge_files")!==null')
     js('var dt=new DataTransfer();dt.items.add(new File(["Kmeans clustering uses the elbow method and fviz_nbclust. <script>window.kbInjected=true</script>"],"clustering.md",{type:"text/markdown"}));dt.items.add(new File(["Linear regression coefficients are estimated with lm and examined with summary."],"regression.md",{type:"text/markdown"}));var input=document.getElementById("knowledge_files");input.files=dt.files;input.dispatchEvent(new Event("change",{bubbles:true}));')
     wait_js('document.querySelectorAll("#knowledge_selected input").length===2',timeout=30)
-    check(isTRUE(js('document.querySelectorAll("#knowledge_selected input:checked").length===0 && document.getElementById("shiny-modal").textContent.includes("No selection means no files are sent.")')),
-      "Knowledge Base starts unselected and explains that no files will be sent")
+    check(isTRUE(js('document.querySelectorAll("#knowledge_selected input:checked").length===0 && document.getElementById("shiny-modal").textContent.includes("selection saves automatically.") && document.querySelectorAll(".knowledge-delete").length===2 && document.getElementById("knowledge_remove")===null')),
+      "Knowledge Base separates automatically saved chat selections from per-file Delete actions")
+    check(isTRUE(js('Array.from(document.querySelectorAll(".knowledge-delete")).every(function(b){return !b.closest("label") && b.closest(".checkbox").querySelector("input") && b.getAttribute("aria-label").includes(b.closest(".checkbox").querySelector("label").textContent.trim())}) && getComputedStyle(document.querySelector(".knowledge-delete")).fontSize===getComputedStyle(document.getElementById("knowledge_save")).fontSize')),
+      "each named Delete button sits outside its checkbox label and follows the existing button style")
+    js('document.querySelector("#knowledge_selected input").click()')
+    wait_js('document.querySelector(".knowledge-unpin")!==null')
+    js('document.querySelector("#shiny-modal [data-dismiss=modal]").click()')
+    wait_js('document.getElementById("shiny-modal")===null')
+    js('openAction("knowledge")')
+    wait_js('document.querySelectorAll("#knowledge_selected input:checked").length===1')
+    check(TRUE,"checkbox selection persists on Close without Save instructions")
+    js('document.querySelector("#knowledge_selected input:checked").click()')
+    wait_js('document.querySelector(".knowledge-unpin")===null')
+    check(isTRUE(js('document.querySelectorAll("#knowledge_selected input").length===2 && document.querySelectorAll(".knowledge-delete").length===2')),
+      "unchecking a file leaves it in the local library")
+    js('window.deleteName=document.querySelectorAll("#knowledge_selected .checkbox")[1].querySelector("label").textContent.trim();var p=document.getElementById("knowledge_instructions");p.value="UNSAVED_INSTRUCTIONS";p.dispatchEvent(new Event("input",{bubbles:true}));document.querySelectorAll(".knowledge-delete")[1].click()')
+    wait_js('document.getElementById("knowledge_confirm_remove")!==null')
+    check(isTRUE(js('document.getElementById("shiny-modal").textContent.includes(deleteName) && document.getElementById("shiny-modal").textContent.includes("Your original file is kept.") && document.querySelector(".knowledge-unpin")===null')),
+      "Delete targets its named unchecked file and asks for confirmation without enabling it for chat")
+    js('document.getElementById("knowledge_cancel_remove").click()')
+    wait_js('document.querySelectorAll(".knowledge-delete").length===2')
+    check(isTRUE(js('document.querySelectorAll("#knowledge_selected input:checked").length===0 && document.getElementById("knowledge_instructions").value==="UNSAVED_INSTRUCTIONS"')),
+      "Cancel preserves both the library and unsaved instructions")
     js('document.querySelector("#knowledge_selected input").click();$("#knowledge_instructions").val("Prefer <ggplot2> & explain briefly.").trigger("change");document.getElementById("knowledge_save").click();')
     wait_js('document.querySelector(".knowledge-unpin")!==null')
     js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
@@ -1041,25 +1062,25 @@ main <- function() {
     js('document.querySelector("#shiny-modal [data-dismiss=modal]").click();')
     wait_js('document.getElementById("shiny-modal")===null')
     js('var p=document.getElementById("prompt");p.value="Explain this";p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click();')
-    wait_js('document.querySelectorAll(".msg.user").length===1 && !document.getElementById("send").disabled && document.querySelector(".knowledge-read summary").textContent.includes("Sent")')
-    check(isTRUE(js('!document.querySelector(".knowledge-read").open && document.querySelector(".knowledge-read summary").textContent.includes("1 file / 1 excerpt") && getComputedStyle(document.querySelector(".knowledge-read summary")).display==="list-item"')),
+    wait_js('document.querySelectorAll(".msg.user").length===1 && !document.getElementById("send").disabled && document.querySelector(".knowledge-read:not(.console-read) summary").textContent.includes("Sent")')
+    check(isTRUE(js('!document.querySelector(".knowledge-read:not(.console-read)").open && document.querySelector(".knowledge-read:not(.console-read) summary").textContent.includes("1 file / 1 excerpt") && getComputedStyle(document.querySelector(".knowledge-read:not(.console-read) summary")).display==="list-item"')),
       "a short question gets a compact collapsed receipt from the selected file")
-    js('document.querySelector(".knowledge-read>summary").click();')
-    check(isTRUE(js('document.querySelector(".knowledge-excerpts").textContent.includes("[K1] clustering.md, line 1") && document.querySelector(".knowledge-excerpts").textContent.includes("<script>") && document.querySelector(".knowledge-read script")===null && !window.kbInjected && document.querySelector(".knowledge-read").textContent.includes("Prefer <ggplot2> & explain briefly.")')),
+    js('document.querySelector(".knowledge-read:not(.console-read)>summary").click();')
+    check(isTRUE(js('document.querySelector(".knowledge-excerpts").textContent.includes("[K1] clustering.md, line 1") && document.querySelector(".knowledge-excerpts").textContent.includes("<script>") && document.querySelector(".knowledge-read:not(.console-read) script")===null && !window.kbInjected && document.querySelector(".knowledge-read:not(.console-read)").textContent.includes("Prefer <ggplot2> & explain briefly.")')),
       "expanded receipts show exact text and instructions with inert HTML")
     screenshot <- Sys.getenv("RA_BROWSER_KNOWLEDGE_SCREENSHOT")
     if(nzchar(screenshot))writeBin(jsonlite::base64_dec(browser$Page$captureScreenshot(format="png")$data),screenshot)
     browser$Page$reload()
-    wait_js('document.querySelector(".knowledge-unpin")!==null && document.querySelector(".knowledge-read summary").textContent.includes("Sent") && !document.getElementById("send").disabled',timeout=30)
+    wait_js('document.querySelector(".knowledge-unpin")!==null && document.querySelector(".knowledge-read:not(.console-read) summary").textContent.includes("Sent") && !document.getElementById("send").disabled',timeout=30)
     check(isTRUE(js('document.querySelector(".knowledge-excerpts").textContent.includes("fviz_nbclust") && document.querySelectorAll(".msg.user").length===1')),
       "reopening the Viewer restores selected files and exact historical receipts")
     js('document.querySelector(".knowledge-unpin").click();')
     wait_js('document.querySelector(".knowledge-unpin")===null')
     js('var p=document.getElementById("prompt");p.value="Explain linear regression";p.dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("send").click();')
-    wait_js('document.querySelectorAll(".knowledge-read").length===2 && !document.getElementById("send").disabled')
-    check(isTRUE(js('Array.from(document.querySelectorAll(".knowledge-read")).pop().textContent.includes("No files selected") && document.querySelector(".knowledge-unpin")===null && Array.from(document.querySelectorAll("#messages .msg.assistant")).pop().querySelector(".knowledge-sources")===null')),
+    wait_js('document.querySelectorAll(".knowledge-read:not(.console-read)").length===2 && !document.getElementById("send").disabled')
+    check(isTRUE(js('Array.from(document.querySelectorAll(".knowledge-read:not(.console-read)")).pop().textContent.includes("No files selected") && document.querySelector(".knowledge-unpin")===null && Array.from(document.querySelectorAll("#messages .msg.assistant")).pop().querySelector(".knowledge-sources")===null')),
       "unpinning the last document disables file retrieval")
-    check(isTRUE(js('Array.from(document.querySelectorAll(".knowledge-read>summary")).pop().textContent.includes("No files selected")')),
+    check(isTRUE(js('Array.from(document.querySelectorAll(".knowledge-read:not(.console-read)>summary")).pop().textContent.includes("No files selected")')),
       "an unselected matching document does not create a new source label")
     js('openAction("knowledge");')
     wait_js('document.querySelectorAll("#knowledge_selected input").length===2')
@@ -1075,11 +1096,11 @@ main <- function() {
       "a new chat resets selection without adding a blank History entry")
     js('document.querySelector(".chat-log-view").click();document.getElementById("history_restore").click();')
     wait_js('document.getElementById("shiny-modal")===null && document.querySelector(".knowledge-unpin")!==null')
-    check(isTRUE(js('document.querySelectorAll(".msg.user").length===2 && document.querySelectorAll(".knowledge-read").length===2')),
+    check(isTRUE(js('document.querySelectorAll(".msg.user").length===2 && document.querySelectorAll(".knowledge-read:not(.console-read)").length===2')),
       "History restores the chat's selection and receipts together")
     js('openAction("knowledge");')
     wait_js('document.querySelectorAll("#knowledge_selected input:checked").length===1')
-    js('document.getElementById("knowledge_remove").click();')
+    js('document.querySelector("#knowledge_selected input:checked").closest(".checkbox").querySelector(".knowledge-delete").click();')
     wait_js('document.getElementById("knowledge_confirm_remove")!==null')
     js('document.getElementById("knowledge_confirm_remove").click();')
     wait_js('document.querySelectorAll("#knowledge_selected input").length===1 && document.querySelector(".knowledge-unpin")===null')
