@@ -60,6 +60,12 @@ is blocked during a request or pending run approval. Composer metadata is read
 locally without credential lookups. Send shows a send icon that is replaced by a
 spinner while working, centered with its label and without changing button width; reduced-motion settings
 are respected.
+While waiting for an AI response, Send becomes Stop with a square icon.
+Stop terminates the local request process, discards late responses and keeps
+the draft and attachments for retry. Closing the Viewer session also cancels
+pending requests. Stopping post-run AI analysis keeps the approved execution
+output; it does not interrupt the separate R execution. The provider may
+already have processed part of the request.
 Saved providers offer a direct Use button. The model picker automatically requests the selected
 provider's model catalog on open, provider change and key entry. Refresh models
 retries the lookup. API-reported models are separated from configured IDs not

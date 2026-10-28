@@ -216,6 +216,7 @@
   seen <- if (.valid_key(key)) key else character()
   api <- list(
     get = function() current,
+    request_config = function() list(profile=current,key=secret,spec=.api_providers()[[current$provider]]),
     ready = function() .valid_key(secret),
     profiles = function() .read_api_preferences()$profiles,
     catalog = .api_providers,

@@ -15,5 +15,12 @@ load_assistant <- function(path = "AISource.R", package_info = NULL) {
     }
   }
   env$edit_store <- if(is.null(package_info$edits))env$source_edit_store()else package_info$edits
+  # Existing server suites use an immediate fake transport. Cancellation suites
+  # replace this adapter or opt into the real worker saved below.
+  env$real_start_ai_request <- env$start_ai_request
+  env$start_ai_request <- function(system_prompt,prompt,images=character()) {
+    result <- tryCatch(env$ask_ai(system_prompt,prompt,images),error=function(e)e)
+    list(poll=function()list(done=TRUE,value=result),cancel=function()NULL,cleanup=function()NULL)
+  }
   env
 }

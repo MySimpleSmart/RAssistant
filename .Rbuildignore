@@ -15,6 +15,7 @@
 ^tests/project-dependencies\.R$
 ^tests/post-edit-check\.R$
 ^tests/context-inspector\.R$
+^tests/stop-request\.R$
 ^.*\.Rcheck$
 ^.*\.(tar\.gz|tgz|zip)$
 ^R Assistant Local$

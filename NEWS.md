@@ -1,3 +1,9 @@
+# RAssistant 0.21.0
+
+- Turn Send into Stop while waiting for an AI response, using a centered square icon and the existing button style. Keep the draft and attachments ready for a deliberate retry.
+- Run provider requests in a separate R process so Stop can terminate a pending HTTP request. Discard cancelled or stale responses and cancel pending work when the Viewer session closes; pass credentials through a private pipe.
+- Allow stopping AI analysis after an approved script run while keeping its execution output. Mark stopped context receipts clearly and preserve existing Source edit and execution approvals.
+
 # RAssistant 0.20.0
 
 - Add More actions > Context as a separate page with Draft preview and Last Send. Inspect Source, Console, Workspace/project data, selected Knowledge Base excerpts, images and conversation context, with the provider/model identified.

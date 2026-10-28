@@ -181,6 +181,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     shiny::tags$svg(class="send-plane",viewBox="0 0 24 24",width="14",height="14",focusable="false",
       fill="none",stroke="currentColor","stroke-width"="1.8","stroke-linecap"="round","stroke-linejoin"="round",
       shiny::tags$path(d="m22 12-20-10 5 10-5 10Z"),shiny::tags$path(d="M22 12H7")),
+    shiny::tags$svg(class="send-stop",viewBox="0 0 24 24",width="14",height="14",focusable="false",
+      fill="currentColor",shiny::tags$rect(x="5",y="5",width="14",height="14",rx="1")),
     shiny::tags$svg(class="send-spinner",viewBox="0 0 24 24",width="14",height="14",focusable="false",
       fill="none",stroke="currentColor","stroke-width"="2","stroke-linecap"="round",
       shiny::tags$circle(cx="12",cy="12",r="9","stroke-dasharray"="42 15")))
@@ -1025,6 +1027,70 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     if (!nzchar(trimws(response))) stop("The API returned an empty response. Please retry.")
     response
   }
+  api_request_config <- function() {
+    if(!is.null(api_settings))return(api_settings$request_config())
+    list(profile=list(provider="openai",model="gpt-6.1-sol"),key=api_key,
+      spec=list(factory="chat_openai",label="OpenAI"))
+  }
+  start_ai_request <- function(system_prompt,prompt,images=character()) {
+    config <- api_request_config()
+    if(!is.character(config$key) || length(config$key)!=1L || is.na(config$key) || !nzchar(config$key))stop("No API key configured.")
+    directory <- tempfile("RAssistant-request-");dir.create(directory,mode="0700")
+    process <- NULL;released <- FALSE
+    cleanup <- function() {
+      if(released)return(invisible(NULL))
+      released <<- TRUE
+      if(!is.null(process) && process$is_alive())try(process$kill(),silent=TRUE)
+      unlink(directory,recursive=TRUE,force=TRUE)
+      invisible(NULL)
+    }
+    success <- FALSE;on.exit(if(!success)cleanup(),add=TRUE)
+    copies <- vapply(seq_along(images),function(i) {
+      kind <- image_type(images[[i]])
+      if(is.null(kind))stop("A request image is unavailable. Attach it again.")
+      path <- file.path(directory,paste0("image-",i,".",kind))
+      if(!file.copy(images[[i]],path))stop("Could not prepare the request image.")
+      Sys.chmod(path,"0600");path
+    },character(1))
+    timeout <- getOption("ellmer_timeout_s",120);tries <- getOption("ellmer_max_tries",2L)
+    secret_env <- if(is.null(api_settings))c("OPENAI_API_KEY","ANTHROPIC_API_KEY","GOOGLE_API_KEY","GEMINI_API_KEY",
+      "DEEPSEEK_API_KEY","OPENROUTER_API_KEY","GROQ_API_KEY","MISTRAL_API_KEY","HF_TOKEN")else
+      unique(unlist(lapply(api_settings$catalog(),`[[`,"env")))
+    # callr resets the function environment. Only non-secret arguments go to its
+    # transport file; the active key travels once over a private stdin pipe.
+    process <- callr::r_bg(function(profile,spec,system_prompt,prompt,images,timeout,tries,secret_env) {
+      Sys.unsetenv(secret_env)
+      input <- file("stdin");on.exit(close(input),add=TRUE)
+      credentials <- jsonlite::fromJSON(readLines(input,n=1L,warn=FALSE))$key
+      options(ellmer_timeout_s=timeout,ellmer_max_tries=tries)
+      factory <- getExportedValue("ellmer",spec$factory)
+      args <- list(system_prompt=system_prompt,credentials=function()credentials,echo="none")
+      if(nzchar(profile$model))args$model <- profile$model
+      if(identical(spec$factory,"chat_openai_compatible")){args$base_url<-profile$base_url;args$name<-spec$label}
+      client <- do.call(factory,args)
+      pieces <- c(list(prompt),lapply(images,function(path)ellmer::content_image_file(path,resize="none")),list(echo="none"))
+      response <- paste(as.character(do.call(client$chat,pieces)),collapse="\n")
+      if(!nzchar(trimws(response)))stop("The API returned an empty response. Please retry.")
+      response
+    },args=list(profile=config$profile,spec=config$spec,system_prompt=system_prompt,prompt=prompt,images=copies,
+      timeout=timeout,tries=tries,secret_env=secret_env),stdin="|",stdout="|",stderr="|",
+      user_profile=FALSE,system_profile=FALSE,supervise=TRUE,libpath=.libPaths())
+    process$write_input(paste0(jsonlite::toJSON(list(key=config$key),auto_unbox=TRUE),"\n"))
+    started <- Sys.time();success <- TRUE
+    list(poll=function() {
+      if(released)return(list(done=FALSE))
+      if(process$is_alive()) {
+        try(process$read_output_lines(),silent=TRUE);try(process$read_error_lines(),silent=TRUE)
+        if(as.numeric(difftime(Sys.time(),started,units="secs"))>max(30,timeout*tries+20)) {
+          cleanup();return(list(done=TRUE,value=simpleError("The API request timed out. Please retry.")))
+        }
+        return(list(done=FALSE))
+      }
+      value <- tryCatch(process$get_result(),error=function(e)simpleError(redact_api_secrets(
+        gsub(config$key,"[API key redacted]",conditionMessage(e),fixed=TRUE))))
+      list(done=TRUE,value=value)
+    },cancel=cleanup,cleanup=cleanup,is_alive=function()process$is_alive())
+  }
 
   # Image uploads use reading guidance, without a preset subject or answer type.
   # Task-specific formatting is added only when the user explicitly requests it.
@@ -1657,6 +1723,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       "\n\nWrite a concise, evidence-based answer. Return only the changed ranges in copyable r-edit-START-END or rmd-edit-START-END blocks for needed corrections; no unified diffs or structured JSON."
     )
     if(is.function(job$context_record))job$context_record(images,excerpt_text(run$logs,12000L))
+    if(is.function(job$dispatch))return(job$dispatch(system_prompt,prompt,images))
     ask_ai(system_prompt, prompt, images)
   }
 
@@ -1770,7 +1837,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   knowledge_receipt_info <- function(value,restore=FALSE) {
     if(!is.list(value))return(NULL)
     delivery <- chat_text(value$delivery,"prepared")
-    if(!delivery %in% c("prepared","sent","failed","not_sent","interrupted"))delivery <- "interrupted"
+    if(!delivery %in% c("prepared","sent","failed","stopped","not_sent","interrupted"))delivery <- "interrupted"
     if(restore && delivery=="prepared")delivery <- "interrupted"
     notices <- if(is.list(value$notices))vapply(Filter(is.character,value$notices),chat_text,character(1))else value$notices
     list(delivery=delivery,status=chat_text(value$status,"none"),mode=chat_text(value$mode,"automatic"),
@@ -1788,7 +1855,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         disabled="No files selected",empty="No documents",missing="Selected file unavailable",error="Search unavailable",
         limit="Matching content exceeds excerpt limit","No matching excerpts")
     if(nzchar(receipt$instructions))label <- paste(label,"+ instructions")
-    delivery <- switch(receipt$delivery,sent="Sent",failed="Request failed",not_sent="Not sent",
+    delivery <- switch(receipt$delivery,sent="Sent",failed="Request failed",stopped="Stopped",not_sent="Not sent",
       interrupted="Interrupted","Prepared")
     shiny::tags$details(class="knowledge-read",shiny::tags$summary(paste("Knowledge Base",delivery,label,sep=" \u00b7 ")),
       shiny::p(if(receipt$mode=="selected")paste("Selected:",paste(vapply(receipt$files,function(x)x$name,character(1)),collapse=", "))else
@@ -1901,7 +1968,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     if(!status %in% c("available","empty","off","unavailable"))return(NULL)
     count <- function(x,max)if(is.numeric(x) && length(x)==1L && is.finite(x) && x>=0 && x<=max && x==floor(x))as.integer(x)else 0L
     delivery <- chat_text(value$delivery,"prepared")
-    if(!delivery %in% c("prepared","sent","failed","not_sent","interrupted"))delivery <- "interrupted"
+    if(!delivery %in% c("prepared","sent","failed","stopped","not_sent","interrupted"))delivery <- "interrupted"
     if(restore && delivery=="prepared")delivery <- "interrupted"
     result <- list(status=status,lines=count(value$lines,200L),characters=count(value$characters,12000L),delivery=delivery)
     if(include_text)result$text <- substr(chat_text(value$text),1L,12000L)
@@ -1914,7 +1981,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   console_read_ui <- function(value) {
     info <- console_read_info(value)
     if(is.null(info))return(NULL)
-    label <- if(info$status=="available")paste(switch(info$delivery,sent="Sent",failed="Request failed",
+    label <- if(info$status=="available")paste(switch(info$delivery,sent="Sent",failed="Request failed",stopped="Stopped",
       not_sent="Not sent",interrupted="Interrupted","Prepared"),paste(info$lines,if(info$lines==1L)"line"else"lines"),sep=" · ")else
       switch(info$status,empty="No new output",off="Off","Unavailable")
     label <- paste("Console",label,sep=" · ")
@@ -2147,7 +2214,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     course <- reports$course;receipt <- knowledge_receipt_info(course$receipt)
     count <- function(value,prefix)sum(startsWith(strsplit(chat_text(value),"\n",fixed=TRUE)[[1L]],prefix))
     datasets <- count(reports$data,"Dataset: ");files <- count(reports$project,"Saved related file: ")
-    label <- switch(snapshot$delivery,preview="Draft preview · Send reads again",sent="Sent",failed="Request failed",
+    label <- switch(snapshot$delivery,preview="Draft preview · Send reads again",sent="Sent",failed="Request failed",stopped="Stopped",
       local="Local reply · no model request",validation="Run request · separate execution approval","Prepared")
     shiny::tagList(
       shiny::p(class="context-caption",label),
@@ -2432,8 +2499,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   .send-icon svg{display:block;width:14px;height:14px;vertical-align:middle}
   .send-label{display:inline-flex;align-items:center;line-height:14px}
   .send-icon .send-spinner{display:none;transform-origin:center}
+  .send-icon .send-stop{display:none}
   #send.is-loading .send-plane{display:none}
   #send.is-loading .send-spinner{display:block;animation:send-spin .7s linear infinite}
+  #send.is-stoppable .send-plane,#send.is-stoppable .send-spinner{display:none}
+  #send.is-stoppable .send-stop{display:block}
   @keyframes send-spin{to{transform:rotate(360deg)}}
   @media(prefers-reduced-motion:reduce){#send.is-loading .send-spinner{animation:none}}
   .uploading-indicator{color:#7b5e17;font:10px var(--mono);
@@ -2489,6 +2559,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
   (function(){
     var nonce = 0;
     var submitId=null, validationInFlight=false, serverBusy=false, pending=false;
+    var activeRequestId=null,stopQueued=false,stopPressedId=null;
     var readyCount=0, uploadEpoch=0, connected=false, undoAvailable=false, redoAvailable=false;
     var openDetails=Object.create(null);
     var scrollLatest=function(){},holdReviewPosition=function(){},resumeChatScroll=function(){},historyOpen=false,editApplying=false,targetRefreshing=false,sourceReadDetail="";
@@ -2634,9 +2705,13 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       var busy=transfer || working || pending || !connected;
       var loading=transfer || working;
       var btn=document.getElementById("send");
-      if(btn){btn.disabled=busy;btn.classList.toggle("is-loading",loading);
+      var canStop=connected && !!activeRequestId;
+      if(btn){if(canStop && !btn.classList.contains("is-stoppable"))btn.style.minWidth=btn.getBoundingClientRect().width+"px";
+        if(!canStop)btn.style.minWidth="";
+        btn.disabled=canStop?stopQueued:busy;btn.classList.toggle("is-loading",loading);btn.classList.toggle("is-stoppable",canStop);
         btn.setAttribute("aria-busy",loading?"true":"false");
-        btn.setAttribute("aria-label",loading?"Working":"Send");}
+        btn.setAttribute("aria-label",canStop?(stopQueued?"Stopping request":"Stop request"):(loading?"Working":"Send"));
+        var label=btn.querySelector(".send-label");if(label)label.textContent=canStop?"Stop":"Send";}
       var picker=document.getElementById("plot_upload_native");
       if(picker)picker.disabled=busy;
       var plot=document.getElementById("attach_current_plot");if(plot)plot.disabled=busy || readyCount>=3;
@@ -2814,6 +2889,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       var field=document.getElementById("prompt");
       if(button && !button.disabled && field && connected)Shiny.setInputValue("context_preview_text",field.value,{priority:"event"});
     },true);
+    document.addEventListener("pointerdown",function(e){if(e.target.closest && e.target.closest("#send") && activeRequestId)stopPressedId=activeRequestId;},true);
     document.addEventListener("click",function(e){
       var menu=document.getElementById("app_menu");
       if(menu && (!menu.contains(e.target) || (e.target.closest && e.target.closest(".menu-panel button"))))menu.open=false;
@@ -2909,7 +2985,11 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       if(remove && !remove.disabled){
         Shiny.setInputValue("remove_attachment",{id:remove.getAttribute("data-attachment-id"),epoch:uploadEpoch,nonce:++nonce},{priority:"event"});
       }
-      if(e.target && e.target.closest && e.target.closest("#send") && !uploading && !uploadQueue.length)submit();
+      if(e.target && e.target.closest && e.target.closest("#send") && !uploading && !uploadQueue.length){
+        var stopId=stopPressedId || activeRequestId;stopPressedId=null;
+        if(stopId){if(!stopQueued){stopQueued=true;Shiny.setInputValue("stop_ai_request",{id:stopId,nonce:++nonce},{priority:"event"});updateSendState();}}
+        else submit();
+      }
       if(e.target && e.target.closest && e.target.closest("#yes") && pending && !validationInFlight){
         validationInFlight=true;updateSendState();
       }
@@ -2946,6 +3026,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         Shiny.addCustomMessageHandler("ai_state",function(msg){
           var firstConnection=!connected;
           serverBusy=!!msg.busy;pending=!!msg.pending;readyCount=msg.attachments||0;
+          var nextRequest=msg.request_id || null;if(nextRequest!==activeRequestId)stopQueued=false;activeRequestId=nextRequest;
           sourceReadDetail=msg.source_read||"";
           var source=document.getElementById("source_context");if(source)source.title=sourceReadDetail||source.textContent.trim();
           undoAvailable=!!msg.undo_available;redoAvailable=!!msg.redo_available;
@@ -3002,7 +3083,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         window.setTimeout(previewPlot,250);}
       if(window.jQuery){window.jQuery(document).on("shiny:connected",onConnected);
         window.jQuery(document).on("shiny:disconnected",function(){
-          connected=false;submitId=null;plotCaptureId=null;plotPreviewPending=false;validationInFlight=false;editApplying=false;targetRefreshing=false;sourceWatchPending=false;sourceFocusPending=true;resetTransfers();
+          connected=false;submitId=null;activeRequestId=null;stopQueued=false;stopPressedId=null;plotCaptureId=null;plotPreviewPending=false;validationInFlight=false;editApplying=false;targetRefreshing=false;sourceWatchPending=false;sourceFocusPending=true;resetTransfers();
         });}
       document.addEventListener("shiny:connected",onConnected);
       window.addEventListener("resize",resizePrompt);
@@ -3237,6 +3318,8 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     context_draft <- shiny::reactiveVal(NULL)
     context_last <- shiny::reactiveVal(NULL)
     context_mode <- shiny::reactiveVal("draft")
+    request_state <- shiny::reactiveVal(NULL)
+    request_runtime <- NULL
     review_context <- shiny::reactiveVal(NULL)
     undo_job <- shiny::reactiveVal(NULL)
     code_target <- shiny::reactiveVal(NULL)
@@ -3473,6 +3556,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     }
     end_session <- function() {
       if(!session_active)return(invisible(NULL))
+      shiny::isolate(cancel_ai_request(notify=FALSE))
       on.exit({session_active <<- FALSE;unlink(attachment_dir,recursive=TRUE,force=TRUE)},add=TRUE)
       if(!is.null(viewer_token) && is.function(package_info$viewer_disconnected))package_info$viewer_disconnected(viewer_token)
       clear_source_review(remove=FALSE)
@@ -4207,6 +4291,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     })
     sync_client <- function() {
       session$sendCustomMessage("ai_state", list(busy=state$busy,
+        request_id=if(is.null(request_state()))NULL else request_state()$id,
         edit_page=state$edit_panel,chat_page=state$history_panel,context_page=state$context_panel,
         undo_available=restore_controls()$undo,redo_available=restore_controls()$redo,
         pending=!is.null(state$pending), attachments=length(state$attachments), epoch=state$upload_epoch,
@@ -4359,6 +4444,50 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       }
       length(state$messages)
     }
+    poll_ai_request <- function(id) {
+      job <- request_runtime
+      if(!session_active || is.null(job) || !identical(job$id,id) || !identical(job$chat,state$chat$id))return(invisible(NULL))
+      result <- tryCatch(job$handle$poll(),error=function(e)list(done=TRUE,value=e))
+      if(!isTRUE(result$done)) {
+        later::later(function()shiny::isolate(poll_ai_request(id)),0.1)
+        return(invisible(NULL))
+      }
+      request_runtime <<- NULL;request_state(NULL);state$busy <- FALSE
+      try(job$handle$cleanup(),silent=TRUE)
+      on.exit({persist_chat();sync_client()},add=TRUE)
+      tryCatch(job$complete(result$value),error=function(e)shiny::showNotification(
+        paste("Could not finish the response:",redact_api_secrets(conditionMessage(e))),type="error"))
+    }
+    queue_ai_request <- function(system,prompt,images,complete,stopped) {
+      if(!is.null(request_runtime))stop("Finish or stop the active request first.")
+      handle <- tryCatch(start_ai_request(system,prompt,images),error=function(e)e)
+      if(inherits(handle,"error")){state$busy<-FALSE;complete(handle);return(FALSE)}
+      first <- tryCatch(handle$poll(),error=function(e)list(done=TRUE,value=e))
+      if(isTRUE(first$done)) {
+        try(handle$cleanup(),silent=TRUE);state$busy <- FALSE;complete(first$value);return(FALSE)
+      }
+      id <- basename(tempfile("ai-request-"))
+      request_runtime <<- list(id=id,chat=state$chat$id,handle=handle,complete=complete,stopped=stopped)
+      request_state(list(id=id));state$busy <- TRUE
+      sync_client();persist_chat()
+      later::later(function()shiny::isolate(poll_ai_request(id)),0.1)
+      TRUE
+    }
+    cancel_ai_request <- function(id=NULL,notify=TRUE) {
+      job <- request_runtime
+      if(is.null(job) || (!is.null(id) && !identical(id,job$id)))return(invisible(FALSE))
+      request_runtime <<- NULL;request_state(NULL);state$busy <- FALSE
+      try(job$handle$cancel(),silent=TRUE);try(job$handle$cleanup(),silent=TRUE)
+      job$stopped(notify)
+      if(notify){persist_chat();sync_client()}
+      invisible(TRUE)
+    }
+    shiny::observeEvent(input$stop_ai_request,{
+      on.exit(sync_client(),add=TRUE)
+      obj <- input$stop_ai_request
+      if(!is.list(obj) || !is.character(obj$id) || length(obj$id)!=1L || is.na(obj$id))return()
+      cancel_ai_request(obj$id)
+    },ignoreInit=TRUE)
     post_edit_offer <- function(before,fresh) {
       scope <- tryCatch(post_edit_scope(before,full_text(fresh),source_kind(chat_text(fresh$path),full_text(fresh))),
         error=function(e)list(ok=FALSE,label="Scoped check unavailable; not run."))
@@ -4970,9 +5099,9 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     shiny::observeEvent(input$chat_submit,{
       obj <- input$chat_submit
       if (!is.list(obj) || length(obj$nonce) != 1L) return()
-      acquired <- FALSE
+      acquired <- FALSE;async_started <- FALSE
       on.exit({
-        if (acquired) {state$busy <- FALSE;persist_chat()}
+        if (acquired && !async_started) {state$busy <- FALSE;persist_chat()}
         sync_client()
         session$sendCustomMessage("ai_submit_complete",list(id=obj$nonce))
       }, add=TRUE)
@@ -5282,8 +5411,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         if(length(context_images))"\nThe original image pixels are attached again for this follow-up. These are not new uploads."else "",
         if(length(context_images))paste0("\nImage order: ",image_order)else "",
         "\n\nLATEST USER REQUEST:\n",request_text)
-      response<-tryCatch(ask_ai(system,prompt,
-        images=vapply(request_images,function(att)att$path,character(1))),error=function(e)e)
+      complete <- function(response) {
       sent_context <- context_last();sent_context$delivery <- if(inherits(response,"error"))"failed"else"sent";context_last(sent_context)
       set_knowledge_delivery(state$messages[[user_index]]$sequence,if(inherits(response,"error"))"failed"else"sent")
       set_console_delivery(state$messages[[user_index]]$sequence,if(inherits(response,"error"))"failed"else"sent")
@@ -5291,7 +5419,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         messages <- state$messages
         messages[[user_index]]$context <- FALSE
         state$messages <- messages
-        push("AI",paste("Request failed:",conditionMessage(response),
+        push("AI",paste("Request failed:",redact_api_secrets(conditionMessage(response)),
           "\n\nYour message and attachments are ready to retry."),extra=list(context=FALSE))
       } else {
         parsed <- parse_academic_comment(response)
@@ -5301,6 +5429,19 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
         state$draft <- ""
         shiny::updateTextAreaInput(session,"prompt",value="")
       }
+      }
+      stopped <- function(notify=TRUE) {
+        messages <- state$messages;messages[[user_index]]$context <- FALSE;state$messages <- messages
+        set_knowledge_delivery(state$messages[[user_index]]$sequence,"stopped")
+        set_console_delivery(state$messages[[user_index]]$sequence,"stopped")
+        snapshot <- context_last();if(!is.null(snapshot)){snapshot$delivery<-"stopped";context_last(snapshot)}
+        state$draft <- trimws(obj$text)
+        push("AI",if(notify)"Stopped. Your draft and attachments are ready to retry."else
+          "Request interrupted. Your draft and attachments were kept.",extra=list(context=FALSE))
+        if(notify)shiny::updateTextAreaInput(session,"prompt",value=state$draft)
+      }
+      async_started <- queue_ai_request(system,prompt,vapply(request_images,function(att)att$path,character(1)),complete,stopped)
+
     })
 
     shiny::observeEvent(input$no,{
@@ -5310,6 +5451,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
     shiny::observeEvent(input$yes,{
       on.exit(persist_chat(),add=TRUE)
       on.exit({sync_client();session$sendCustomMessage("ai_validation_complete",list())},add=TRUE)
+      analysis_async <- FALSE
       job<-state$pending
       if(is.null(job) || state$busy || identical(job$scope,"post_edit"))return()
       live<-tryCatch(active_doc(id=job$doc_id),error=function(e)NULL)
@@ -5321,7 +5463,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
       }
       finish_pending("Running")
       state$busy<-TRUE
-      on.exit(state$busy<-FALSE,add=TRUE)
+      on.exit(if(!analysis_async)state$busy<-FALSE,add=TRUE)
       sync_client()
       run<-tryCatch(shiny::withProgress(message="Running R script...",value=0.5,{
         validate_script(job$code,job$working_dir,kind=job$format,timeout_seconds=45L)
@@ -5343,13 +5485,7 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           history=job$history,assignment=job$assignment,delivery="prepared")
         snapshot$execution <- logs;snapshot$flow <- "validation";context_last(snapshot)
       }
-      report<-tryCatch(shiny::withProgress(message="Analyzing results...",value=0.5,{
-        analysis_after_run(job,run,TRUE)
-      }),error=function(e)e)
-      if(inherits(report,"error") && length(run$plots) && is_image_error(report)){
-        push("AI","Plot-image analysis was unavailable; trying numeric interpretation only.")
-        report<-tryCatch(analysis_after_run(job,run,FALSE),error=function(e)e)
-      }
+      finish_analysis <- function(report) {
       if(inherits(report,"error")){
         snapshot <- context_last();if(identical(snapshot$flow,"validation")){snapshot$delivery<-"failed";context_last(snapshot)}
         set_knowledge_delivery(job$knowledge_user,"failed")
@@ -5362,9 +5498,39 @@ run_rstudio_ai_chat_visual <- function(api_key = Sys.getenv("OPENAI_API_KEY"), p
           source_snapshot=source_snapshot(list(id=job$doc_id,path=job$path,contents=job$lines))))
         auto_review_source(state$messages[[answer_index]])
       }
+      }
+      analysis_stopped <- function(notify=TRUE) {
+        snapshot <- context_last();if(!is.null(snapshot)){snapshot$delivery<-"stopped";context_last(snapshot)}
+        set_knowledge_delivery(job$knowledge_user,"stopped")
+        push("AI",if(notify)"Analysis stopped. Execution output is kept in chat."else
+          "Analysis interrupted. Execution output is kept in chat.",extra=list(context=FALSE))
+      }
+      dispatch_analysis <- function(use_images) {
+        current <- job
+        current$dispatch <- function(system,prompt,images) {
+          running <- queue_ai_request(system,prompt,images,function(report) {
+            if(inherits(report,"error") && length(run$plots) && use_images && is_image_error(report)) {
+              push("AI","Plot-image analysis was unavailable; trying numeric interpretation only.")
+              dispatch_analysis(FALSE)
+            }else finish_analysis(report)
+          },analysis_stopped)
+          if(running)analysis_async <<- TRUE
+          structure(list(),class="ai_queued")
+        }
+        result <- tryCatch(analysis_after_run(current,run,use_images),error=function(e)e)
+        if(!inherits(result,"ai_queued")) {
+          if(inherits(result,"error") && length(run$plots) && use_images && is_image_error(result)) {
+            push("AI","Plot-image analysis was unavailable; trying numeric interpretation only.")
+            dispatch_analysis(FALSE)
+          }else finish_analysis(result)
+        }
+      }
+      dispatch_analysis(TRUE)
+
     })
     shiny::observeEvent(input$close,{
       state$draft <- chat_text(input$prompt,state$draft)
+      cancel_ai_request(notify=FALSE)
       persist_chat();shiny::stopApp()
     })
     if(!is.null(history))shiny::isolate({

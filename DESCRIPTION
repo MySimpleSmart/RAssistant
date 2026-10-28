@@ -1,6 +1,6 @@
 Package: RAssistant
 Title: A Lightweight AI Assistant for RStudio
-Version: 0.20.0
+Version: 0.21.0
 Authors@R: person("MySimpleSmart", role = c("aut", "cre"),
     email = "120612480+MySimpleSmart@users.noreply.github.com")
 Description: Opens the existing Source-aware chat assistant in the RStudio
@@ -32,6 +32,6 @@ Suggests:
     pdftools
 URL: https://github.com/MySimpleSmart/RAssistant
 BugReports: https://github.com/MySimpleSmart/RAssistant/issues
-Config/RAssistant/Changes: Add More actions > Context as a separate page with Draft preview and Last Send. Inspect Source, Console, Workspace/project data, selected Knowledge Base excerpts, images and conversation context, with the provider/model identified.
-    Share context preparation between preview and Send. Refresh reads local context without a model request or code execution; Send rereads current data, and Last Send preserves the actual attempted snapshot with Sent, Failed or local/approval-flow status.
-    Include approved validation logs and plot context. Respect Off switches and keep raw inspector snapshots temporary, outside saved history; clear them on chat changes or disconnect.
+Config/RAssistant/Changes: Turn Send into Stop while waiting for an AI response, using a centered square icon and the existing button style. Keep the draft and attachments ready for a deliberate retry.
+    Run provider requests in a separate R process so Stop can terminate a pending HTTP request. Discard cancelled or stale responses and cancel pending work when the Viewer session closes; pass credentials through a private pipe.
+    Allow stopping AI analysis after an approved script run while keeping its execution output. Mark stopped context receipts clearly and preserve existing Source edit and execution approvals.

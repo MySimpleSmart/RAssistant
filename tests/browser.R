@@ -13,6 +13,7 @@ main <- function() {
   on.exit(unlink(c(reopen_marker,reopen_url)),add=TRUE)
   edit_marker <- tempfile()
   on.exit(unlink(edit_marker),add=TRUE)
+  on.exit(unlink(paste0(edit_marker,"-stop")),add=TRUE)
   on.exit(unlink(paste0(edit_marker,"-scoped-run")),add=TRUE)
   source_marker <- tempfile()
   on.exit(unlink(source_marker),add=TRUE)
@@ -246,6 +247,16 @@ main <- function() {
              "\n\n```r-replace\nx <- c(\"<tag>\", \"&lt;\", \"\\\\(x\\\\)\", \"$$\")\nkeep <- x > \"a\" & x < \"z\"\n```\n\n",
              "Math: \\(\\alpha < 1\\).\n\n[[ACADEMIC_COMMENT]]Verified result.[[/ACADEMIC_COMMENT]]")
     }
+    if(identical(Sys.getenv("RA_BROWSER_STOP_ONLY"),"true")) {
+      serial <- 0L
+      app$start_ai_request <- function(system_prompt,prompt,images=character()) {
+        serial <<- serial+1L;id <- serial;started <- Sys.time()
+        cat("start",id,"\n",file=paste0(edit_marker,"-stop"),append=TRUE)
+        list(poll=function()list(done=as.numeric(difftime(Sys.time(),started,units="secs"))>3,
+          value=if(id==1L)"LATE_CANCELLED_RESPONSE\n```r-edit-1-1\nx <- 99\n```"else"STOP_RETRY_COMPLETED"),
+          cancel=function()cat("cancel",id,"\n",file=paste0(edit_marker,"-stop"),append=TRUE),cleanup=function()NULL)
+      }
+    }
     previous_limit <- getOption("shiny.maxRequestSize")
     handle <- shiny::startApp(shiny::shinyApp(app$viewer_ui,app$server,onStart=app$on_start),
       host="127.0.0.1",port=port,launch.browser=FALSE,quiet=TRUE)
@@ -335,6 +346,40 @@ main <- function() {
   wait_js('document.querySelector(".empty")!==null')
   js('window.alerts=[];window.alert=function(x){alerts.push(x);};window.receivedMessages=[];$(document).on("shiny:message",function(e){if(e.message.custom)receivedMessages.push(e.message.custom);});')
   check(isTRUE(js('document.querySelector(".empty")!==null')), "existing Shiny UI connects and renders")
+  if(identical(Sys.getenv("RA_BROWSER_STOP_ONLY"),"true")) {
+    js('document.getElementById("attach_current_plot").click()')
+    wait_js('document.querySelectorAll(".attachment-preview").length>0 || document.querySelectorAll(".remove-attachment").length>0')
+    js('var p=document.getElementById("prompt");p.value="Explain the attached plot";p.dispatchEvent(new Event("input",{bubbles:true}));window.sendWidth=document.getElementById("send").offsetWidth;document.getElementById("send").click()')
+    wait_js('document.getElementById("send").classList.contains("is-stoppable") && !document.getElementById("send").disabled')
+    check(isTRUE(js('var b=document.getElementById("send");b.textContent.trim()==="Stop" && b.getAttribute("aria-label")==="Stop request" && getComputedStyle(b.querySelector(".send-stop")).display!=="none" && getComputedStyle(b.querySelector(".send-spinner")).display==="none" && Math.abs(b.offsetWidth-window.sendWidth)<1')),
+      "Send becomes an enabled Stop button with a centered square in its existing icon slot")
+    check(isTRUE(js('document.getElementById("prompt").disabled && document.getElementById("new_chat").disabled && (!document.getElementById("change_model") || document.getElementById("change_model").disabled)')),
+      "pending model work keeps conflicting actions disabled while Stop remains usable")
+    js('window.cancelId=receivedMessages.filter(function(m){return m.ai_state && m.ai_state.request_id}).map(function(m){return m.ai_state.request_id}).pop();document.getElementById("send").click()')
+    wait_js('!document.getElementById("send").disabled && !document.getElementById("send").classList.contains("is-stoppable") && document.getElementById("messages").textContent.includes("Stopped.")')
+    check(isTRUE(js('document.getElementById("send").textContent.trim()==="Send" && document.getElementById("prompt").value==="Explain the attached plot" && !document.getElementById("prompt").disabled && document.querySelectorAll(".remove-attachment").length===1')),
+      "Stop restores Send and preserves the draft and attached plot")
+    Sys.sleep(3.3)
+    check(isTRUE(js('!document.getElementById("messages").textContent.includes("LATE_CANCELLED_RESPONSE") && document.querySelectorAll(".source-apply").length===0 && document.querySelectorAll("#messages .msg.user").length===1')),
+      "a cancelled response cannot create a late answer, Source proposal or automatic retry")
+    check(length(readLines(paste0(edit_marker,"-stop")))==2L && grepl("cancel 1",readLines(paste0(edit_marker,"-stop"))[[2L]],fixed=TRUE),
+      "the browser Stop reaches the cancellation transport exactly once")
+    js('document.getElementById("send").click()')
+    wait_js('document.getElementById("send").classList.contains("is-stoppable")')
+    check(isTRUE(js('!!window.cancelId')), "the client carries the exact cancellable request ID")
+    js('document.getElementById("send").dispatchEvent(new PointerEvent("pointerdown",{bubbles:true}));Shiny.setInputValue("stop_ai_request",{id:cancelId,nonce:9001},{priority:"event"})')
+    wait_js('!document.getElementById("send").disabled && document.getElementById("messages").textContent.includes("STOP_RETRY_COMPLETED")')
+    check(isTRUE(js('document.getElementById("prompt").value==="" && document.querySelectorAll(".remove-attachment").length===0 && document.querySelectorAll("#messages .msg.user").length===2 && !document.getElementById("send").classList.contains("is-stoppable")')),
+      "a deliberate retry completes normally and clears its draft and attachments")
+    js('document.getElementById("send").click()')
+    Sys.sleep(.3)
+    check(length(readLines(paste0(edit_marker,"-stop")))==3L && isTRUE(js('document.querySelectorAll("#messages .msg.user").length===2')),
+      "a Stop press released after completion cannot become an extra Send")
+    browser$Emulation$setDeviceMetricsOverride(width=380,height=780,deviceScaleFactor=1,mobile=FALSE)
+    check(isTRUE(js('document.documentElement.scrollWidth<=innerWidth+1 && window.aisourceErrors.length===0')) && !file.exists(edit_marker),
+      "the control fits a narrow Viewer with no browser errors or Source writes")
+    cat(checks,"Stop browser checks passed\n");return(invisible(NULL))
+  }
   if(identical(Sys.getenv("RA_BROWSER_CONTEXT_ONLY"),"true")) {
     saveRDS(list(console="CONTEXT_CONSOLE_FIRST"),source_marker)
     js('var p=document.getElementById("prompt");p.value="Explain birth_data";p.dispatchEvent(new Event("input",{bubbles:true}));openAction("context_inspector")')

@@ -44,8 +44,13 @@ Advanced commands are expandable; manual update results appear below the header.
 The current file name shares the header row with the visible actions; long names have a tooltip.
 The controls retain their original bordered appearance. The two-line composer
 grows with your draft; Image, Plot, Undo/Redo arrow icons and Send share one action row.
-While a request runs, Send shows a loading indicator without a separate Thinking
-notification or Working status row.
+While waiting for an AI response, **Send** becomes **Stop** with a square icon.
+Stop terminates the local request process, ignores late responses and keeps your
+draft and attachments for retry. Closing the Viewer session also cancels pending work.
+You can stop AI analysis after an approved script run; its execution output stays
+in chat. Stop does not interrupt that separate R execution. A provider may already
+have processed part of a stopped request. Other work uses the existing loading
+icon without a separate Thinking bar.
 If the Viewer disappears or disconnects after sleep or locking the Mac, use the
 Addin or `RAssistant::launch()` again. It reopens the existing server in the Viewer
 and restores the saved chat and draft; RStudio does not need to be restarted.
